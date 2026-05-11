@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0d1117; font-family: 'IBM Plex Mono', monospace; }
@@ -22,16 +23,16 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect } = React;
-
+ 
 // ═══════════════════════════════════════════════════════════════
 //   STEP 1 — PASTE YOUR SUPABASE CREDENTIALS HERE
 // ═══════════════════════════════════════════════════════════════
 const SUPABASE_URL  = "https://potjjodujwtvvnzttqsc.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE";
 // ═══════════════════════════════════════════════════════════════
-
+ 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-
+ 
 const INK_ROWS   = ["Cyan","Magenta","Yellow","Black","White","Orange","Green","Varnish"];
 const TIME_SLOTS = ["6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
 const QC_CHECKS  = [
@@ -42,7 +43,7 @@ const QC_CHECKS  = [
   "Expiry date correct","Barcode verified","Seal integrity OK","Label placement correct",
   "Final visual inspection","Operator sign-off complete",
 ];
-
+ 
 const C = {
   bg:"#0d1117",panel:"#161b22",border:"#30363d",
   accent:"#f0a500",accent2:"#e05a00",
@@ -64,7 +65,7 @@ const S = {
 const TH = {padding:"6px 8px",textAlign:"left",color:C.muted,fontSize:10,fontWeight:700,letterSpacing:"0.06em",whiteSpace:"nowrap"};
 const TD = {padding:"5px 8px",color:C.text,fontSize:11};
 const todayStr = ()=>new Date().toISOString().split("T")[0];
-
+ 
 // ── DB helpers ────────────────────────────────────────────────────────────────
 const dbUsers   = async ()=>{ const {data}=await sb.from("users").select("*").order("created_at"); return data||[]; };
 const dbRecords = async ()=>{ const {data}=await sb.from("records").select("*").order("created_at",{ascending:false}); return data||[]; };
@@ -72,14 +73,14 @@ const dbAddUser = async u=>sb.from("users").insert(u).select().single();
 const dbDelUser = async id=>sb.from("users").delete().eq("id",id);
 const dbAddRec  = async r=>sb.from("records").insert(r).select().single();
 const dbDelRec  = async id=>sb.from("records").delete().eq("id",id);
-
+ 
 // ── Root App ──────────────────────────────────────────────────────────────────
 function App() {
   const [users,   setUsers]   = useState([]);
   const [records, setRecords] = useState([]);
   const [session, setSession] = useState(()=>{ try{return JSON.parse(sessionStorage.getItem("cpk_sess"))||null;}catch{return null;} });
   const [status,  setStatus]  = useState("loading"); // loading | error | unconfigured | ok
-
+ 
   const reload = async () => {
     if (SUPABASE_URL==="PASTE_YOUR_SUPABASE_URL_HERE") { setStatus("unconfigured"); return; }
     try {
@@ -87,26 +88,26 @@ function App() {
       setUsers(u); setRecords(r); setStatus("ok");
     } catch { setStatus("error"); }
   };
-
+ 
   useEffect(()=>{ reload(); },[]);
-
+ 
   const login  = u=>{ setSession(u); sessionStorage.setItem("cpk_sess",JSON.stringify(u)); };
   const logout = ()=>{ setSession(null); sessionStorage.removeItem("cpk_sess"); };
-
+ 
   if (status==="loading")      return <Splash msg="Connecting to database…" />;
   if (status==="unconfigured") return <ConfigScreen />;
   if (status==="error")        return <Splash msg="Could not reach database. Check your credentials." />;
   if (!session)                return <Login users={users} onLogin={login} />;
   return <Main session={session} users={users} records={records} onLogout={logout} reload={reload} />;
 }
-
+ 
 function Splash({ msg }) {
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
     <div style={{fontSize:22,fontWeight:800,color:C.accent}}>CONCORD</div>
     <div style={{fontSize:12,color:C.muted}}>{msg}</div>
   </div>;
 }
-
+ 
 function ConfigScreen() {
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
     <div style={{...S.card,maxWidth:560,padding:40}}>
@@ -122,7 +123,7 @@ function ConfigScreen() {
     </div>
   </div>;
 }
-
+ 
 // ── Login ─────────────────────────────────────────────────────────────────────
 function Login({ users, onLogin }) {
   const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState("");
@@ -145,7 +146,7 @@ function Login({ users, onLogin }) {
     </div>
   </div>;
 }
-
+ 
 // ── Main ──────────────────────────────────────────────────────────────────────
 const TABS = [
   {id:"dashboard", label:"Dashboard",        icon:"◈",roles:["admin","operator","qc"]},
@@ -155,14 +156,14 @@ const TABS = [
   {id:"records",   label:"All Records",      icon:"☰",roles:["admin","operator","qc"]},
   {id:"users",     label:"User Mgmt",        icon:"⌖",roles:["admin"]},
 ];
-
+ 
 function Main({ session, users, records, onLogout, reload }) {
   const [tab, setTab]     = useState("dashboard");
   const [saving, setSaving] = useState(false);
   const [toast, setToast]   = useState(null);
-
+ 
   const flash = (msg,type="success")=>{ setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
-
+ 
   const addRecord = async rec => {
     setSaving(true);
     const {error} = await dbAddRec({...rec, created_by:session.name, created_at:new Date().toISOString()});
@@ -170,15 +171,15 @@ function Main({ session, users, records, onLogout, reload }) {
     else { await reload(); flash("Saved to database!"); setTab("records"); }
     setSaving(false);
   };
-
+ 
   const delRecord = async id => { await dbDelRec(id); await reload(); flash("Record deleted."); };
   const rc = r=>r==="admin"?C.accent2:r==="qc"?C.blue:C.success;
-
+ 
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column"}}>
     {toast && <div style={{position:"fixed",top:16,right:16,zIndex:9999,padding:"12px 20px",borderRadius:8,
       background:toast.type==="danger"?C.danger:C.success,color:"#fff",fontSize:13,fontWeight:600,
       fontFamily:"'IBM Plex Mono',monospace",boxShadow:"0 4px 24px #0008"}}>{toast.msg}</div>}
-
+ 
     <div style={{background:C.panel,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:52,flexShrink:0}}>
       <span style={{fontSize:16,fontWeight:800,color:C.accent}}>CONCORD</span>
       <span style={{fontSize:10,color:C.muted,letterSpacing:"0.15em"}}>TRACEABILITY</span>
@@ -188,7 +189,7 @@ function Main({ session, users, records, onLogout, reload }) {
       <span style={{fontSize:10,padding:"2px 8px",background:rc(session.role),borderRadius:4,color:"#fff",fontWeight:700}}>{session.role.toUpperCase()}</span>
       <button style={S.btn("ghost",{padding:"4px 12px",fontSize:12})} onClick={onLogout}>Logout</button>
     </div>
-
+ 
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       <div style={{width:200,background:C.panel,borderRight:`1px solid ${C.border}`,padding:"16px 0",flexShrink:0,overflowY:"auto"}}>
         {TABS.filter(t=>t.roles.includes(session.role)).map(t=>(
@@ -200,7 +201,7 @@ function Main({ session, users, records, onLogout, reload }) {
           }}><span style={{marginRight:8}}>{t.icon}</span>{t.label}</button>
         ))}
       </div>
-
+ 
       <div style={{flex:1,overflow:"auto",padding:28,position:"relative"}}>
         {saving && <div style={{position:"fixed",inset:0,background:"#000a",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{color:C.accent,fontSize:15,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace"}}>Saving to database…</div>
@@ -215,7 +216,7 @@ function Main({ session, users, records, onLogout, reload }) {
     </div>
   </div>;
 }
-
+ 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function Dashboard({ records, session }) {
   const td2 = new Date().toDateString();
@@ -254,7 +255,7 @@ function Dashboard({ records, session }) {
     </div>
   </div>;
 }
-
+ 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 function PH({ title, sub }) {
   return <div style={{marginBottom:24}}>
@@ -295,12 +296,12 @@ function Done({ label, reset }) {
     <button style={{...S.btn("accent"),marginTop:20}} onClick={reset}>Fill New Sheet</button>
   </div>;
 }
-
+ 
 // ── Production Form ───────────────────────────────────────────────────────────
 const eP=()=>({material:"",batchNo:"",qty:"",unit:""});
 const eI=()=>({inkCode:"",shade:"",supplier:"",qty:"",returned:""});
 const eS=()=>({solvent:"",qty:"",returned:""});
-
+ 
 function ProductionForm({ onSave }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""});
   const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
@@ -372,7 +373,7 @@ function ProductionForm({ onSave }) {
     <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Production Sheet</button>
   </div>;
 }
-
+ 
 // ── Viscosity Form ────────────────────────────────────────────────────────────
 function ViscosityForm({ onSave }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",press:"",operator:""});
@@ -416,7 +417,7 @@ function ViscosityForm({ onSave }) {
     <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Viscosity QC</button>
   </div>;
 }
-
+ 
 // ── Printing QC Form ──────────────────────────────────────────────────────────
 function PrintingQCForm({ onSave }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",press:"",operator:"",inspector:""});
@@ -479,7 +480,95 @@ function PrintingQCForm({ onSave }) {
     <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Printing QC</button>
   </div>;
 }
-
+ 
+// ── Excel Export ──────────────────────────────────────────────────────────────
+function exportToExcel(records) {
+  const wb = XLSX.utils.book_new();
+ 
+  // ── Sheet 1: Summary
+  const summaryData = [
+    ["Concord Packaging Traceability — Export"],
+    ["Generated:", new Date().toLocaleString()],
+    ["Total Records:", records.length],
+    [],
+    ["ID","Type","Title","Populated By","Date & Time"],
+    ...records.map(r=>[r.id, r.type, r.title, r.created_by, new Date(r.created_at).toLocaleString()])
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), "Summary");
+ 
+  // ── Sheet 2: Production
+  const prodRecs = records.filter(r=>r.type==="production");
+  if (prodRecs.length) {
+    const rows = [["Populated By","Date","Shift","Job No.","Customer","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]];
+    prodRecs.forEach(r=>{
+      const h=r.data?.header||{};
+      rows.push([r.created_by, h.date,h.shift,h.jobNo,h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
+      // Raw material input
+      if (r.data?.rawIn?.length) {
+        rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]);
+        r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit]));
+      }
+      // Raw material output
+      if (r.data?.rawOut?.length) {
+        rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit"]);
+        r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit]));
+      }
+      // Inks
+      if (r.data?.inks?.length) {
+        rows.push([]); rows.push(["  INK INPUT","Ink Code","Shade","Supplier","Qty Used (kg)","Returned (kg)"]);
+        r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.shade,x.supplier,x.qty,x.returned]));
+      }
+      // Solvents
+      if (r.data?.solvents?.length) {
+        rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Qty Used (L)","Returned (L)"]);
+        r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.qty,x.returned]));
+      }
+      rows.push(["---"]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Production");
+  }
+ 
+  // ── Sheet 3: Viscosity QC
+  const viscRecs = records.filter(r=>r.type==="viscosity");
+  if (viscRecs.length) {
+    const rows = [["Populated By","Date","Shift","Job No.","Press","Operator","Ink","Target","Unit",...TIME_SLOTS]];
+    viscRecs.forEach(r=>{
+      const h=r.data?.header||{};
+      (r.data?.readings||[]).forEach((row,i)=>{
+        rows.push([
+          i===0?r.created_by:"", i===0?h.date:"", i===0?h.shift:"", i===0?h.jobNo:"",
+          i===0?h.press:"", i===0?h.operator:"",
+          row.ink, row.target, row.unit,
+          ...TIME_SLOTS.map(t=>row.times?.[t]||"")
+        ]);
+      });
+      rows.push(["---"]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Viscosity QC");
+  }
+ 
+  // ── Sheet 4: Printing QC
+  const qcRecs = records.filter(r=>r.type==="printingqc");
+  if (qcRecs.length) {
+    const rows = [["Populated By","Date","Shift","Job No.","Customer","Press","Operator","Inspector","Overall Result","#","Check Item","Result","Comment"]];
+    qcRecs.forEach(r=>{
+      const h=r.data?.header||{};
+      (r.data?.checks||[]).forEach((c,i)=>{
+        rows.push([
+          i===0?r.created_by:"", i===0?h.date:"", i===0?h.shift:"", i===0?h.jobNo:"",
+          i===0?h.customer:"", i===0?h.press:"", i===0?h.operator:"", i===0?h.inspector:"",
+          i===0?(r.data?.overallResult||""):"",
+          i+1, c.label, c.result, c.comment
+        ]);
+      });
+      rows.push(["---"]);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Printing QC");
+  }
+ 
+  XLSX.writeFile(wb, `Concord-Traceability-${new Date().toISOString().split("T")[0]}.xlsx`);
+}
+ 
 // ── Records ───────────────────────────────────────────────────────────────────
 function Records({ records, session, onDelete }) {
   const [filter,setFilter]=useState("all"); const [search,setSearch]=useState(""); const [exp,setExp]=useState(null);
@@ -493,6 +582,11 @@ function Records({ records, session, onDelete }) {
         </button>
       ))}
       <input style={{...S.input,width:220,padding:"6px 12px"}} value={search} placeholder="Search…" onChange={e=>setSearch(e.target.value)} />
+      <div style={{flex:1}} />
+      <button style={S.btn("accent",{padding:"6px 16px",fontSize:11,background:C.success})}
+        onClick={()=>exportToExcel(filtered)}>
+        ⬇ Export to Excel ({filtered.length})
+      </button>
     </div>
     {filtered.length===0 && <div style={{color:C.muted,fontSize:13}}>No records found.</div>}
     {filtered.map(r=>{
@@ -503,7 +597,10 @@ function Records({ records, session, onDelete }) {
           <span style={{fontSize:18,color}}>{icon}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
-            <div style={{fontSize:11,color:C.muted}}>{r.created_by} · {new Date(r.created_at).toLocaleString()}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
+              <span>📋 Populated by: <span style={{color:C.accent,fontWeight:700}}>{r.created_by}</span></span>
+              <span>🕐 {new Date(r.created_at).toLocaleString()}</span>
+            </div>
           </div>
           <span style={{fontSize:10,color}}>{exp===r.id?"▲":"▼"}</span>
           {session.role==="admin" && (
@@ -511,21 +608,26 @@ function Records({ records, session, onDelete }) {
               onClick={e=>{e.stopPropagation();if(window.confirm("Delete this record?"))onDelete(r.id);}}>Delete</button>
           )}
         </div>
-        {exp===r.id && <RecDetail r={r} />}
+        {exp===r.id && <RecDetail r={r} createdBy={r.created_by} />}
       </div>;
     })}
   </div>;
 }
-
-function RecDetail({ r }) {
+ 
+function RecDetail({ r, createdBy }) {
   const d=r.data||{};
   return <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,fontSize:12}}>
+    <div style={{marginBottom:12,padding:"8px 12px",background:C.bg,borderRadius:6,display:"inline-block"}}>
+      <span style={{color:C.muted}}>Populated by: </span>
+      <span style={{color:C.accent,fontWeight:700}}>{createdBy}</span>
+      <span style={{color:C.muted,marginLeft:12}}>on {new Date(r.created_at).toLocaleString()}</span>
+    </div>
     {r.type==="production" && <ProdD d={d} />}
     {r.type==="viscosity"  && <ViscD d={d} />}
     {r.type==="printingqc" && <QCD   d={d} />}
   </div>;
 }
-
+ 
 function ProdD({ d }) {
   const h=d.header||{};
   return <div>
@@ -543,7 +645,7 @@ function ProdD({ d }) {
     {d.remarks && <div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
   </div>;
 }
-
+ 
 function ViscD({ d }) {
   const h=d.header||{};
   return <div>
@@ -569,7 +671,7 @@ function ViscD({ d }) {
     </div>
   </div>;
 }
-
+ 
 function QCD({ d }) {
   const h=d.header||{};
   return <div>
@@ -592,7 +694,7 @@ function QCD({ d }) {
     ))}
   </div>;
 }
-
+ 
 function DT({ title, rows, cols }) {
   if (!rows?.length) return null;
   return <div style={{marginBottom:12}}>
@@ -603,7 +705,7 @@ function DT({ title, rows, cols }) {
     </div>)}
   </div>;
 }
-
+ 
 // ── User Management ───────────────────────────────────────────────────────────
 function UserMgmt({ users, session, reload, flash }) {
   const [form,setForm]=useState({username:"",password:"",name:"",role:"operator"}); const [err,setErr]=useState("");
@@ -646,7 +748,7 @@ function UserMgmt({ users, session, reload, flash }) {
     </SC>
   </div>;
 }
-
+ 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
