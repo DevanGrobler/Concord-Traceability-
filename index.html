@@ -33,7 +33,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const INK_ROWS   = ["Cyan","Magenta","Yellow","Black","White","Orange","Green","Varnish"];
+const INK_ROWS   = ["Cyan","Magenta","Yellow","Black","White","Orange","Green","Varnish"]; // kept for reference only
 const TIME_SLOTS = ["6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
 const QC_CHECKS  = [
   "Plate mounted correctly","Doctor blade set","Impression pressure set","Register checked",
@@ -155,6 +155,7 @@ const TABS = [
   {id:"printingqc",label:"Printing QC",      icon:"✓",roles:["admin","qc"]},
   {id:"records",   label:"All Records",      icon:"☰",roles:["admin","operator","qc"]},
   {id:"users",     label:"User Mgmt",        icon:"⌖",roles:["admin"]},
+  {id:"debug",     label:"Debug / AI Help",  icon:"⚙",roles:["admin"]},
 ];
 
 function Main({ session, users, records, onLogout, reload }) {
@@ -212,6 +213,7 @@ function Main({ session, users, records, onLogout, reload }) {
         {tab==="printingqc" && <PrintingQCForm onSave={addRecord} />}
         {tab==="records"    && <Records records={records} session={session} onDelete={delRecord} />}
         {tab==="users"      && <UserMgmt users={users} session={session} reload={reload} flash={flash} />}
+        {tab==="debug"      && <DebugPanel records={records} users={users} session={session} />}
       </div>
     </div>
   </div>;
@@ -375,17 +377,21 @@ function ProductionForm({ onSave }) {
 }
 
 // ── Viscosity Form ────────────────────────────────────────────────────────────
+const emptyViscRow = ()=>({ink:"",type:"",target:"",unit:"DIN4",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))});
+
 function ViscosityForm({ onSave }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",press:"",operator:""});
-  const [readings,setReadings]=useState(()=>INK_ROWS.map(ink=>({ink,target:"",unit:"DIN4",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))})));
+  const [readings,setReadings]=useState([emptyViscRow(),emptyViscRow(),emptyViscRow(),emptyViscRow()]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
   const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
   const st=(i,slot,val)=>setReadings(rs=>rs.map((r,x)=>x===i?{...r,times:{...r.times,[slot]:val}}:r));
   const sf=(i,k,val) =>setReadings(rs=>rs.map((r,x)=>x===i?{...r,[k]:val}:r));
+  const addRow=()=>setReadings(rs=>[...rs,emptyViscRow()]);
+  const delRow=i=>setReadings(rs=>rs.filter((_,x)=>x!==i));
   if (saved) return <Done label="Viscosity QC" reset={()=>setSaved(false)} />;
   const save=async()=>{ await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true); };
   return <div>
-    <PH title="Viscosity QC Form" sub="Record ink viscosity across all time slots" />
+    <PH title="Viscosity QC Form" sub="Add your ink rows below — type in ink name and type freely" />
     <SC title="Run Details">
       <Grid cols={5}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
@@ -399,19 +405,26 @@ function ViscosityForm({ onSave }) {
       <div style={{overflowX:"auto"}}>
         <table style={{borderCollapse:"collapse",fontSize:11,width:"100%"}}>
           <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>
-            <th style={TH}>Ink</th><th style={TH}>Target</th><th style={TH}>Unit</th>
+            <th style={TH}>Ink Name</th>
+            <th style={TH}>Ink Type</th>
+            <th style={TH}>Target</th>
+            <th style={TH}>Unit</th>
             {TIME_SLOTS.map(t=><th key={t} style={TH}>{t}</th>)}
+            <th style={TH}></th>
           </tr></thead>
           <tbody>{readings.map((r,i)=>(
-            <tr key={r.ink} style={{borderBottom:`1px solid ${C.border}`}}>
-              <td style={{...TD,color:C.accent,fontWeight:700}}>{r.ink}</td>
-              <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.target} onChange={e=>sf(i,"target",e.target.value)} /></td>
-              <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.unit}   onChange={e=>sf(i,"unit",e.target.value)} /></td>
+            <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+              <td style={TD}><input style={{...S.input,width:90,padding:"4px 6px"}} value={r.ink}    placeholder="e.g. Cyan"      onChange={e=>sf(i,"ink",e.target.value)} /></td>
+              <td style={TD}><input style={{...S.input,width:90,padding:"4px 6px"}} value={r.type}   placeholder="e.g. Solvent"   onChange={e=>sf(i,"type",e.target.value)} /></td>
+              <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.target} placeholder="0"              onChange={e=>sf(i,"target",e.target.value)} /></td>
+              <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.unit}                                onChange={e=>sf(i,"unit",e.target.value)} /></td>
               {TIME_SLOTS.map(t=><td key={t} style={TD}><input style={{...S.input,width:50,padding:"4px",textAlign:"center"}} value={r.times[t]} placeholder="—" onChange={e=>st(i,t,e.target.value)} /></td>)}
+              <td style={TD}><button style={S.btn("danger",{padding:"4px 8px",fontSize:11})} onClick={()=>delRow(i)}>✕</button></td>
             </tr>
           ))}</tbody>
         </table>
       </div>
+      <button style={S.btn("ghost",{marginTop:10,fontSize:11})} onClick={addRow}>+ Add Ink Row</button>
     </SC>
     <SC title="Remarks"><textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} /></SC>
     <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Viscosity QC</button>
@@ -531,14 +544,14 @@ function exportToExcel(records) {
   // ── Sheet 3: Viscosity QC
   const viscRecs = records.filter(r=>r.type==="viscosity");
   if (viscRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Press","Operator","Ink","Target","Unit",...TIME_SLOTS]];
+    const rows = [["Completed By","Date","Shift","Job No.","Press","Operator","Ink Name","Ink Type","Target","Unit",...TIME_SLOTS]];
     viscRecs.forEach(r=>{
       const h=r.data?.header||{};
       (r.data?.readings||[]).forEach((row,i)=>{
         rows.push([
           i===0?r.created_by:"", i===0?h.date:"", i===0?h.shift:"", i===0?h.jobNo:"",
           i===0?h.press:"", i===0?h.operator:"",
-          row.ink, row.target, row.unit,
+          row.ink, row.type||"", row.target, row.unit,
           ...TIME_SLOTS.map(t=>row.times?.[t]||"")
         ]);
       });
@@ -657,12 +670,13 @@ function ViscD({ d }) {
     <div style={{overflowX:"auto"}}>
       <table style={{borderCollapse:"collapse",fontSize:11}}>
         <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
-          <th style={TH}>Ink</th><th style={TH}>Target</th><th style={TH}>Unit</th>
+          <th style={TH}>Ink Name</th><th style={TH}>Ink Type</th><th style={TH}>Target</th><th style={TH}>Unit</th>
           {TIME_SLOTS.map(t=><th key={t} style={TH}>{t}</th>)}
         </tr></thead>
-        <tbody>{(d.readings||[]).map(row=>(
-          <tr key={row.ink} style={{borderBottom:`1px solid ${C.border}`}}>
-            <td style={{...TD,color:C.accent,fontWeight:700}}>{row.ink}</td>
+        <tbody>{(d.readings||[]).map((row,i)=>(
+          <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+            <td style={{...TD,color:C.accent,fontWeight:700}}>{row.ink||"—"}</td>
+            <td style={{...TD,color:C.blue}}>{row.type||"—"}</td>
             <td style={TD}>{row.target||"—"}</td><td style={TD}>{row.unit}</td>
             {TIME_SLOTS.map(t=><td key={t} style={{...TD,textAlign:"center"}}>{row.times?.[t]||"—"}</td>)}
           </tr>
@@ -746,6 +760,80 @@ function UserMgmt({ users, session, reload, flash }) {
         </div>
       ))}
     </SC>
+  </div>;
+}
+
+// ── Debug Panel ───────────────────────────────────────────────────────────────
+function DebugPanel({ records, users, session }) {
+  const [copied, setCopied] = useState(false);
+
+  const buildReport = () => {
+    const lines = [];
+    lines.push("=== CONCORD TRACEABILITY — DEBUG REPORT ===");
+    lines.push(`Generated: ${new Date().toLocaleString()}`);
+    lines.push(`Logged in as: ${session.name} (${session.role})`);
+    lines.push(`Supabase URL: ${SUPABASE_URL}`);
+    lines.push("");
+    lines.push(`--- USERS (${users.length} total) ---`);
+    users.forEach(u => lines.push(`  [${u.role}] ${u.name} — username: ${u.username} — id: ${u.id}`));
+    lines.push("");
+    lines.push(`--- RECORDS (${records.length} total) ---`);
+    const byType = {production:0, viscosity:0, printingqc:0};
+    records.forEach(r=>{ if(byType[r.type]!==undefined) byType[r.type]++; });
+    lines.push(`  Production: ${byType.production}`);
+    lines.push(`  Viscosity QC: ${byType.viscosity}`);
+    lines.push(`  Printing QC: ${byType.printingqc}`);
+    lines.push("");
+    lines.push("--- LAST 5 RECORDS (full data) ---");
+    records.slice(0,5).forEach((r,i) => {
+      lines.push(`\n[${i+1}] ${r.title}`);
+      lines.push(`  ID: ${r.id}`);
+      lines.push(`  Type: ${r.type}`);
+      lines.push(`  Completed by: ${r.created_by}`);
+      lines.push(`  Created at: ${r.created_at}`);
+      lines.push(`  Data: ${JSON.stringify(r.data, null, 2)}`);
+    });
+    lines.push("");
+    lines.push("--- BROWSER INFO ---");
+    lines.push(`  User Agent: ${navigator.userAgent}`);
+    lines.push(`  URL: ${window.location.href}`);
+    lines.push(`  Screen: ${window.screen.width}x${window.screen.height}`);
+    lines.push("");
+    lines.push("=== END OF REPORT ===");
+    return lines.join("\n");
+  };
+
+  const report = buildReport();
+
+  const copy = () => {
+    navigator.clipboard.writeText(report).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2500); });
+  };
+
+  return <div>
+    <PH title="Debug / AI Help" sub="Copy this report and paste it into Claude or any AI to get help" />
+    <div style={{...S.card,marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.1em",marginBottom:12}}>HOW TO USE</div>
+      <div style={{fontSize:13,color:C.text,lineHeight:2}}>
+        1. Click <span style={{color:C.accent,fontWeight:700}}>Copy Report</span> below<br/>
+        2. Open a new chat at <span style={{color:C.accent}}>claude.ai</span><br/>
+        3. Paste the report and describe your problem<br/>
+        4. Claude will understand the full app context and help you fix it
+      </div>
+    </div>
+    <div style={{...S.card}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.1em"}}>REPORT PREVIEW</div>
+        <button style={S.btn(copied?"ghost":"accent",{padding:"6px 18px",fontSize:12,background:copied?C.success:C.accent,color:"#fff"})} onClick={copy}>
+          {copied ? "✓ Copied!" : "Copy Report"}
+        </button>
+      </div>
+      <pre style={{
+        background:C.bg, border:`1px solid ${C.border}`, borderRadius:6,
+        padding:16, fontSize:11, color:C.muted, overflowX:"auto",
+        maxHeight:480, overflowY:"auto", lineHeight:1.7, whiteSpace:"pre-wrap",
+        wordBreak:"break-word"
+      }}>{report}</pre>
+    </div>
   </div>;
 }
 
