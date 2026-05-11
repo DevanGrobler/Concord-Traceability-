@@ -345,7 +345,7 @@ function ProductionForm({ onSave }) {
     <SC title="Job Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Morning","Afternoon","Night"]} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /></F>
         <F label="Customer"><TI value={hdr.customer} onChange={v=>h("customer",v)} /></F>
         <F label="Substrate"><TI value={hdr.substrate} onChange={v=>h("substrate",v)} /></F>
@@ -403,7 +403,7 @@ function ProductionForm({ onSave }) {
 }
 
 // ── Viscosity Form ────────────────────────────────────────────────────────────
-const emptyViscRow = ()=>({ink:"",type:"",target:"",unit:"DIN4",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))});
+const emptyViscRow = ()=>({ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))});
 
 function ViscosityForm({ onSave }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",press:"",operator:""});
@@ -421,7 +421,7 @@ function ViscosityForm({ onSave }) {
     <SC title="Run Details">
       <Grid cols={5}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Morning","Afternoon","Night"]} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
         <F label="Press"><TI value={hdr.press} onChange={v=>h("press",v)} /></F>
         <F label="Operator"><TI value={hdr.operator} onChange={v=>h("operator",v)} /></F>
@@ -474,7 +474,7 @@ function PrintingQCForm({ onSave }) {
     <SC title="Run Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Morning","Afternoon","Night"]} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
         <F label="Customer"><TI value={hdr.customer} onChange={v=>h("customer",v)} /></F>
         <F label="Press"><TI value={hdr.press} onChange={v=>h("press",v)} /></F>
@@ -755,7 +755,7 @@ function EditVisc({ data, setH, setArr, addArr, delArr }) {
           </tr>
         ))}</tbody>
       </table>
-      <button style={S.btn("ghost",{fontSize:11,marginTop:6})} onClick={()=>addArr("readings",{ink:"",type:"",target:"",unit:"DIN4",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))})} >+ Add Row</button>
+      <button style={S.btn("ghost",{fontSize:11,marginTop:6})} onClick={()=>addArr("readings",{ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))})} >+ Add Row</button>
     </div>
   </div>;
 }
