@@ -28,7 +28,7 @@ const { useState, useEffect } = React;
 //   STEP 1 — PASTE YOUR SUPABASE CREDENTIALS HERE
 // ═══════════════════════════════════════════════════════════════
 const SUPABASE_URL  = "https://potjjodujwtvvnzttqsc.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE ";
 // ═══════════════════════════════════════════════════════════════
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -232,14 +232,15 @@ function Main({ session, users, records, onLogout, reload }) {
         {saving && <div style={{position:"fixed",inset:0,background:"#000a",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{color:C.accent,fontSize:15,fontWeight:700,fontFamily:"'IBM Plex Mono',monospace"}}>Saving to database…</div>
         </div>}
-        {tab==="dashboard"  && <Dashboard records={records} session={session} />}
-        {tab==="production" && <ProductionForm onSave={addRecord} />}
-        {tab==="viscosity"  && <ViscosityForm  onSave={addRecord} />}
-        {tab==="printingqc" && <PrintingQCForm onSave={addRecord} />}
-        {tab==="records"    && <Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} />}
-        {tab==="users"      && <UserMgmt users={users} session={session} reload={reload} flash={flash} />}
-        {tab==="debug"      && <DebugPanel records={records} users={users} session={session} />}
-        {tab==="password"   && <ChangePassword session={session} flash={flash} />}
+        {/* Forms are always mounted but hidden — preserves state when switching tabs */}
+        <div style={{display:tab==="dashboard" ?"block":"none"}}><Dashboard records={records} session={session} /></div>
+        <div style={{display:tab==="production"?"block":"none"}}><ProductionForm onSave={addRecord} /></div>
+        <div style={{display:tab==="viscosity" ?"block":"none"}}><ViscosityForm  onSave={addRecord} /></div>
+        <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} /></div>
+        <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
+        <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
+        <div style={{display:tab==="debug"     ?"block":"none"}}><DebugPanel records={records} users={users} session={session} /></div>
+        <div style={{display:tab==="password"  ?"block":"none"}}><ChangePassword session={session} flash={flash} /></div>
       </div>
     </div>
   </div>;
