@@ -147,16 +147,34 @@ function Login({ users, onLogin }) {
   </div>;
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-const TABS = [
-  {id:"dashboard", label:"Dashboard",        icon:"◈",roles:["admin","operator","qc"]},
-  {id:"production",label:"Daily Production", icon:"▤",roles:["admin","operator"]},
-  {id:"viscosity", label:"Viscosity QC",     icon:"◉",roles:["admin","qc"]},
-  {id:"printingqc",label:"Printing QC",      icon:"✓",roles:["admin","qc"]},
-  {id:"records",   label:"All Records",      icon:"☰",roles:["admin","operator","qc"]},
-  {id:"users",     label:"User Mgmt",        icon:"⌖",roles:["admin"]},
-  {id:"debug",     label:"Debug / AI Help",  icon:"⚙",roles:["admin"]},
+// ── All possible tabs with their sheet keys ───────────────────────────────────
+const ALL_TABS = [
+  {id:"dashboard", label:"Dashboard",        icon:"◈"},
+  {id:"production",label:"Daily Production", icon:"▤"},
+  {id:"viscosity", label:"Viscosity QC",     icon:"◉"},
+  {id:"printingqc",label:"Printing QC",      icon:"✓"},
+  {id:"records",   label:"All Records",      icon:"☰"},
+  {id:"users",     label:"User Mgmt",        icon:"⌖"},
+  {id:"debug",     label:"Debug / AI Help",  icon:"⚙"},
 ];
+
+// Default permissions per role — can be overridden per user via permissions field
+const ROLE_DEFAULTS = {
+  admin:    ["dashboard","production","viscosity","printingqc","records","users","debug"],
+  operator: ["dashboard","production","records"],
+  qc:       ["dashboard","viscosity","printingqc","records"],
+  viewer:   ["dashboard","records"],
+};
+
+function getTabs(user) {
+  if (!user) return [];
+  if (user.role === "admin") return ALL_TABS; // admin always gets everything
+  const perms = user.permissions || ROLE_DEFAULTS[user.role] || ["dashboard","records"];
+  return ALL_TABS.filter(t => perms.includes(t.id));
+}
+
+function canEdit(user)   { return user?.role === "admin"; }
+function canDelete(user) { return user?.role === "admin"; }
 
 function Main({ session, users, records, onLogout, reload }) {
   const [tab, setTab]     = useState("dashboard");
@@ -173,8 +191,14 @@ function Main({ session, users, records, onLogout, reload }) {
     setSaving(false);
   };
 
-  const delRecord = async id => { await dbDelRec(id); await reload(); flash("Record deleted."); };
-  const rc = r=>r==="admin"?C.accent2:r==="qc"?C.blue:C.success;
+  const delRecord  = async id  => { await dbDelRec(id); await reload(); flash("Record deleted."); };
+  const saveRecord = async (id,data) => { await sb.from("records").update({data}).eq("id",id); await reload(); flash("Record updated."); };
+  const rc = r=>r==="admin"?C.accent2:r==="qc"?C.blue:r==="viewer"?C.muted:C.success;
+
+  const visibleTabs = getTabs(session);
+
+  // If current tab is no longer accessible, go to dashboard
+  React.useEffect(()=>{ if(!visibleTabs.find(t=>t.id===tab)) setTab("dashboard"); },[session]);
 
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column"}}>
     {toast && <div style={{position:"fixed",top:16,right:16,zIndex:9999,padding:"12px 20px",borderRadius:8,
@@ -193,7 +217,7 @@ function Main({ session, users, records, onLogout, reload }) {
 
     <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       <div style={{width:200,background:C.panel,borderRight:`1px solid ${C.border}`,padding:"16px 0",flexShrink:0,overflowY:"auto"}}>
-        {TABS.filter(t=>t.roles.includes(session.role)).map(t=>(
+        {visibleTabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)} style={{
             display:"block",width:"100%",textAlign:"left",padding:"10px 20px",border:"none",cursor:"pointer",
             background:tab===t.id?`${C.accent}22`:"transparent",color:tab===t.id?C.accent:C.muted,
@@ -211,7 +235,7 @@ function Main({ session, users, records, onLogout, reload }) {
         {tab==="production" && <ProductionForm onSave={addRecord} />}
         {tab==="viscosity"  && <ViscosityForm  onSave={addRecord} />}
         {tab==="printingqc" && <PrintingQCForm onSave={addRecord} />}
-        {tab==="records"    && <Records records={records} session={session} onDelete={delRecord} />}
+        {tab==="records"    && <Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} />}
         {tab==="users"      && <UserMgmt users={users} session={session} reload={reload} flash={flash} />}
         {tab==="debug"      && <DebugPanel records={records} users={users} session={session} />}
       </div>
@@ -583,9 +607,12 @@ function exportToExcel(records) {
 }
 
 // ── Records ───────────────────────────────────────────────────────────────────
-function Records({ records, session, onDelete }) {
-  const [filter,setFilter]=useState("all"); const [search,setSearch]=useState(""); const [exp,setExp]=useState(null);
+function Records({ records, session, onDelete, onSave }) {
+  const [filter,setFilter]=useState("all"); const [search,setSearch]=useState("");
+  const [exp,setExp]=useState(null); const [editing,setEditing]=useState(null);
   const filtered=records.filter(r=>(filter==="all"||r.type===filter)&&(search===""||r.title.toLowerCase().includes(search.toLowerCase())));
+  const isAdmin = session.role==="admin";
+
   return <div>
     <PH title="All Records" sub={`${records.length} records shared across all devices`} />
     <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
@@ -596,8 +623,7 @@ function Records({ records, session, onDelete }) {
       ))}
       <input style={{...S.input,width:220,padding:"6px 12px"}} value={search} placeholder="Search…" onChange={e=>setSearch(e.target.value)} />
       <div style={{flex:1}} />
-      <button style={S.btn("accent",{padding:"6px 16px",fontSize:11,background:C.success})}
-        onClick={()=>exportToExcel(filtered)}>
+      <button style={S.btn("accent",{padding:"6px 16px",fontSize:11,background:C.success})} onClick={()=>exportToExcel(filtered)}>
         ⬇ Export to Excel ({filtered.length})
       </button>
     </div>
@@ -605,8 +631,9 @@ function Records({ records, session, onDelete }) {
     {filtered.map(r=>{
       const color=r.type==="production"?C.accent:r.type==="viscosity"?C.blue:C.success;
       const icon=r.type==="production"?"▤":r.type==="viscosity"?"◉":"✓";
+      const isExp=exp===r.id; const isEdit=editing===r.id;
       return <div key={r.id} style={{...S.card,marginBottom:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setExp(exp===r.id?null:r.id)}>
+        <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>{setExp(isExp?null:r.id);setEditing(null);}}>
           <span style={{fontSize:18,color}}>{icon}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
@@ -615,13 +642,18 @@ function Records({ records, session, onDelete }) {
               <span>🕐 {new Date(r.created_at).toLocaleString()}</span>
             </div>
           </div>
-          <span style={{fontSize:10,color}}>{exp===r.id?"▲":"▼"}</span>
-          {session.role==="admin" && (
+          <span style={{fontSize:10,color}}>{isExp?"▲":"▼"}</span>
+          {isAdmin && <>
+            <button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
+              onClick={e=>{e.stopPropagation();setExp(r.id);setEditing(isEdit?null:r.id);}}>
+              {isEdit?"Cancel Edit":"✎ Edit"}
+            </button>
             <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})}
               onClick={e=>{e.stopPropagation();if(window.confirm("Delete this record?"))onDelete(r.id);}}>Delete</button>
-          )}
+          </>}
         </div>
-        {exp===r.id && <RecDetail r={r} createdBy={r.created_by} />}
+        {isExp && !isEdit && <RecDetail r={r} createdBy={r.created_by} />}
+        {isExp && isEdit  && <RecEdit r={r} onSave={async(data)=>{await onSave(r.id,data);setEditing(null);}} onCancel={()=>setEditing(null)} />}
       </div>;
     })}
   </div>;
@@ -640,6 +672,136 @@ function RecDetail({ r, createdBy }) {
     {r.type==="printingqc" && <QCD   d={d} />}
   </div>;
 }
+
+// ── Inline record editor (admin only) ────────────────────────────────────────
+function RecEdit({ r, onSave, onCancel }) {
+  const [data, setData] = useState(JSON.parse(JSON.stringify(r.data||{})));
+  const setH=(k,v)=>setData(d=>({...d,header:{...d.header,[k]:v}}));
+  const setArr=(key,i,k,v)=>setData(d=>({...d,[key]:d[key].map((x,xi)=>xi===i?{...x,[k]:v}:x)}));
+  const addArr=(key,empty)=>setData(d=>({...d,[key]:[...(d[key]||[]),empty]}));
+  const delArr=(key,i)=>setData(d=>({...d,[key]:d[key].filter((_,xi)=>xi!==i)}));
+
+  return <div style={{marginTop:16,paddingTop:16,borderTop:`2px solid ${C.accent}`,fontSize:12}}>
+    <div style={{fontSize:11,fontWeight:700,color:C.accent,letterSpacing:"0.08em",marginBottom:14}}>EDITING RECORD — ADMIN MODE</div>
+
+    {r.type==="production" && <EditProd data={data} setH={setH} setArr={setArr} addArr={addArr} delArr={delArr} setData={setData} />}
+    {r.type==="viscosity"  && <EditVisc data={data} setH={setH} setArr={setArr} addArr={addArr} delArr={delArr} setData={setData} />}
+    {r.type==="printingqc" && <EditQC   data={data} setH={setH} setArr={setArr} addArr={addArr} delArr={delArr} setData={setData} />}
+
+    <div style={{display:"flex",gap:10,marginTop:16}}>
+      <button style={S.btn("accent",{padding:"8px 24px"})} onClick={()=>onSave(data)}>Save Changes</button>
+      <button style={S.btn("ghost",{padding:"8px 24px"})} onClick={onCancel}>Cancel</button>
+    </div>
+  </div>;
+}
+
+function EditProd({ data, setH, setArr, addArr, delArr, setData }) {
+  const h=data.header||{};
+  return <div>
+    <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>JOB DETAILS</div>
+    <Grid cols={4}>
+      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["customer","Customer","text"],
+        ["substrate","Substrate","text"],["width","Width","number"],["length","Length","number"],["speed","Speed","number"],
+        ["operator","Operator","text"],["supervisor","Supervisor","text"]].map(([k,label,type])=>(
+        <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
+      ))}
+    </Grid>
+    {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"]],
+      ["rawOut","Raw Material Output",["material","batchNo","qty","unit"]]].map(([key,title,cols])=>(
+      <div key={key} style={{marginTop:14}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
+        {(data[key]||[]).map((row,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 36px",gap:6,marginBottom:6,alignItems:"center"}}>
+            {cols.map(c=><TI key={c} value={row[c]||""} onChange={v=>setArr(key,i,c,v)} />)}
+            <button style={S.btn("danger",{padding:"3px 6px",fontSize:11})} onClick={()=>delArr(key,i)}>✕</button>
+          </div>
+        ))}
+        <button style={S.btn("ghost",{fontSize:11,marginTop:4})} onClick={()=>addArr(key,{material:"",batchNo:"",qty:"",unit:""})}>+ Add Row</button>
+      </div>
+    ))}
+    <div style={{marginTop:14}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>REMARKS</div>
+      <textarea style={{...S.input,minHeight:60,resize:"vertical"}} value={data.remarks||""} onChange={e=>setData(d=>({...d,remarks:e.target.value}))} />
+    </div>
+  </div>;
+}
+
+function EditVisc({ data, setH, setArr, addArr, delArr }) {
+  const h=data.header||{};
+  return <div>
+    <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>RUN DETAILS</div>
+    <Grid cols={5}>
+      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["press","Press","text"],["operator","Operator","text"]].map(([k,label,type])=>(
+        <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
+      ))}
+    </Grid>
+    <div style={{marginTop:14,overflowX:"auto"}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>READINGS</div>
+      <table style={{borderCollapse:"collapse",fontSize:11,width:"100%"}}>
+        <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
+          <th style={TH}>Ink Name</th><th style={TH}>Ink Type</th><th style={TH}>Target</th><th style={TH}>Unit</th>
+          {TIME_SLOTS.map(t=><th key={t} style={TH}>{t}</th>)}<th style={TH}></th>
+        </tr></thead>
+        <tbody>{(data.readings||[]).map((row,i)=>(
+          <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+            <td style={TD}><input style={{...S.input,width:80,padding:"3px 5px"}} value={row.ink||""} onChange={e=>setArr("readings",i,"ink",e.target.value)} /></td>
+            <td style={TD}><input style={{...S.input,width:80,padding:"3px 5px"}} value={row.type||""} onChange={e=>setArr("readings",i,"type",e.target.value)} /></td>
+            <td style={TD}><input style={{...S.input,width:55,padding:"3px 5px"}} value={row.target||""} onChange={e=>setArr("readings",i,"target",e.target.value)} /></td>
+            <td style={TD}><input style={{...S.input,width:55,padding:"3px 5px"}} value={row.unit||""} onChange={e=>setArr("readings",i,"unit",e.target.value)} /></td>
+            {TIME_SLOTS.map(t=><td key={t} style={TD}><input style={{...S.input,width:46,padding:"3px",textAlign:"center"}} value={row.times?.[t]||""} onChange={e=>setArr("readings",i,`times.${t}`,e.target.value)} /></td>)}
+            <td style={TD}><button style={S.btn("danger",{padding:"3px 6px",fontSize:11})} onClick={()=>delArr("readings",i)}>✕</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+      <button style={S.btn("ghost",{fontSize:11,marginTop:6})} onClick={()=>addArr("readings",{ink:"",type:"",target:"",unit:"DIN4",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))})} >+ Add Row</button>
+    </div>
+  </div>;
+}
+
+function EditQC({ data, setH, setArr, setData }) {
+  const h=data.header||{};
+  return <div>
+    <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>RUN DETAILS</div>
+    <Grid cols={4}>
+      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["customer","Customer","text"],
+        ["press","Press","text"],["operator","Operator","text"],["inspector","Inspector","text"]].map(([k,label,type])=>(
+        <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
+      ))}
+    </Grid>
+    <div style={{marginTop:14}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>QC CHECKS</div>
+      {(data.checks||[]).map((c,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+          <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
+          <div style={{fontSize:12,color:C.text}}>{c.label}</div>
+          <div style={{display:"flex",gap:4}}>
+            {["Pass","Fail","N/A"].map(opt=>(
+              <button key={opt} onClick={()=>setArr("checks",i,"result",opt)} style={{
+                flex:1,padding:"4px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
+                background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
+                color:c.result===opt?"#fff":C.muted,outline:c.result===opt?"none":`1px solid ${C.border}`,
+              }}>{opt}</button>
+            ))}
+          </div>
+          <input style={{...S.input,padding:"4px 8px"}} value={c.comment||""} onChange={e=>setArr("checks",i,"comment",e.target.value)} />
+        </div>
+      ))}
+      <div style={{marginTop:12}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>OVERALL RESULT</div>
+        <div style={{display:"flex",gap:10}}>
+          {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
+            <button key={opt} onClick={()=>setData(d=>({...d,overallResult:opt}))} style={{
+              flex:1,padding:"8px",border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,
+              background:data.overallResult===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
+              color:data.overallResult===opt?"#fff":C.muted,outline:data.overallResult===opt?"none":`1px solid ${C.border}`,
+            }}>{opt}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
 
 function ProdD({ d }) {
   const h=d.header||{};
@@ -721,44 +883,126 @@ function DT({ title, rows, cols }) {
 }
 
 // ── User Management ───────────────────────────────────────────────────────────
+const SHEET_OPTIONS = [
+  {id:"dashboard", label:"Dashboard"},
+  {id:"production",label:"Daily Production"},
+  {id:"viscosity", label:"Viscosity QC"},
+  {id:"printingqc",label:"Printing QC"},
+  {id:"records",   label:"All Records"},
+];
+
 function UserMgmt({ users, session, reload, flash }) {
-  const [form,setForm]=useState({username:"",password:"",name:"",role:"operator"}); const [err,setErr]=useState("");
+  const [form,setForm]=useState({username:"",password:"",name:"",role:"operator",permissions:null});
+  const [err,setErr]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editPerms,setEditPerms]=useState({});
   const f=(k,v)=>setForm(p=>({...p,[k]:v}));
+
   const add=async()=>{
     if (!form.username||!form.password||!form.name){setErr("All fields required.");return;}
     if (users.find(u=>u.username===form.username)){setErr("Username taken.");return;}
-    const {error}=await dbAddUser({username:form.username,password:form.password,name:form.name,role:form.role});
+    // Use role defaults unless viewer (viewer gets only dashboard+records by default)
+    const perms = form.role==="admin" ? null : (ROLE_DEFAULTS[form.role]||["dashboard","records"]);
+    const {error}=await dbAddUser({username:form.username,password:form.password,name:form.name,role:form.role,permissions:perms});
     if (error){setErr("Error: "+error.message);return;}
-    setForm({username:"",password:"",name:"",role:"operator"});setErr("");
+    setForm({username:"",password:"",name:"",role:"operator",permissions:null});setErr("");
     await reload(); flash("User added.");
   };
+
   const del=async id=>{
     if (id===session.id){alert("Cannot delete yourself.");return;}
     await dbDelUser(id); await reload(); flash("User deleted.");
   };
-  const rc=r=>r==="admin"?C.accent2:r==="qc"?C.blue:C.success;
+
+  const startEdit=(u)=>{
+    setEditId(u.id);
+    const perms = u.permissions || ROLE_DEFAULTS[u.role] || ["dashboard","records"];
+    setEditPerms(Object.fromEntries(perms.map(p=>[p,true])));
+  };
+
+  const savePerms=async(u)=>{
+    const perms = SHEET_OPTIONS.map(s=>s.id).filter(id=>editPerms[id]);
+    await sb.from("users").update({permissions:perms}).eq("id",u.id);
+    await reload(); setEditId(null); flash("Permissions updated.");
+  };
+
+  const togglePerm=(id)=>setEditPerms(p=>({...p,[id]:!p[id]}));
+  const rc=r=>r==="admin"?C.accent2:r==="qc"?C.blue:r==="viewer"?C.muted:C.success;
+
   return <div>
-    <PH title="User Management" sub="Users are stored in the shared database" />
+    <PH title="User Management" sub="Control user roles and which sheets each user can access" />
+
     <SC title="Add New User">
       <Grid cols={4}>
         <F label="Full Name"><TI value={form.name} onChange={v=>f("name",v)} /></F>
         <F label="Username"><TI value={form.username} onChange={v=>f("username",v)} /></F>
         <F label="Password"><TI value={form.password} onChange={v=>f("password",v)} /></F>
-        <F label="Role"><TS value={form.role} onChange={v=>f("role",v)} options={["admin","operator","qc"]} /></F>
+        <F label="Role"><TS value={form.role} onChange={v=>f("role",v)} options={["admin","operator","qc","viewer"]} /></F>
       </Grid>
+      <div style={{marginTop:10,fontSize:11,color:C.muted}}>
+        Role defaults — Admin: all access · Operator: Production + Records · QC: Viscosity + Printing QC + Records · Viewer: Records only (read)
+      </div>
       {err && <div style={{color:C.danger,fontSize:12,marginTop:8}}>{err}</div>}
       <button style={{...S.btn("accent"),marginTop:12}} onClick={add}>Add User</button>
     </SC>
-    <SC title="Current Users">
-      <THead cols={["Name","Username","Role","Action"]} widths={["2fr","1.5fr","1fr","100px"]} />
+
+    <SC title="Current Users & Permissions">
       {users.map(u=>(
-        <div key={u.id} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 100px",gap:8,padding:"10px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-          <div style={{color:C.text}}>{u.name}</div>
-          <div style={{color:C.muted}}>{u.username}</div>
-          <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,display:"inline-block",background:rc(u.role)+"33",color:rc(u.role)}}>{u.role}</span>
-          <button style={S.btn("danger",{padding:"4px 10px",fontSize:11,opacity:u.id===session.id?0.4:1})} onClick={()=>del(u.id)}>Delete</button>
+        <div key={u.id} style={{borderBottom:`1px solid ${C.border}`,padding:"14px 0"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:160}}>
+              <div style={{color:C.text,fontWeight:600,fontSize:13}}>{u.name}</div>
+              <div style={{color:C.muted,fontSize:11,marginTop:2}}>{u.username}</div>
+            </div>
+            <span style={{fontSize:10,padding:"2px 10px",borderRadius:4,background:rc(u.role)+"33",color:rc(u.role),fontWeight:700}}>{u.role.toUpperCase()}</span>
+            {u.role!=="admin" && (
+              <button style={S.btn("ghost",{padding:"4px 12px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
+                onClick={()=>editId===u.id?setEditId(null):startEdit(u)}>
+                {editId===u.id?"Cancel":"✎ Edit Permissions"}
+              </button>
+            )}
+            <button style={S.btn("danger",{padding:"4px 10px",fontSize:11,opacity:u.id===session.id?0.4:1})} onClick={()=>del(u.id)}>Delete</button>
+          </div>
+
+          {/* Permission chips when not editing */}
+          {editId!==u.id && u.role!=="admin" && (
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+              {(u.permissions||ROLE_DEFAULTS[u.role]||[]).map(p=>{
+                const tab=ALL_TABS.find(t=>t.id===p);
+                return tab ? <span key={p} style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:`${C.accent}22`,color:C.accent}}>{tab.icon} {tab.label}</span> : null;
+              })}
+            </div>
+          )}
+
+          {/* Permission editor */}
+          {editId===u.id && (
+            <div style={{marginTop:12,padding:14,background:C.bg,borderRadius:8,border:`1px solid ${C.border}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:10}}>SELECT ACCESSIBLE SHEETS</div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+                {SHEET_OPTIONS.map(s=>(
+                  <button key={s.id} onClick={()=>togglePerm(s.id)} style={{
+                    padding:"6px 14px",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,
+                    background:editPerms[s.id]?C.accent:C.panel,
+                    color:editPerms[s.id]?"#fff":C.muted,
+                    outline:editPerms[s.id]?"none":`1px solid ${C.border}`,
+                    transition:"all 0.12s",
+                  }}>{s.label}</button>
+                ))}
+              </div>
+              <button style={S.btn("accent",{padding:"6px 20px",fontSize:12})} onClick={()=>savePerms(u)}>Save Permissions</button>
+            </div>
+          )}
         </div>
       ))}
+    </SC>
+
+    <SC title="Role Reference">
+      <div style={{fontSize:12,color:C.muted,lineHeight:2.2}}>
+        <div><span style={{color:C.accent2,fontWeight:700}}>Admin</span> — Full access to everything including User Mgmt, Debug, and editing/deleting any record.</div>
+        <div><span style={{color:C.success,fontWeight:700}}>Operator</span> — Can fill Daily Production sheets and view All Records. Cannot edit or delete.</div>
+        <div><span style={{color:C.blue,fontWeight:700}}>QC Officer</span> — Can fill Viscosity QC and Printing QC sheets and view All Records. Cannot edit or delete.</div>
+        <div><span style={{color:C.muted,fontWeight:700}}>Viewer</span> — Read-only access. Can only view records they are given access to. Cannot fill any sheets.</div>
+      </div>
     </SC>
   </div>;
 }
