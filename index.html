@@ -156,14 +156,15 @@ const ALL_TABS = [
   {id:"records",   label:"All Records",      icon:"☰"},
   {id:"users",     label:"User Mgmt",        icon:"⌖"},
   {id:"debug",     label:"Debug / AI Help",  icon:"⚙"},
+  {id:"password",  label:"Change Password",  icon:"🔑"},
 ];
 
 // Default permissions per role — can be overridden per user via permissions field
 const ROLE_DEFAULTS = {
-  admin:    ["dashboard","production","viscosity","printingqc","records","users","debug"],
-  operator: ["dashboard","production","records"],
-  qc:       ["dashboard","viscosity","printingqc","records"],
-  viewer:   ["dashboard","records"],
+  admin:    ["dashboard","production","viscosity","printingqc","records","users","debug","password"],
+  operator: ["dashboard","production","records","password"],
+  qc:       ["dashboard","viscosity","printingqc","records","password"],
+  viewer:   ["dashboard","records","password"],
 };
 
 function getTabs(user) {
@@ -238,6 +239,7 @@ function Main({ session, users, records, onLogout, reload }) {
         {tab==="records"    && <Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} />}
         {tab==="users"      && <UserMgmt users={users} session={session} reload={reload} flash={flash} />}
         {tab==="debug"      && <DebugPanel records={records} users={users} session={session} />}
+        {tab==="password"   && <ChangePassword session={session} flash={flash} />}
       </div>
     </div>
   </div>;
@@ -896,6 +898,8 @@ function UserMgmt({ users, session, reload, flash }) {
   const [err,setErr]=useState("");
   const [editId,setEditId]=useState(null);
   const [editPerms,setEditPerms]=useState({});
+  const [resetId,setResetId]=useState(null);
+  const [resetPw,setResetPw]=useState("");
   const f=(k,v)=>setForm(p=>({...p,[k]:v}));
 
   const add=async()=>{
@@ -924,6 +928,12 @@ function UserMgmt({ users, session, reload, flash }) {
     const perms = SHEET_OPTIONS.map(s=>s.id).filter(id=>editPerms[id]);
     await sb.from("users").update({permissions:perms}).eq("id",u.id);
     await reload(); setEditId(null); flash("Permissions updated.");
+  };
+
+  const doReset=async(u)=>{
+    if (!resetPw.trim()){flash("Password cannot be empty.","danger");return;}
+    await sb.from("users").update({password:resetPw}).eq("id",u.id);
+    setResetId(null); setResetPw(""); await reload(); flash(`Password reset for ${u.name}.`);
   };
 
   const togglePerm=(id)=>setEditPerms(p=>({...p,[id]:!p[id]}));
@@ -961,8 +971,22 @@ function UserMgmt({ users, session, reload, flash }) {
                 {editId===u.id?"Cancel":"✎ Edit Permissions"}
               </button>
             )}
+            <button style={S.btn("ghost",{padding:"4px 12px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
+              onClick={()=>{setResetId(resetId===u.id?null:u.id);setResetPw("");}}>
+              {resetId===u.id?"Cancel":"🔑 Reset Password"}
+            </button>
             <button style={S.btn("danger",{padding:"4px 10px",fontSize:11,opacity:u.id===session.id?0.4:1})} onClick={()=>del(u.id)}>Delete</button>
           </div>
+
+          {/* Inline password reset */}
+          {resetId===u.id && (
+            <div style={{marginTop:10,display:"flex",gap:8,alignItems:"center",padding:12,background:C.bg,borderRadius:6,border:`1px solid ${C.warn}`}}>
+              <span style={{fontSize:11,color:C.warn,fontWeight:600,flexShrink:0}}>New password for {u.name}:</span>
+              <input style={{...S.input,maxWidth:220,padding:"5px 10px"}} type="text" value={resetPw} placeholder="Enter new password" onChange={e=>setResetPw(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&doReset(u)} />
+              <button style={S.btn("accent",{padding:"5px 16px",fontSize:12,background:C.warn})} onClick={()=>doReset(u)}>Save</button>
+            </div>
+          )}
 
           {/* Permission chips when not editing */}
           {editId!==u.id && u.role!=="admin" && (
@@ -1004,6 +1028,48 @@ function UserMgmt({ users, session, reload, flash }) {
         <div><span style={{color:C.muted,fontWeight:700}}>Viewer</span> — Read-only access. Can only view records they are given access to. Cannot fill any sheets.</div>
       </div>
     </SC>
+  </div>;
+}
+
+// ── Change Password ───────────────────────────────────────────────────────────
+function ChangePassword({ session, flash }) {
+  const [current,setCurrent]=useState("");
+  const [newPw,setNewPw]=useState("");
+  const [confirm,setConfirm]=useState("");
+  const [err,setErr]=useState("");
+  const [done,setDone]=useState(false);
+
+  const save = async () => {
+    setErr("");
+    // Verify current password against DB
+    const {data} = await sb.from("users").select("password").eq("id",session.id).single();
+    if (!data || data.password !== current) { setErr("Current password is incorrect."); return; }
+    if (!newPw.trim()) { setErr("New password cannot be empty."); return; }
+    if (newPw !== confirm) { setErr("New passwords do not match."); return; }
+    if (newPw.length < 4) { setErr("Password must be at least 4 characters."); return; }
+    const {error} = await sb.from("users").update({password:newPw}).eq("id",session.id);
+    if (error) { setErr("Failed to update: "+error.message); return; }
+    setCurrent(""); setNewPw(""); setConfirm(""); setDone(true);
+    flash("Password changed successfully!");
+    setTimeout(()=>setDone(false),3000);
+  };
+
+  return <div>
+    <PH title="Change Password" sub={`Changing password for: ${session.name}`} />
+    <div style={{...S.card,maxWidth:420}}>
+      {done && <div style={{padding:"10px 14px",background:`${C.success}22`,border:`1px solid ${C.success}`,borderRadius:6,color:C.success,fontSize:13,fontWeight:600,marginBottom:16}}>
+        ✓ Password changed successfully!
+      </div>}
+      <label style={S.label}>Current Password</label>
+      <input type="password" style={{...S.input,marginBottom:14}} value={current} onChange={e=>setCurrent(e.target.value)} />
+      <label style={S.label}>New Password</label>
+      <input type="password" style={{...S.input,marginBottom:14}} value={newPw} onChange={e=>setNewPw(e.target.value)} />
+      <label style={S.label}>Confirm New Password</label>
+      <input type="password" style={{...S.input,marginBottom:16}} value={confirm} onChange={e=>setConfirm(e.target.value)}
+        onKeyDown={e=>e.key==="Enter"&&save()} />
+      {err && <div style={{color:C.danger,fontSize:12,marginBottom:12}}>{err}</div>}
+      <button style={{...S.btn("accent"),width:"100%",padding:10}} onClick={save}>Update Password</button>
+    </div>
   </div>;
 }
 
