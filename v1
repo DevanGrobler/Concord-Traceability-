@@ -1,0 +1,720 @@
+Concordtraceability · JSX
+Copy
+
+import { useState, useEffect, useCallback } from "react";
+ 
+// ─── Storage helpers ───────────────────────────────────────────────────────────
+const KEYS = { users: "cpk_users", records: "cpk_records", session: "cpk_session" };
+ 
+const DEFAULT_USERS = [
+  { id: "u1", username: "admin",     password: "admin123", role: "admin",    name: "Administrator" },
+  { id: "u2", username: "operator1", password: "op1pass",  role: "operator", name: "Operator One" },
+  { id: "u3", username: "qc1",       password: "qc1pass",  role: "qc",       name: "QC Officer One" },
+];
+ 
+async function sget(key) {
+  try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; } catch { return null; }
+}
+async function sset(key, val) {
+  try { await window.storage.set(key, JSON.stringify(val)); } catch {}
+}
+ 
+// ─── Constants ─────────────────────────────────────────────────────────────────
+const INK_ROWS = ["Cyan","Magenta","Yellow","Black","White","Orange","Green","Varnish"];
+const TIME_SLOTS = ["6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
+const QC_CHECKS = [
+  "Plate mounted correctly","Doctor blade set","Impression pressure set","Register checked",
+  "Ink viscosity within spec","Colour match approved","Print density checked","Trapping verified",
+  "Slitting width correct","Tension set correctly","Rewind tension correct","Splice quality OK",
+  "Defect-free print surface","No blocking/smearing","Correct substrate loaded","Batch code printed correctly",
+  "Expiry date correct","Barcode verified","Seal integrity OK","Label placement correct",
+  "Final visual inspection","Operator sign-off complete",
+];
+ 
+// ─── Palette ───────────────────────────────────────────────────────────────────
+const C = {
+  bg: "#0d1117", panel: "#161b22", border: "#30363d",
+  accent: "#f0a500", accent2: "#e05a00",
+  text: "#e6edf3", muted: "#8b949e",
+  success: "#3fb950", danger: "#f85149", warn: "#d29922",
+  blue: "#58a6ff",
+};
+ 
+const css = (obj) => Object.entries(obj).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';');
+ 
+// ─── Tiny styled helpers ───────────────────────────────────────────────────────
+const S = {
+  btn: (variant="accent", extra={}) => ({
+    padding:"8px 18px", border:"none", borderRadius:6, cursor:"pointer", fontWeight:600,
+    fontSize:13, letterSpacing:"0.03em", transition:"all 0.15s",
+    background: variant==="accent" ? C.accent : variant==="danger" ? C.danger : variant==="ghost" ? "transparent" : C.panel,
+    color: variant==="ghost" ? C.muted : "#fff",
+    border: variant==="ghost" ? `1px solid ${C.border}` : "none",
+    ...extra,
+  }),
+  input: { background:C.bg, border:`1px solid ${C.border}`, borderRadius:6, color:C.text,
+    padding:"8px 12px", fontSize:13, width:"100%", boxSizing:"border-box" },
+  label: { fontSize:12, color:C.muted, fontWeight:600, letterSpacing:"0.05em",
+    textTransform:"uppercase", display:"block", marginBottom:4 },
+  card: { background:C.panel, border:`1px solid ${C.border}`, borderRadius:10, padding:20, marginBottom:16 },
+};
+ 
+// ─── App root ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const [users, setUsers]     = useState(null);
+  const [records, setRecords] = useState(null);
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+ 
+  useEffect(() => {
+    (async () => {
+      let u = await sget(KEYS.users);
+      if (!u) { u = DEFAULT_USERS; await sset(KEYS.users, u); }
+      let r = await sget(KEYS.records); if (!r) r = [];
+      let s = await sget(KEYS.session);
+      setUsers(u); setRecords(r); setSession(s);
+      setLoading(false);
+    })();
+  }, []);
+ 
+  const saveUsers   = async (u) => { setUsers(u);   await sset(KEYS.users, u); };
+  const saveRecords = async (r) => { setRecords(r); await sset(KEYS.records, r); };
+  const saveSession = async (s) => { setSession(s); await sset(KEYS.session, s); };
+ 
+  const login  = async (user) => { await saveSession(user); };
+  const logout  = async ()    => { await saveSession(null); };
+ 
+  if (loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:C.bg,color:C.muted,fontFamily:"monospace",fontSize:14}}>Loading Concord Traceability…</div>;
+  if (!session) return <Login users={users} onLogin={login} />;
+  return <Main session={session} users={users} records={records} onLogout={logout} saveUsers={saveUsers} saveRecords={saveRecords} />;
+}
+ 
+// ─── Login ────────────────────────────────────────────────────────────────────
+function Login({ users, onLogin }) {
+  const [u, setU] = useState(""); const [p, setP] = useState(""); const [err, setErr] = useState("");
+  const attempt = () => {
+    const found = users.find(x => x.username===u && x.password===p);
+    if (found) { setErr(""); onLogin(found); } else setErr("Invalid credentials.");
+  };
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'IBM Plex Mono',monospace"}}>
+      <div style={{...S.card,width:360,padding:40}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:28,fontWeight:800,color:C.accent,letterSpacing:"-0.02em"}}>CONCORD</div>
+          <div style={{fontSize:11,color:C.muted,letterSpacing:"0.2em",marginTop:2}}>PACKAGING TRACEABILITY</div>
+        </div>
+        <label style={S.label}>Username</label>
+        <input style={{...S.input,marginBottom:14}} value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&attempt()} />
+        <label style={S.label}>Password</label>
+        <input type="password" style={{...S.input,marginBottom:20}} value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&attempt()} />
+        {err && <div style={{color:C.danger,fontSize:12,marginBottom:12}}>{err}</div>}
+        <button style={{...S.btn("accent"),width:"100%",padding:12,fontSize:14}} onClick={attempt}>Sign In</button>
+        <div style={{marginTop:20,fontSize:11,color:C.muted,lineHeight:1.8}}>
+          <div style={{marginBottom:4,fontWeight:600}}>Demo accounts:</div>
+          admin / admin123 · operator1 / op1pass · qc1 / qc1pass
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
+// ─── Main shell ───────────────────────────────────────────────────────────────
+const TABS = [
+  { id:"dashboard",  label:"Dashboard",     icon:"◈", roles:["admin","operator","qc"] },
+  { id:"production", label:"Daily Production", icon:"▤", roles:["admin","operator"] },
+  { id:"viscosity",  label:"Viscosity QC",  icon:"◉", roles:["admin","qc"] },
+  { id:"printingqc", label:"Printing QC",   icon:"✓", roles:["admin","qc"] },
+  { id:"records",    label:"All Records",   icon:"☰", roles:["admin","operator","qc"] },
+  { id:"users",      label:"User Mgmt",     icon:"⌖", roles:["admin"] },
+];
+ 
+function Main({ session, users, records, onLogout, saveUsers, saveRecords }) {
+  const [tab, setTab] = useState("dashboard");
+  const [editRec, setEditRec] = useState(null);
+ 
+  const visibleTabs = TABS.filter(t => t.roles.includes(session.role));
+  const addRecord = async (rec) => {
+    const next = [{ ...rec, id: Date.now().toString(), createdBy: session.name, createdAt: new Date().toISOString() }, ...records];
+    await saveRecords(next);
+    setTab("records");
+  };
+  const deleteRecord = async (id) => { await saveRecords(records.filter(r=>r.id!==id)); };
+ 
+  return (
+    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'IBM Plex Mono',monospace",display:"flex",flexDirection:"column"}}>
+      {/* Top bar */}
+      <div style={{background:C.panel,borderBottom:`1px solid ${C.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:52}}>
+        <span style={{fontSize:16,fontWeight:800,color:C.accent,letterSpacing:"-0.01em",marginRight:8}}>CONCORD</span>
+        <span style={{fontSize:10,color:C.muted,letterSpacing:"0.15em"}}>TRACEABILITY</span>
+        <div style={{flex:1}} />
+        <span style={{fontSize:12,color:C.muted}}>{session.name}</span>
+        <span style={{fontSize:10,padding:"2px 8px",background:session.role==="admin"?C.accent2:session.role==="qc"?C.blue:C.success,borderRadius:4,color:"#fff",fontWeight:700,letterSpacing:"0.05em"}}>{session.role.toUpperCase()}</span>
+        <button style={S.btn("ghost",{padding:"4px 12px",fontSize:12})} onClick={onLogout}>Logout</button>
+      </div>
+      <div style={{display:"flex",flex:1}}>
+        {/* Sidebar */}
+        <div style={{width:200,background:C.panel,borderRight:`1px solid ${C.border}`,padding:"16px 0",flexShrink:0}}>
+          {visibleTabs.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+              display:"block",width:"100%",textAlign:"left",padding:"10px 20px",border:"none",cursor:"pointer",
+              background: tab===t.id ? `${C.accent}22` : "transparent",
+              color: tab===t.id ? C.accent : C.muted,
+              borderLeft: tab===t.id ? `3px solid ${C.accent}` : "3px solid transparent",
+              fontSize:12,fontWeight:600,letterSpacing:"0.04em",fontFamily:"inherit",
+              transition:"all 0.1s",
+            }}>
+              <span style={{marginRight:8}}>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+        {/* Content */}
+        <div style={{flex:1,overflow:"auto",padding:28}}>
+          {tab==="dashboard"  && <Dashboard records={records} session={session} setTab={setTab} />}
+          {tab==="production" && <ProductionForm onSave={addRecord} />}
+          {tab==="viscosity"  && <ViscosityForm onSave={addRecord} />}
+          {tab==="printingqc" && <PrintingQCForm onSave={addRecord} />}
+          {tab==="records"    && <Records records={records} session={session} onDelete={deleteRecord} />}
+          {tab==="users"      && <UserMgmt users={users} saveUsers={saveUsers} session={session} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function Dashboard({ records, session, setTab }) {
+  const today = new Date().toDateString();
+  const todayRecs = records.filter(r => new Date(r.createdAt).toDateString()===today);
+  const counts = { production:0, viscosity:0, printingqc:0 };
+  records.forEach(r => { if(counts[r.type]!==undefined) counts[r.type]++; });
+  const todayCounts = { production:0, viscosity:0, printingqc:0 };
+  todayRecs.forEach(r => { if(todayCounts[r.type]!==undefined) todayCounts[r.type]++; });
+ 
+  const StatCard = ({label,today,total,color,icon}) => (
+    <div style={{...S.card,flex:1,minWidth:180}}>
+      <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
+      <div style={{fontSize:11,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
+      <div style={{fontSize:36,fontWeight:800,color}}>{today}</div>
+      <div style={{fontSize:11,color:C.muted}}>today · {total} total</div>
+    </div>
+  );
+ 
+  return (
+    <div>
+      <PageHeader title="Dashboard" sub={`Welcome back, ${session.name}`} />
+      <div style={{display:"flex",gap:16,marginBottom:24,flexWrap:"wrap"}}>
+        <StatCard label="DAILY PRODUCTION" today={todayCounts.production} total={counts.production} color={C.accent} icon="▤" />
+        <StatCard label="VISCOSITY QC"     today={todayCounts.viscosity}  total={counts.viscosity}  color={C.blue}   icon="◉" />
+        <StatCard label="PRINTING QC"      today={todayCounts.printingqc} total={counts.printingqc} color={C.success} icon="✓" />
+      </div>
+      <div style={S.card}>
+        <div style={{fontSize:12,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:14}}>RECENT RECORDS</div>
+        {records.length===0 && <div style={{color:C.muted,fontSize:13}}>No records yet. Create your first form above.</div>}
+        {records.slice(0,8).map(r=>(
+          <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontSize:16}}>{r.type==="production"?"▤":r.type==="viscosity"?"◉":"✓"}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,color:C.text}}>{r.title}</div>
+              <div style={{fontSize:11,color:C.muted}}>{r.createdBy} · {new Date(r.createdAt).toLocaleString()}</div>
+            </div>
+            <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:r.type==="production"?`${C.accent}33`:r.type==="viscosity"?`${C.blue}33`:`${C.success}33`,color:r.type==="production"?C.accent:r.type==="viscosity"?C.blue:C.success}}>{r.type.toUpperCase()}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+ 
+// ─── Page header ─────────────────────────────────────────────────────────────
+function PageHeader({ title, sub }) {
+  return (
+    <div style={{marginBottom:24}}>
+      <div style={{fontSize:22,fontWeight:800,color:C.text,letterSpacing:"-0.01em"}}>{title}</div>
+      {sub && <div style={{fontSize:12,color:C.muted,marginTop:2}}>{sub}</div>}
+    </div>
+  );
+}
+ 
+// ─── Field helpers ────────────────────────────────────────────────────────────
+function Field({ label, children, col=1, style={} }) {
+  return <div style={{gridColumn:`span ${col}`,...style}}><label style={S.label}>{label}</label>{children}</div>;
+}
+function TInput({ value, onChange, type="text", placeholder="" }) {
+  return <input type={type} style={S.input} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} />;
+}
+function TSelect({ value, onChange, options }) {
+  return (
+    <select style={{...S.input}} value={value} onChange={e=>onChange(e.target.value)}>
+      <option value="">— Select —</option>
+      {options.map(o=><option key={o} value={o}>{o}</option>)}
+    </select>
+  );
+}
+ 
+// ─── Daily Production Form ────────────────────────────────────────────────────
+function emptyProdRow() { return { material:"", batchNo:"", qty:"", unit:"" }; }
+function emptyInkRow()  { return { inkCode:"", shade:"", supplier:"", qty:"", returned:"" }; }
+function emptySolvRow() { return { solvent:"", qty:"", returned:"" }; }
+ 
+function ProductionForm({ onSave }) {
+  const [header, setHeader] = useState({ date:today(), shift:"", jobNo:"", customer:"", substrate:"", width:"", length:"", speed:"", operator:"", supervisor:"" });
+  const [rawIn,  setRawIn]  = useState([emptyProdRow()]);
+  const [rawOut, setRawOut] = useState([emptyProdRow()]);
+  const [inks,   setInks]   = useState([emptyInkRow()]);
+  const [solvents,setSolvents]=useState([emptySolvRow()]);
+  const [remarks,setRemarks]=useState("");
+  const [saved,  setSaved]  = useState(false);
+ 
+  const hSet = (k,v) => setHeader(h=>({...h,[k]:v}));
+  const arrSet = (setter, i, k, v) => setter(arr => arr.map((r,idx)=>idx===i?{...r,[k]:v}:r));
+  const addRow = (setter, empty) => setter(a=>[...a,empty()]);
+  const delRow = (setter, i) => setter(a=>a.filter((_,idx)=>idx!==i));
+ 
+  const save = async () => {
+    await onSave({ type:"production", title:`Production · ${header.jobNo||"(no job)"} · ${header.date}`, header, rawIn, rawOut, inks, solvents, remarks });
+    setSaved(true);
+  };
+ 
+  if (saved) return <div style={{...S.card,textAlign:"center",padding:60}}><div style={{fontSize:32,marginBottom:12}}>✓</div><div style={{color:C.success,fontSize:16,fontWeight:700}}>Production Sheet Saved</div><button style={{...S.btn(),marginTop:20}} onClick={()=>setSaved(false)}>New Sheet</button></div>;
+ 
+  return (
+    <div>
+      <PageHeader title="Daily Production Sheet" sub="Fill in all job and material details below" />
+      <SectionCard title="Job Details">
+        <Grid cols={4}>
+          <Field label="Date"><TInput value={header.date} onChange={v=>hSet("date",v)} type="date" /></Field>
+          <Field label="Shift"><TSelect value={header.shift} onChange={v=>hSet("shift",v)} options={["Morning","Afternoon","Night"]} /></Field>
+          <Field label="Job No."><TInput value={header.jobNo} onChange={v=>hSet("jobNo",v)} placeholder="CPK-0001" /></Field>
+          <Field label="Customer"><TInput value={header.customer} onChange={v=>hSet("customer",v)} /></Field>
+          <Field label="Substrate"><TInput value={header.substrate} onChange={v=>hSet("substrate",v)} /></Field>
+          <Field label="Width (mm)"><TInput value={header.width} onChange={v=>hSet("width",v)} type="number" /></Field>
+          <Field label="Length (m)"><TInput value={header.length} onChange={v=>hSet("length",v)} type="number" /></Field>
+          <Field label="Speed (m/min)"><TInput value={header.speed} onChange={v=>hSet("speed",v)} type="number" /></Field>
+          <Field label="Operator"><TInput value={header.operator} onChange={v=>hSet("operator",v)} /></Field>
+          <Field label="Supervisor"><TInput value={header.supervisor} onChange={v=>hSet("supervisor",v)} /></Field>
+        </Grid>
+      </SectionCard>
+ 
+      {[["Raw Material Input", rawIn, setRawIn, emptyProdRow], ["Raw Material Output", rawOut, setRawOut, emptyProdRow]].map(([title, rows, setter, empty])=>(
+        <SectionCard key={title} title={title}>
+          <TableHead cols={["Material","Batch No.","Qty","Unit",""]} />
+          {rows.map((r,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 36px",gap:6,marginBottom:6,alignItems:"center"}}>
+              <TInput value={r.material} onChange={v=>arrSet(setter,i,"material",v)} />
+              <TInput value={r.batchNo}  onChange={v=>arrSet(setter,i,"batchNo",v)} />
+              <TInput value={r.qty}      onChange={v=>arrSet(setter,i,"qty",v)} type="number" />
+              <TSelect value={r.unit}   onChange={v=>arrSet(setter,i,"unit",v)} options={["kg","L","m","rolls","pcs"]} />
+              <button style={S.btn("danger",{padding:"4px 8px",fontSize:11})} onClick={()=>delRow(setter,i)}>✕</button>
+            </div>
+          ))}
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>addRow(setter,empty)}>+ Add Row</button>
+        </SectionCard>
+      ))}
+ 
+      <SectionCard title="Ink Input">
+        <TableHead cols={["Ink Code","Shade","Supplier","Qty Used (kg)","Returned (kg)",""]} />
+        {inks.map((r,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 1.2fr 1.2fr 1fr 1fr 36px",gap:6,marginBottom:6,alignItems:"center"}}>
+            <TInput value={r.inkCode}  onChange={v=>arrSet(setInks,i,"inkCode",v)} />
+            <TInput value={r.shade}    onChange={v=>arrSet(setInks,i,"shade",v)} />
+            <TInput value={r.supplier} onChange={v=>arrSet(setInks,i,"supplier",v)} />
+            <TInput value={r.qty}      onChange={v=>arrSet(setInks,i,"qty",v)} type="number" />
+            <TInput value={r.returned} onChange={v=>arrSet(setInks,i,"returned",v)} type="number" />
+            <button style={S.btn("danger",{padding:"4px 8px",fontSize:11})} onClick={()=>delRow(setInks,i)}>✕</button>
+          </div>
+        ))}
+        <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>addRow(setInks,emptyInkRow)}>+ Add Row</button>
+      </SectionCard>
+ 
+      <SectionCard title="Solvent Input">
+        <TableHead cols={["Solvent","Qty Used (L)","Returned (L)",""]} />
+        {solvents.map((r,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 36px",gap:6,marginBottom:6,alignItems:"center"}}>
+            <TInput value={r.solvent}  onChange={v=>arrSet(setSolvents,i,"solvent",v)} />
+            <TInput value={r.qty}      onChange={v=>arrSet(setSolvents,i,"qty",v)} type="number" />
+            <TInput value={r.returned} onChange={v=>arrSet(setSolvents,i,"returned",v)} type="number" />
+            <button style={S.btn("danger",{padding:"4px 8px",fontSize:11})} onClick={()=>delRow(setSolvents,i)}>✕</button>
+          </div>
+        ))}
+        <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>addRow(setSolvents,emptySolvRow)}>+ Add Row</button>
+      </SectionCard>
+ 
+      <SectionCard title="Remarks">
+        <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+      </SectionCard>
+ 
+      <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14,marginTop:4}} onClick={save}>Save Production Sheet</button>
+    </div>
+  );
+}
+ 
+// ─── Viscosity QC Form ────────────────────────────────────────────────────────
+function ViscosityForm({ onSave }) {
+  const [header, setHeader] = useState({ date:today(), shift:"", jobNo:"", press:"", operator:"" });
+  const [readings, setReadings] = useState(() =>
+    INK_ROWS.map(ink => ({ ink, target:"", unit:"DIN4", times: Object.fromEntries(TIME_SLOTS.map(t=>[t,""])) }))
+  );
+  const [remarks, setRemarks] = useState("");
+  const [saved, setSaved] = useState(false);
+ 
+  const hSet = (k,v) => setHeader(h=>({...h,[k]:v}));
+  const setTime = (rowIdx, slot, val) => setReadings(rs=>rs.map((r,i)=>i===rowIdx?{...r,times:{...r.times,[slot]:val}}:r));
+  const setField = (rowIdx, k, v) => setReadings(rs=>rs.map((r,i)=>i===rowIdx?{...r,[k]:v}:r));
+ 
+  const save = async () => {
+    await onSave({ type:"viscosity", title:`Viscosity QC · ${header.jobNo||"(no job)"} · ${header.date}`, header, readings, remarks });
+    setSaved(true);
+  };
+ 
+  if (saved) return <div style={{...S.card,textAlign:"center",padding:60}}><div style={{fontSize:32,marginBottom:12}}>✓</div><div style={{color:C.success,fontSize:16,fontWeight:700}}>Viscosity QC Saved</div><button style={{...S.btn(),marginTop:20}} onClick={()=>setSaved(false)}>New Sheet</button></div>;
+ 
+  return (
+    <div>
+      <PageHeader title="Viscosity QC Form" sub="Record ink viscosity readings across all time slots" />
+      <SectionCard title="Run Details">
+        <Grid cols={5}>
+          <Field label="Date"><TInput value={header.date} onChange={v=>hSet("date",v)} type="date" /></Field>
+          <Field label="Shift"><TSelect value={header.shift} onChange={v=>hSet("shift",v)} options={["Morning","Afternoon","Night"]} /></Field>
+          <Field label="Job No."><TInput value={header.jobNo} onChange={v=>hSet("jobNo",v)} /></Field>
+          <Field label="Press"><TInput value={header.press} onChange={v=>hSet("press",v)} /></Field>
+          <Field label="Operator"><TInput value={header.operator} onChange={v=>hSet("operator",v)} /></Field>
+        </Grid>
+      </SectionCard>
+ 
+      <SectionCard title="Viscosity Readings">
+        <div style={{overflowX:"auto"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",fontSize:11}}>
+            <thead>
+              <tr style={{borderBottom:`2px solid ${C.border}`}}>
+                <th style={th}>Ink</th>
+                <th style={th}>Target</th>
+                <th style={th}>Unit</th>
+                {TIME_SLOTS.map(t=><th key={t} style={th}>{t}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {readings.map((r,i)=>(
+                <tr key={r.ink} style={{borderBottom:`1px solid ${C.border}`}}>
+                  <td style={{...td,color:C.accent,fontWeight:700}}>{r.ink}</td>
+                  <td style={td}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.target} onChange={e=>setField(i,"target",e.target.value)} /></td>
+                  <td style={td}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.unit} onChange={e=>setField(i,"unit",e.target.value)} /></td>
+                  {TIME_SLOTS.map(t=>(
+                    <td key={t} style={td}>
+                      <input style={{...S.input,width:52,padding:"4px 4px",textAlign:"center"}} value={r.times[t]} onChange={e=>setTime(i,t,e.target.value)} placeholder="—" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+ 
+      <SectionCard title="Remarks">
+        <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+      </SectionCard>
+ 
+      <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14,marginTop:4}} onClick={save}>Save Viscosity QC</button>
+    </div>
+  );
+}
+ 
+// ─── Printing QC Form ─────────────────────────────────────────────────────────
+function PrintingQCForm({ onSave }) {
+  const [header, setHeader] = useState({ date:today(), shift:"", jobNo:"", customer:"", press:"", operator:"", inspector:"" });
+  const [checks, setChecks] = useState(() => QC_CHECKS.map(label=>({ label, result:"", comment:"" })));
+  const [overallResult, setOverallResult] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [saved, setSaved] = useState(false);
+ 
+  const hSet = (k,v) => setHeader(h=>({...h,[k]:v}));
+  const setCheck = (i, k, v) => setChecks(cs=>cs.map((c,idx)=>idx===i?{...c,[k]:v}:c));
+ 
+  const save = async () => {
+    await onSave({ type:"printingqc", title:`Printing QC · ${header.jobNo||"(no job)"} · ${header.date}`, header, checks, overallResult, remarks });
+    setSaved(true);
+  };
+ 
+  const passCount = checks.filter(c=>c.result==="Pass").length;
+  const failCount = checks.filter(c=>c.result==="Fail").length;
+  const naCount   = checks.filter(c=>c.result==="N/A").length;
+ 
+  if (saved) return <div style={{...S.card,textAlign:"center",padding:60}}><div style={{fontSize:32,marginBottom:12}}>✓</div><div style={{color:C.success,fontSize:16,fontWeight:700}}>Printing QC Saved</div><button style={{...S.btn(),marginTop:20}} onClick={()=>setSaved(false)}>New Sheet</button></div>;
+ 
+  return (
+    <div>
+      <PageHeader title="Printing QC Form" sub="Complete all 22 QC check items" />
+      <SectionCard title="Run Details">
+        <Grid cols={4}>
+          <Field label="Date"><TInput value={header.date} onChange={v=>hSet("date",v)} type="date" /></Field>
+          <Field label="Shift"><TSelect value={header.shift} onChange={v=>hSet("shift",v)} options={["Morning","Afternoon","Night"]} /></Field>
+          <Field label="Job No."><TInput value={header.jobNo} onChange={v=>hSet("jobNo",v)} /></Field>
+          <Field label="Customer"><TInput value={header.customer} onChange={v=>hSet("customer",v)} /></Field>
+          <Field label="Press"><TInput value={header.press} onChange={v=>hSet("press",v)} /></Field>
+          <Field label="Operator"><TInput value={header.operator} onChange={v=>hSet("operator",v)} /></Field>
+          <Field label="Inspector" col={2}><TInput value={header.inspector} onChange={v=>hSet("inspector",v)} /></Field>
+        </Grid>
+      </SectionCard>
+ 
+      <SectionCard title={`QC Checks (${passCount} Pass · ${failCount} Fail · ${naCount} N/A)`}>
+        <TableHead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","140px","2fr"]} />
+        {checks.map((c,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 140px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
+            <div style={{fontSize:12,color:C.text}}>{c.label}</div>
+            <div style={{display:"flex",gap:4}}>
+              {["Pass","Fail","N/A"].map(opt=>(
+                <button key={opt} onClick={()=>setCheck(i,"result",opt)} style={{
+                  flex:1,padding:"5px 0",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:"inherit",
+                  background: c.result===opt ? (opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted) : C.bg,
+                  color: c.result===opt ? "#fff" : C.muted,
+                  outline: c.result===opt ? "none" : `1px solid ${C.border}`,
+                  transition:"all 0.1s",
+                }}>{opt}</button>
+              ))}
+            </div>
+            <input style={{...S.input,padding:"5px 8px"}} value={c.comment} onChange={e=>setCheck(i,"comment",e.target.value)} placeholder="Add comment…" />
+          </div>
+        ))}
+      </SectionCard>
+ 
+      <SectionCard title="Overall Assessment">
+        <div style={{display:"flex",gap:12,marginBottom:16}}>
+          {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
+            <button key={opt} onClick={()=>setOverallResult(opt)} style={{
+              flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",letterSpacing:"0.04em",
+              background: overallResult===opt ? (opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn) : C.bg,
+              color: overallResult===opt ? "#fff" : C.muted,
+              outline: overallResult===opt ? "none" : `1px solid ${C.border}`,
+              transition:"all 0.12s",
+            }}>{opt}</button>
+          ))}
+        </div>
+        <label style={S.label}>Remarks</label>
+        <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+      </SectionCard>
+ 
+      <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14,marginTop:4}} onClick={save}>Save Printing QC</button>
+    </div>
+  );
+}
+ 
+// ─── Records list ─────────────────────────────────────────────────────────────
+function Records({ records, session, onDelete }) {
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState(null);
+ 
+  const filtered = records.filter(r =>
+    (filter==="all" || r.type===filter) &&
+    (search==="" || r.title.toLowerCase().includes(search.toLowerCase()))
+  );
+ 
+  const typeColor = t => t==="production"?C.accent:t==="viscosity"?C.blue:C.success;
+  const typeIcon  = t => t==="production"?"▤":t==="viscosity"?"◉":"✓";
+ 
+  return (
+    <div>
+      <PageHeader title="All Records" sub={`${records.length} total records`} />
+      <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap"}}>
+        {["all","production","viscosity","printingqc"].map(f=>(
+          <button key={f} onClick={()=>setFilter(f)} style={{...S.btn(filter===f?"accent":"ghost",{padding:"6px 14px",fontSize:11})}}>
+            {f==="all"?"All":f==="production"?"Production":f==="viscosity"?"Viscosity QC":"Printing QC"}
+          </button>
+        ))}
+        <input style={{...S.input,width:220,padding:"6px 12px"}} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search records…" />
+      </div>
+      {filtered.length===0 && <div style={{color:C.muted,fontSize:13}}>No records found.</div>}
+      {filtered.map(r=>(
+        <div key={r.id} style={{...S.card,marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setExpanded(expanded===r.id?null:r.id)}>
+            <span style={{fontSize:18,color:typeColor(r.type)}}>{typeIcon(r.type)}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
+              <div style={{fontSize:11,color:C.muted}}>{r.createdBy} · {new Date(r.createdAt).toLocaleString()}</div>
+            </div>
+            <span style={{fontSize:10,color:typeColor(r.type)}}>{expanded===r.id?"▲":"▼"}</span>
+            {session.role==="admin" && (
+              <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})} onClick={e=>{e.stopPropagation();if(window.confirm("Delete this record?"))onDelete(r.id);}}>Delete</button>
+            )}
+          </div>
+          {expanded===r.id && <RecordDetail record={r} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+ 
+function RecordDetail({ record: r }) {
+  return (
+    <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,fontSize:12}}>
+      {r.type==="production" && <ProdDetail r={r} />}
+      {r.type==="viscosity"  && <ViscDetail r={r} />}
+      {r.type==="printingqc" && <QCDetail   r={r} />}
+    </div>
+  );
+}
+ 
+function ProdDetail({ r }) {
+  const h = r.header;
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
+        {[["Date",h.date],["Shift",h.shift],["Job No.",h.jobNo],["Customer",h.customer],["Substrate",h.substrate],["Width",h.width],["Length",h.length],["Speed",h.speed],["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
+          <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
+        ))}
+      </div>
+      <DetailTable title="Raw Material Input"  rows={r.rawIn}   cols={["material","batchNo","qty","unit"]} />
+      <DetailTable title="Raw Material Output" rows={r.rawOut}  cols={["material","batchNo","qty","unit"]} />
+      <DetailTable title="Ink Input"    rows={r.inks}     cols={["inkCode","shade","supplier","qty","returned"]} />
+      <DetailTable title="Solvent Input" rows={r.solvents} cols={["solvent","qty","returned"]} />
+      {r.remarks && <div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{r.remarks}</div>}
+    </div>
+  );
+}
+ 
+function ViscDetail({ r }) {
+  const h = r.header;
+  return (
+    <div>
+      <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
+        {[["Date",h.date],["Shift",h.shift],["Job No.",h.jobNo],["Press",h.press],["Operator",h.operator]].map(([k,v])=>(
+          <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
+        ))}
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{borderCollapse:"collapse",fontSize:11}}>
+          <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
+            <th style={th}>Ink</th><th style={th}>Target</th><th style={th}>Unit</th>
+            {TIME_SLOTS.map(t=><th key={t} style={th}>{t}</th>)}
+          </tr></thead>
+          <tbody>{r.readings.map(row=>(
+            <tr key={row.ink} style={{borderBottom:`1px solid ${C.border}`}}>
+              <td style={{...td,color:C.accent,fontWeight:700}}>{row.ink}</td>
+              <td style={td}>{row.target||"—"}</td>
+              <td style={td}>{row.unit}</td>
+              {TIME_SLOTS.map(t=><td key={t} style={{...td,textAlign:"center"}}>{row.times[t]||"—"}</td>)}
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+ 
+function QCDetail({ r }) {
+  const h = r.header;
+  return (
+    <div>
+      <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
+        {[["Date",h.date],["Shift",h.shift],["Job No.",h.jobNo],["Customer",h.customer],["Press",h.press],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
+          <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
+        ))}
+      </div>
+      <div style={{marginBottom:12}}>
+        <span style={{fontSize:11,color:C.muted}}>Overall: </span>
+        <span style={{fontWeight:700,color:r.overallResult==="APPROVED"?C.success:r.overallResult==="REJECTED"?C.danger:C.warn}}>{r.overallResult||"—"}</span>
+      </div>
+      {r.checks.map((c,i)=>(
+        <div key={i} style={{display:"flex",gap:10,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+          <span style={{width:20,color:C.muted,textAlign:"right"}}>{i+1}</span>
+          <span style={{flex:2}}>{c.label}</span>
+          <span style={{width:50,fontWeight:700,color:c.result==="Pass"?C.success:c.result==="Fail"?C.danger:C.muted}}>{c.result||"—"}</span>
+          <span style={{flex:2,color:C.muted}}>{c.comment||""}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+ 
+function DetailTable({ title, rows, cols }) {
+  if (!rows?.length) return null;
+  return (
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{title.toUpperCase()}</div>
+      <div style={{display:"flex",gap:4,marginBottom:4}}>
+        {cols.map(c=><div key={c} style={{flex:1,fontSize:10,color:C.muted,textTransform:"capitalize"}}>{c.replace(/([A-Z])/g," $1")}</div>)}
+      </div>
+      {rows.map((r,i)=>(
+        <div key={i} style={{display:"flex",gap:4,padding:"3px 0",borderTop:`1px solid ${C.border}`}}>
+          {cols.map(c=><div key={c} style={{flex:1,color:C.text}}>{r[c]||"—"}</div>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+ 
+// ─── User Management ──────────────────────────────────────────────────────────
+function UserMgmt({ users, saveUsers, session }) {
+  const [form, setForm] = useState({ username:"", password:"", name:"", role:"operator" });
+  const [err, setErr] = useState("");
+  const fSet = (k,v) => setForm(f=>({...f,[k]:v}));
+ 
+  const addUser = async () => {
+    if (!form.username || !form.password || !form.name) { setErr("All fields required."); return; }
+    if (users.find(u=>u.username===form.username)) { setErr("Username taken."); return; }
+    await saveUsers([...users, { ...form, id: Date.now().toString() }]);
+    setForm({ username:"", password:"", name:"", role:"operator" });
+    setErr("");
+  };
+  const deleteUser = async (id) => {
+    if (id===session.id) { alert("Cannot delete yourself."); return; }
+    await saveUsers(users.filter(u=>u.id!==id));
+  };
+ 
+  return (
+    <div>
+      <PageHeader title="User Management" sub="Add or remove system users" />
+      <SectionCard title="Add New User">
+        <Grid cols={4}>
+          <Field label="Full Name"><TInput value={form.name} onChange={v=>fSet("name",v)} /></Field>
+          <Field label="Username"><TInput value={form.username} onChange={v=>fSet("username",v)} /></Field>
+          <Field label="Password"><TInput value={form.password} onChange={v=>fSet("password",v)} /></Field>
+          <Field label="Role"><TSelect value={form.role} onChange={v=>fSet("role",v)} options={["admin","operator","qc"]} /></Field>
+        </Grid>
+        {err && <div style={{color:C.danger,fontSize:12,marginTop:8}}>{err}</div>}
+        <button style={{...S.btn("accent"),marginTop:12}} onClick={addUser}>Add User</button>
+      </SectionCard>
+ 
+      <SectionCard title="Current Users">
+        <TableHead cols={["Name","Username","Role","Actions"]} widths={["2fr","1.5fr","1fr","100px"]} />
+        {users.map(u=>(
+          <div key={u.id} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 100px",gap:8,padding:"10px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+            <div style={{color:C.text}}>{u.name}</div>
+            <div style={{color:C.muted}}>{u.username}</div>
+            <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,display:"inline-block",width:"fit-content",background:u.role==="admin"?`${C.accent2}33`:u.role==="qc"?`${C.blue}33`:`${C.success}33`,color:u.role==="admin"?C.accent2:u.role==="qc"?C.blue:C.success}}>{u.role}</span>
+            <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})} disabled={u.id===session.id} onClick={()=>deleteUser(u.id)}>Delete</button>
+          </div>
+        ))}
+      </SectionCard>
+    </div>
+  );
+}
+ 
+// ─── Layout helpers ───────────────────────────────────────────────────────────
+function SectionCard({ title, children }) {
+  return (
+    <div style={{...S.card}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.1em",marginBottom:14}}>{title.toUpperCase()}</div>
+      {children}
+    </div>
+  );
+}
+function Grid({ cols, children }) {
+  return <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap:12}}>{children}</div>;
+}
+function TableHead({ cols, widths }) {
+  const tpl = widths ? widths.join(" ") : cols.map(()=>"1fr").join(" ");
+  return (
+    <div style={{display:"grid",gridTemplateColumns:tpl,gap:8,padding:"0 0 6px",borderBottom:`1px solid ${C.border}`,marginBottom:8}}>
+      {cols.map(c=><div key={c} style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em"}}>{c.toUpperCase()}</div>)}
+    </div>
+  );
+}
+ 
+// ─── Table cell styles ────────────────────────────────────────────────────────
+const th = { padding:"6px 8px", textAlign:"left", color:C.muted, fontSize:10, fontWeight:700, letterSpacing:"0.06em", whiteSpace:"nowrap" };
+const td = { padding:"5px 8px", color:C.text, fontSize:11 };
+ 
+// ─── Util ─────────────────────────────────────────────────────────────────────
+function today() { return new Date().toISOString().split("T")[0]; }
