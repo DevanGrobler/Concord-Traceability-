@@ -184,7 +184,7 @@ function ConfigScreen() {
 function Login({ users, onLogin }) {
   const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState("");
   const go = () => {
-    const found = users.find(x=>x.username===u&&x.password===p);
+    const found = users.find(x=>x.username.toLowerCase()===u.toLowerCase()&&x.password===p);
     if (found) { setErr(""); onLogin(found); } else setErr("Invalid username or password.");
   };
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -403,6 +403,26 @@ function Done({ label, reset }) {
   </div>;
 }
 
+// ── Validation helper ────────────────────────────────────────────────────────
+function useFormValidation() {
+  const [errors, setErrors] = React.useState({});
+  const validate = (fields) => {
+    // fields = { fieldKey: { value, label } }
+    const errs = {};
+    Object.entries(fields).forEach(([k,{value,label}])=>{
+      if (!value || !String(value).trim()) errs[k] = `${label} is required`;
+    });
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+  const clear = (k) => setErrors(p=>{ const n={...p}; delete n[k]; return n; });
+  return { errors, validate, clear, setErrors };
+}
+function ErrMsg({ msg }) {
+  if (!msg) return null;
+  return <div style={{color:C.danger,fontSize:10,marginTop:2,fontWeight:600}}>{msg}</div>;
+}
+
 // ── Production Form ───────────────────────────────────────────────────────────
 const eP=()=>({material:"",batchNo:"",qty:"",unit:""});
 const eI=()=>({inkCode:"",shade:"",supplier:"",qty:"",returned:""});
@@ -414,24 +434,39 @@ function ProductionForm({ onSave, users=[], lists={} }) {
   const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eS()]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
   const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
   const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
   const aa=(fn,e)=>fn(a=>[...a,e()]); const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
   if (saved) return <Done label="Production Sheet" reset={()=>setSaved(false)} />;
-  const save=async()=>{ await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut,inks,solvents,remarks}}); setSaved(true); };
+  const save=async()=>{
+    if (!validate({
+      shift:{value:hdr.shift,label:"Shift"},
+      jobNo:{value:hdr.jobNo,label:"Job No."},
+      customer:{value:hdr.customer,label:"Customer"},
+      substrate:{value:hdr.substrate,label:"Substrate"},
+      operator:{value:hdr.operator,label:"Operator"},
+    })) return;
+    await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut,inks,solvents,remarks}}); setSaved(true);
+  };
   return <div>
     <PH title="Daily Production Sheet Printing" sub="Record job details, materials, inks and solvents" />
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
     <SC title="Job Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={["",...(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"]).map(String).filter(Boolean)]} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={["",...(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.substrate} /></F>
         <F label="Width (mm)"><TS value={hdr.width} onChange={v=>h("width",v)} options={["",...(lists.width||[]).map(String).filter(Boolean)]} /></F>
         <F label="Length (m)"><TI type="number" value={hdr.length} onChange={v=>h("length",v)} /></F>
         <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
         <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={["",...(lists.supervisor||[]).map(String).filter(Boolean)]} /></F>
       </Grid>
     </SC>
@@ -490,7 +525,9 @@ function ViscosityForm({ onSave, users=[], lists={} }) {
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
   const slots = getSlotsForShift(hdr.shift);
   const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
   const h=(k,v)=>{
+    clrErr(k);
     if(k==="shift"){ const ns=getSlotsForShift(v); setReadings(rs=>rs.map(r=>({...r,times:Object.fromEntries(ns.map(t=>[t,""]))}))); }
     setHdr(p=>({...p,[k]:v}));
   };
@@ -499,15 +536,27 @@ function ViscosityForm({ onSave, users=[], lists={} }) {
   const addRow=()=>setReadings(rs=>[...rs,emptyViscRow(slots)]);
   const delRow=i=>setReadings(rs=>rs.filter((_,x)=>x!==i));
   if (saved) return <Done label="Viscosity QC" reset={()=>setSaved(false)} />;
-  const save=async()=>{ await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true); };
+  const save=async()=>{
+    if (!validate({
+      shift:{value:hdr.shift,label:"Shift"},
+      jobNo:{value:hdr.jobNo,label:"Job No."},
+      operator:{value:hdr.operator,label:"Operator"},
+    })) return;
+    await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true);
+  };
   return <div>
     <PH title="Viscosity QC Form" sub="Add your ink rows below — type in ink name and type freely" />
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
     <SC title="Run Details">
       <Grid cols={5}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
       </Grid>
     </SC>
     <SC title="Viscosity Readings">
@@ -548,7 +597,8 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
   const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
   const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
   const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
-  const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
   const sc=(i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
   // Sync checks if list changes (e.g. admin adds a new item)
   React.useEffect(()=>{
@@ -558,17 +608,31 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
   const failC=checks.filter(c=>c.result==="Fail").length;
   const naC  =checks.filter(c=>c.result==="N/A").length;
   if (saved) return <Done label="Printing QC" reset={()=>setSaved(false)} />;
-  const save=async()=>{ await onSave({type:"printingqc",title:`Printing QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); setSaved(true); };
+  const save=async()=>{
+    if (!validate({
+      shift:{value:hdr.shift,label:"Shift"},
+      jobNo:{value:hdr.jobNo,label:"Job No."},
+      customer:{value:hdr.customer,label:"Customer"},
+      operator:{value:hdr.operator,label:"Operator"},
+      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
+    })) return;
+    await onSave({type:"printingqc",title:`Printing QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); setSaved(true);
+  };
   return <div>
-    <PH title="Printing QC Form" sub="Complete all 22 check items then set overall result" />
+    <PH title="Printing QC Form" sub="Complete all check items then set overall result" />
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
     <SC title="Run Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
-        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
       </Grid>
     </SC>
     <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
@@ -1205,7 +1269,8 @@ function LaminationForm({ onSave, users=[], lists={} }) {
     ? (lists.operator||[]).map(String).filter(Boolean)
     : users.filter(u=>u.role==="operator").map(u=>u.name);
 
-  const h  = (k,v)=>setHdr(p=>({...p,[k]:v}));
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
   const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
   const aa = (fn,e)=>fn(a=>[...a,e()]);
   const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
@@ -1213,6 +1278,12 @@ function LaminationForm({ onSave, users=[], lists={} }) {
   if (saved) return <Done label="Lamination Sheet" reset={()=>setSaved(false)} />;
 
   const save = async()=>{
+    if (!validate({
+      shift:{value:hdr.shift,label:"Shift"},
+      jobNo:{value:hdr.jobNo,label:"Job Card No."},
+      customerProduct:{value:hdr.customerProduct,label:"Customer & Product"},
+      operator:{value:hdr.operator,label:"Operator"},
+    })) return;
     await onSave({
       type:"lamination",
       title:`Lamination · ${hdr.jobNo||(hdr.date)} · ${hdr.date}`,
@@ -1223,15 +1294,19 @@ function LaminationForm({ onSave, users=[], lists={} }) {
 
   return <div>
     <PH title="Lamination Traceability" sub="Daily lamination production — input stock, output stock, QC and operator" />
-
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
     <SC title="Job Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
-        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
-        <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
+        <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customerProduct} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
       </Grid>
     </SC>
 
@@ -1320,7 +1395,8 @@ function LaminationQCForm({ onSave, users=[], lists={} }) {
   const [saved,setSaved]    = useState(false);
   const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
   const qcNames       = (lists.qc_officer||[]).map(String).filter(Boolean);
-  const h  = (k,v)=>setHdr(p=>({...p,[k]:v}));
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
   const sc = (i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
   React.useEffect(()=>{
     setChecks(checkLabels.map(label=>({label,result:"",comment:""})));
@@ -1329,9 +1405,22 @@ function LaminationQCForm({ onSave, users=[], lists={} }) {
   const failC=checks.filter(c=>c.result==="Fail").length;
   const naC  =checks.filter(c=>c.result==="N/A").length;
   if (saved) return <Done label="Lamination QC" reset={()=>setSaved(false)} />;
-  const save=async()=>{ await onSave({type:"laminationqc",title:`Lamination QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); setSaved(true); };
+  const save=async()=>{
+    if (!validate({
+      shift:{value:hdr.shift,label:"Shift"},
+      jobNo:{value:hdr.jobNo,label:"Job No."},
+      customer:{value:hdr.customer,label:"Customer"},
+      operator:{value:hdr.operator,label:"Operator"},
+      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
+    })) return;
+    await onSave({type:"laminationqc",title:`Lamination QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); setSaved(true); };
   return <div>
     <PH title="Lamination QC Form" sub="Complete all lamination check items then set overall result" />
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
     {checkLabels.length===0 && (
       <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
         ⚠ No check items configured yet. Go to <strong>Lists / Settings → Lamination QC Checks</strong> and add your check items first.
@@ -1340,11 +1429,11 @@ function LaminationQCForm({ onSave, users=[], lists={} }) {
     <SC title="Run Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
-        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
       </Grid>
     </SC>
     {checks.length>0 && (
