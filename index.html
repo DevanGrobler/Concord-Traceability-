@@ -414,12 +414,17 @@ const emptyViscRow = (slots)=>({ink:"",type:"",target:"",unit:"sec",times:Object
 
 function ViscosityForm({ onSave, users=[] }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",press:"",operator:""});
-  const [readings,setReadings]=useState([emptyViscRow(),emptyViscRow(),emptyViscRow(),emptyViscRow()]);
+  const [readings,setReadings]=useState([emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS)]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
+  const slots = getSlotsForShift(hdr.shift);
+  const operatorNames = users.filter(u=>u.role==="operator"||u.role==="manager").map(u=>u.name);
+  const h=(k,v)=>{
+    if(k==="shift"){ const ns=getSlotsForShift(v); setReadings(rs=>rs.map(r=>({...r,times:Object.fromEntries(ns.map(t=>[t,""]))}))); }
+    setHdr(p=>({...p,[k]:v}));
+  };
   const st=(i,slot,val)=>setReadings(rs=>rs.map((r,x)=>x===i?{...r,times:{...r.times,[slot]:val}}:r));
   const sf=(i,k,val) =>setReadings(rs=>rs.map((r,x)=>x===i?{...r,[k]:val}:r));
-  const addRow=()=>setReadings(rs=>[...rs,emptyViscRow()]);
+  const addRow=()=>setReadings(rs=>[...rs,emptyViscRow(slots)]);
   const delRow=i=>setReadings(rs=>rs.filter((_,x)=>x!==i));
   if (saved) return <Done label="Viscosity QC" reset={()=>setSaved(false)} />;
   const save=async()=>{ await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true); };
