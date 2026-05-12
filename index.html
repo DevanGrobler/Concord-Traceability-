@@ -100,12 +100,15 @@ const DEFAULT_LISTS = {
   solvent:     [],
   width:       [],
   unit:        ["kg","g","L","mL","m","mm","rolls","sheets"],
+  operator:    [],
   supervisor:  [],
+  qc_officer:  [],
 };
 const LIST_LABELS = {
   substrate:"Substrate",customer:"Customer",
   ink_code:"Ink Codes",ink_shade:"Ink Shade",ink_supplier:"Ink Supplier",
-  solvent:"Solvent Types",width:"Width",unit:"Units",supervisor:"Supervisors",
+  solvent:"Solvent Types",width:"Width",unit:"Units",
+  operator:"Operators",supervisor:"Supervisors",qc_officer:"QC Officers",
 };
 
 // ── Root App ──────────────────────────────────────────────────────────────────
@@ -396,7 +399,7 @@ function ProductionForm({ onSave, users=[], lists={} }) {
   const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
   const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eS()]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const operatorNames = users.filter(u=>u.role==="operator").map(u=>u.name);
+  const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
   const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
   const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
   const aa=(fn,e)=>fn(a=>[...a,e()]); const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
@@ -472,7 +475,7 @@ function ViscosityForm({ onSave, users=[], lists={} }) {
   const [readings,setReadings]=useState([emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS)]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
   const slots = getSlotsForShift(hdr.shift);
-  const operatorNames = users.filter(u=>u.role==="operator").map(u=>u.name);
+  const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
   const h=(k,v)=>{
     if(k==="shift"){ const ns=getSlotsForShift(v); setReadings(rs=>rs.map(r=>({...r,times:Object.fromEntries(ns.map(t=>[t,""]))}))); }
     setHdr(p=>({...p,[k]:v}));
@@ -528,7 +531,8 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",press:"8 Color Gravure",operator:"",inspector:""});
   const [checks,setChecks]=useState(()=>QC_CHECKS.map(label=>({label,result:"",comment:""})));
   const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const operatorNames = users.filter(u=>u.role==="operator").map(u=>u.name);
+  const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
+  const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
   const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
   const sc=(i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
   const passC=checks.filter(c=>c.result==="Pass").length;
@@ -545,7 +549,7 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
-        <F label="Inspector" col={2}><TI value={hdr.inspector} onChange={v=>h("inspector",v)} /></F>
+        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /></F>
       </Grid>
     </SC>
     <SC title={`QC Checks · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
@@ -675,20 +679,32 @@ function exportToExcel(records) {
   // ── Sheet 5: Lamination
   const lamRecs = records.filter(r=>r.type==="lamination");
   if (lamRecs.length) {
-    const rows = [["Date","Shift","Job Card No","Time","Customer & Product","Adhesive Carrier Film","Film Batch No","Film Spec/Metry","Adhesive Carrier KG","Adhesive Name","Adhesive Batch No","Unwound Film","Unwound Batch No","KG/Metry","Laminated Roll Name","Metry/KG","Adhesive Amount","GSM","Waste","Operator","Sign","Comments"]];
+    const rows = [];
     lamRecs.forEach(r=>{
-      (r.data?.rows||[]).forEach((row,i)=>{
-        rows.push([
-          i===0?r.data.date:"", i===0?r.data.shift:"",
-          row.jobNo, row.time, row.customerProduct,
-          row.adhesiveCarrierFilm, row.filmBatchNo, row.filmSpec,
-          row.adhesiveCarrierKg, row.adhesiveName,
-          row.adhesiveBatchNo, row.unwoundFilm, row.unwoundBatchNo, row.unwoundKgPerMetry,
-          row.laminatedRollName, row.laminatedMetryKg,
-          row.adhesiveAmount, row.gsm, row.waste,
-          row.operator, row.sign, row.comments
-        ]);
-      });
+      const h=r.data?.header||{};
+      rows.push(["Date","Shift","Job Card No","Time","Customer & Product","Operator","Comments"]);
+      rows.push([h.date,h.shift,h.jobNo,h.time,h.customerProduct,h.operator,h.comments]);
+      rows.push([]);
+      if ((r.data?.filmRows||[]).length) {
+        rows.push(["-- Film Input --","Adhesive Carrier Film","Film Batch No","Film KG","Film Spec/Metry"]);
+        (r.data.filmRows||[]).forEach(x=>rows.push(["",x.adhesiveCarrierFilm,x.filmBatchNo,x.filmKg,x.filmSpec]));
+      }
+      if ((r.data?.adhesiveRows||[]).length) {
+        rows.push(["-- Adhesive Input --","Adhesive Carrier KG","Adhesive Name","Adhesive Batch No"]);
+        (r.data.adhesiveRows||[]).forEach(x=>rows.push(["",x.adhesiveCarrierKg,x.adhesiveName,x.adhesiveBatchNo]));
+      }
+      if ((r.data?.unwoundRows||[]).length) {
+        rows.push(["-- Unwound Film --","Unwound Film","Batch No","KG","KG/Metry"]);
+        (r.data.unwoundRows||[]).forEach(x=>rows.push(["",x.unwoundFilm,x.unwoundBatchNo,x.unwoundKg,x.unwoundKgPerMetry]));
+      }
+      if ((r.data?.outputRows||[]).length) {
+        rows.push(["-- Output Stock --","Laminated Roll Name","Metry/KG"]);
+        (r.data.outputRows||[]).forEach(x=>rows.push(["",x.laminatedRollName,x.laminatedMetryKg]));
+      }
+      if ((r.data?.qcRows||[]).length) {
+        rows.push(["-- QC --","Adhesive Amount","GSM","Waste"]);
+        (r.data.qcRows||[]).forEach(x=>rows.push(["",x.adhesiveAmount,x.gsm,x.waste]));
+      }
       rows.push(["---"]);
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Lamination");
@@ -1131,153 +1147,126 @@ function UserMgmt({ users, session, reload, flash }) {
 
 
 // ── Lamination Daily Production Sheet ────────────────────────────────────────
-function LaminationForm({ onSave, users=[], lists={} }) {
-  const emptyRow = ()=>({
-    jobNo:"", time:"", customerProduct:"",
-    filmBatchNo:"", adhesiveCarrierFilm:"",
-    filmKg:"", filmSpec:"", adhesiveCarrierKg:"",
-    adhesiveName:"", adhesiveBatchNo:"",
-    unwoundFilm:"", unwoundBatchNo:"",
-    unwoundKg:"", unwoundKgPerMetry:"",
-    laminatedRollName:"", laminatedMetryKg:"",
-    adhesiveAmount:"", gsm:"", waste:"",
-    operator:"", sign:"", comments:""
-  });
+const eLamFilm    = ()=>({adhesiveCarrierFilm:"",filmBatchNo:"",filmKg:"",filmSpec:""});
+const eLamAdhesive= ()=>({adhesiveCarrierKg:"",adhesiveName:"",adhesiveBatchNo:""});
+const eLamUnwound = ()=>({unwoundFilm:"",unwoundBatchNo:"",unwoundKg:"",unwoundKgPerMetry:""});
+const eLamOutput  = ()=>({laminatedRollName:"",laminatedMetryKg:""});
 
-  const [date, setDate]     = useState(todayStr());
-  const [shift, setShift]   = useState("");
-  const [rows, setRows]     = useState([emptyRow(),emptyRow(),emptyRow()]);
-  const [saved, setSaved]   = useState(false);
-  const operatorNames       = users.filter(u=>u.role==="operator").map(u=>u.name);
-  const sr = (i,k,v)        => setRows(rs=>rs.map((r,x)=>x===i?{...r,[k]:v}:r));
-  const addRow              = ()=>setRows(rs=>[...rs,emptyRow()]);
-  const delRow              = i=>setRows(rs=>rs.filter((_,x)=>x!==i));
+function LaminationForm({ onSave, users=[], lists={} }) {
+  const [hdr,setHdr] = useState({date:todayStr(),shift:"",jobNo:"",time:"",customerProduct:"",operator:"",comments:""});
+  const [filmRows,    setFilmRows]    = useState([eLamFilm()]);
+  const [adhesiveRows,setAdhesiveRows]= useState([eLamAdhesive()]);
+  const [unwoundRows, setUnwoundRows] = useState([eLamUnwound()]);
+  const [outputRows,  setOutputRows]  = useState([eLamOutput()]);
+  const [qcRows,      setQcRows]      = useState([{adhesiveAmount:"",gsm:"",waste:""}]);
+  const [remarks,     setRemarks]     = useState("");
+  const [saved,       setSaved]       = useState(false);
+
+  const operatorNames = (lists.operator||[]).length>0
+    ? (lists.operator||[]).map(String).filter(Boolean)
+    : users.filter(u=>u.role==="operator").map(u=>u.name);
+
+  const h  = (k,v)=>setHdr(p=>({...p,[k]:v}));
+  const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
+  const aa = (fn,e)=>fn(a=>[...a,e()]);
+  const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
 
   if (saved) return <Done label="Lamination Sheet" reset={()=>setSaved(false)} />;
 
   const save = async()=>{
     await onSave({
       type:"lamination",
-      title:`Lamination · ${date}`,
-      data:{date,shift,rows}
+      title:`Lamination · ${hdr.jobNo||(hdr.date)} · ${hdr.date}`,
+      data:{header:hdr,filmRows,adhesiveRows,unwoundRows,outputRows,qcRows,remarks}
     });
     setSaved(true);
   };
 
-  const TH = {padding:"7px 8px",background:C.panel,color:C.muted,fontWeight:700,fontSize:10,
-    border:`1px solid ${C.border}`,textAlign:"center",whiteSpace:"nowrap",verticalAlign:"bottom",lineHeight:1.3};
-  const TD = {padding:"4px 4px",border:`1px solid ${C.border}`,verticalAlign:"middle"};
-  const CI = (i,k,w=80)=>(
-    <input style={{...S.input,width:w,padding:"4px 5px",fontSize:12,textAlign:"center"}}
-      value={rows[i][k]} onChange={e=>sr(i,k,e.target.value)} />
-  );
-  const CS = (i,k,opts,w=100)=>(
-    <select style={{...S.input,width:w,padding:"4px 5px",fontSize:12}}
-      value={rows[i][k]} onChange={e=>sr(i,k,e.target.value)}>
-      {["", ...opts].map(o=><option key={o} value={o}>{o}</option>)}
-    </select>
-  );
-
   return <div>
-    <PH title="Lamination Traceability" sub="Daily lamination production — input stock, output stock, QC and operator sign-off" />
+    <PH title="Lamination Traceability" sub="Daily lamination production — input stock, output stock, QC and operator" />
 
-    <SC title="Sheet Details">
-      <Grid cols={3}>
-        <F label="Date"><TI type="date" value={date} onChange={v=>setDate(v)} /></F>
-        <F label="Shift"><TS value={shift} onChange={v=>setShift(v)} options={["Day Shift","Night Shift"]} /></F>
+    <SC title="Job Details">
+      <Grid cols={4}>
+        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
+        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /></F>
+        <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
+        <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
       </Grid>
     </SC>
 
-    <SC title="Production Rows">
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1600}}>
-          <thead>
-            <tr>
-              {/* Group headers */}
-              <th style={{...TH,background:"transparent",border:"none"}} colSpan={3}></th>
-              <th style={{...TH,background:C.accent+"22",color:C.accent}} colSpan={3}>INPUT STOCK — Film (Received from Warehouse)</th>
-              <th style={{...TH,background:C.blue+"22",color:C.blue}} colSpan={2}>INPUT STOCK — Adhesive (Received from Warehouse)</th>
-              <th style={{...TH,background:"#9b59b622",color:"#9b59b6"}} colSpan={4}>INPUT STOCK — Unwound Film (Received from Warehouse)</th>
-              <th style={{...TH,background:C.success+"22",color:C.success}} colSpan={2}>OUTPUT STOCK (Sent to Warehouse)</th>
-              <th style={{...TH,background:C.warn+"22",color:C.warn}} colSpan={3}>QC</th>
-              <th style={{...TH,background:"transparent",border:"none"}} colSpan={4}></th>
-            </tr>
-            <tr>
-              <th style={TH}>Job Card No</th>
-              <th style={TH}>Time</th>
-              <th style={TH}>Customer &amp; Product Name</th>
-
-              <th style={{...TH,background:C.accent+"11"}}>Adhesive Carrier Film</th>
-              <th style={{...TH,background:C.accent+"11"}}>Film Batch No</th>
-              <th style={{...TH,background:C.accent+"11"}}>Film Spec / Metry</th>
-
-              <th style={{...TH,background:C.blue+"11"}}>Adhesive Carrier KG</th>
-              <th style={{...TH,background:C.blue+"11"}}>Adhesive Name</th>
-
-              <th style={{...TH,background:"#9b59b611"}}>Adhesive Batch No</th>
-              <th style={{...TH,background:"#9b59b611"}}>Unwound Film</th>
-              <th style={{...TH,background:"#9b59b611"}}>Batch No</th>
-              <th style={{...TH,background:"#9b59b611"}}>KG / Metry</th>
-
-              <th style={{...TH,background:C.success+"11"}}>Laminated Roll Name</th>
-              <th style={{...TH,background:C.success+"11"}}>Metry / KG</th>
-
-              <th style={{...TH,background:C.warn+"11"}}>Adhesive Amount</th>
-              <th style={{...TH,background:C.warn+"11"}}>GSM</th>
-              <th style={{...TH,background:C.warn+"11"}}>Waste</th>
-
-              <th style={TH}>Operator</th>
-              <th style={TH}>Sign</th>
-              <th style={TH}>Comments</th>
-              <th style={TH}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r,i)=>(
-              <tr key={i} style={{background:i%2===0?"transparent":C.panel+"55"}}>
-                <td style={TD}>{CI(i,"jobNo",80)}</td>
-                <td style={TD}><input type="time" style={{...S.input,width:90,padding:"4px 5px",fontSize:12}} value={r.time} onChange={e=>sr(i,"time",e.target.value)} /></td>
-                <td style={TD}>{CS(i,"customerProduct",(lists.customer||[]).map(String).filter(Boolean),130)}</td>
-
-                <td style={{...TD,background:C.accent+"08"}}>{CI(i,"adhesiveCarrierFilm",100)}</td>
-                <td style={{...TD,background:C.accent+"08"}}>{CI(i,"filmBatchNo",90)}</td>
-                <td style={{...TD,background:C.accent+"08"}}>{CI(i,"filmSpec",90)}</td>
-
-                <td style={{...TD,background:C.blue+"08"}}>{CI(i,"adhesiveCarrierKg",80)}</td>
-                <td style={{...TD,background:C.blue+"08"}}>{CI(i,"adhesiveName",100)}</td>
-
-                <td style={{...TD,background:"#9b59b608"}}>{CI(i,"adhesiveBatchNo",90)}</td>
-                <td style={{...TD,background:"#9b59b608"}}>{CI(i,"unwoundFilm",100)}</td>
-                <td style={{...TD,background:"#9b59b608"}}>{CI(i,"unwoundBatchNo",90)}</td>
-                <td style={{...TD,background:"#9b59b608"}}>{CI(i,"unwoundKgPerMetry",80)}</td>
-
-                <td style={{...TD,background:C.success+"08"}}>{CI(i,"laminatedRollName",110)}</td>
-                <td style={{...TD,background:C.success+"08"}}>{CI(i,"laminatedMetryKg",80)}</td>
-
-                <td style={{...TD,background:C.warn+"08"}}>{CI(i,"adhesiveAmount",80)}</td>
-                <td style={{...TD,background:C.warn+"08"}}>{CI(i,"gsm",60)}</td>
-                <td style={{...TD,background:C.warn+"08"}}>{CI(i,"waste",60)}</td>
-
-                <td style={TD}>{CS(i,"operator",operatorNames,110)}</td>
-                <td style={TD}>{CI(i,"sign",80)}</td>
-                <td style={TD}>{CI(i,"comments",120)}</td>
-                <td style={TD}>
-                  <button style={S.btn("danger",{padding:"3px 7px",fontSize:11})} onClick={()=>delRow(i)}>✕</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{marginTop:10,display:"flex",gap:10}}>
-        <button style={S.btn("ghost",{padding:"7px 18px",fontSize:12})} onClick={addRow}>+ Add Row</button>
-      </div>
+    <SC title="Input Stock — Film (Received from Warehouse)">
+      <THead cols={["Adhesive Carrier Film","Film Batch No","Film KG","Film Spec / Metry",""]} widths={["2fr","1.5fr","1fr","1.5fr","40px"]} />
+      {filmRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.adhesiveCarrierFilm} onChange={v=>as(setFilmRows,i,"adhesiveCarrierFilm",v)} />
+          <TI value={r.filmBatchNo}         onChange={v=>as(setFilmRows,i,"filmBatchNo",v)} />
+          <TI type="number" value={r.filmKg} onChange={v=>as(setFilmRows,i,"filmKg",v)} />
+          <TI value={r.filmSpec}            onChange={v=>as(setFilmRows,i,"filmSpec",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setFilmRows,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setFilmRows,eLamFilm)}>+ Add Row</button>
     </SC>
 
-    <button style={{...S.btn("accent"),padding:"12px 36px",fontSize:14,marginTop:4}} onClick={save}>
-      💾 Save Lamination Sheet
-    </button>
+    <SC title="Input Stock — Adhesive (Received from Warehouse)">
+      <THead cols={["Adhesive Carrier KG","Adhesive Name","Adhesive Batch No",""]} widths={["1.5fr","2fr","1.5fr","40px"]} />
+      {adhesiveRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI type="number" value={r.adhesiveCarrierKg} onChange={v=>as(setAdhesiveRows,i,"adhesiveCarrierKg",v)} />
+          <TI value={r.adhesiveName}  onChange={v=>as(setAdhesiveRows,i,"adhesiveName",v)} />
+          <TI value={r.adhesiveBatchNo} onChange={v=>as(setAdhesiveRows,i,"adhesiveBatchNo",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setAdhesiveRows,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setAdhesiveRows,eLamAdhesive)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Input Stock — Unwound Film (Received from Warehouse)">
+      <THead cols={["Unwound Film","Batch No","KG","KG / Metry",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
+      {unwoundRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.unwoundFilm}       onChange={v=>as(setUnwoundRows,i,"unwoundFilm",v)} />
+          <TI value={r.unwoundBatchNo}    onChange={v=>as(setUnwoundRows,i,"unwoundBatchNo",v)} />
+          <TI type="number" value={r.unwoundKg} onChange={v=>as(setUnwoundRows,i,"unwoundKg",v)} />
+          <TI type="number" value={r.unwoundKgPerMetry} onChange={v=>as(setUnwoundRows,i,"unwoundKgPerMetry",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setUnwoundRows,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setUnwoundRows,eLamUnwound)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Output Stock — Laminated Roll (Sent to Warehouse)">
+      <THead cols={["Laminated Roll Name","Metry / KG",""]} widths={["2fr","1.5fr","40px"]} />
+      {outputRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.laminatedRollName} onChange={v=>as(setOutputRows,i,"laminatedRollName",v)} />
+          <TI value={r.laminatedMetryKg}  onChange={v=>as(setOutputRows,i,"laminatedMetryKg",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setOutputRows,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setOutputRows,eLamOutput)}>+ Add Row</button>
+    </SC>
+
+    <SC title="QC Measurements">
+      <THead cols={["Adhesive Amount","GSM","Waste",""]} widths={["1.5fr","1fr","1fr","40px"]} />
+      {qcRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.adhesiveAmount} onChange={v=>as(setQcRows,i,"adhesiveAmount",v)} />
+          <TI value={r.gsm}            onChange={v=>as(setQcRows,i,"gsm",v)} />
+          <TI value={r.waste}          onChange={v=>as(setQcRows,i,"waste",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setQcRows,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setQcRows,()=>({adhesiveAmount:"",gsm:"",waste:""}))}>+ Add Row</button>
+    </SC>
+
+    <SC title="Remarks">
+      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+    </SC>
+
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Lamination Sheet</button>
   </div>;
 }
 
