@@ -78,6 +78,10 @@ const dbDelUser = async id=>sb.from("users").delete().eq("id",id);
 const dbAddRec  = async r=>sb.from("records").insert(r).select().single();
 const dbDelRec  = async id=>sb.from("records").delete().eq("id",id);
 
+// ── Login Log DB helpers ─────────────────────────────────────────────────────
+const dbLogLogin  = async (user)=>sb.from("login_log").insert({user_id:user.id,username:user.username,name:user.name,role:user.role,logged_in_at:new Date().toISOString()});
+const dbGetLoginLog = async ()=>{ const {data}=await sb.from("login_log").select("*").order("logged_in_at",{ascending:false}).limit(500); return data||[]; };
+
 // ── Trash DB helpers ─────────────────────────────────────────────────────────
 const dbGetTrash   = async ()=>{ const {data}=await sb.from("trash").select("*").order("deleted_at",{ascending:false}); return data||[]; };
 const dbMoveToTrash= async (rec,deletedBy)=>sb.from("trash").insert({...rec,deleted_by:deletedBy,deleted_at:new Date().toISOString()});
@@ -109,6 +113,7 @@ function App() {
   const [users,   setUsers]   = useState([]);
   const [records, setRecords] = useState([]);
   const [trashed, setTrashed] = useState([]);
+  const [loginLog,setLoginLog]= useState([]);
   const [appLists,setAppLists]= useState(DEFAULT_LISTS);
   const [session, setSession] = useState(()=>{ try{return JSON.parse(sessionStorage.getItem("cpk_sess"))||null;}catch{return null;} });
   const [status,  setStatus]  = useState("loading"); // loading | error | unconfigured | ok
@@ -116,8 +121,8 @@ function App() {
   const reload = async () => {
     if (SUPABASE_URL==="PASTE_YOUR_SUPABASE_URL_HERE") { setStatus("unconfigured"); return; }
     try {
-      const [u,r,l,t] = await Promise.all([dbUsers(), dbRecords(), dbGetLists(), dbGetTrash()]);
-      setUsers(u); setRecords(r); setTrashed(t);
+      const [u,r,l,t,ll] = await Promise.all([dbUsers(), dbRecords(), dbGetLists(), dbGetTrash(), dbGetLoginLog()]);
+      setUsers(u); setRecords(r); setTrashed(t); setLoginLog(ll);
       // Build lists map from DB, falling back to defaults
       const lmap = {...DEFAULT_LISTS};
       l.forEach(row=>{ try{ lmap[row.list_name]=JSON.parse(row.items); }catch{} });
@@ -128,14 +133,14 @@ function App() {
 
   useEffect(()=>{ reload(); },[]);
 
-  const login  = u=>{ setSession(u); sessionStorage.setItem("cpk_sess",JSON.stringify(u)); };
+  const login  = u=>{ setSession(u); sessionStorage.setItem("cpk_sess",JSON.stringify(u)); dbLogLogin(u); };
   const logout = ()=>{ setSession(null); sessionStorage.removeItem("cpk_sess"); };
 
   if (status==="loading")      return <Splash msg="Connecting to database…" />;
   if (status==="unconfigured") return <ConfigScreen />;
   if (status==="error")        return <Splash msg="Could not reach database. Check your credentials." />;
   if (!session)                return <Login users={users} onLogin={login} />;
-  return <Main session={session} users={users} records={records} trashed={trashed} appLists={appLists} onLogout={logout} reload={reload} />;
+  return <Main session={session} users={users} records={records} trashed={trashed} loginLog={loginLog} appLists={appLists} onLogout={logout} reload={reload} />;
 }
 
 function Splash({ msg }) {
@@ -193,6 +198,7 @@ const ALL_TABS = [
   {id:"records",   label:"All Records",      icon:"☰"},
   {id:"users",     label:"User Mgmt",        icon:"⌖"},
   {id:"trash",     label:"Trash Bin",        icon:"🗑"},
+  {id:"loginlog",  label:"Login Log",        icon:"📋"},
   {id:"lists",     label:"Lists / Settings", icon:"☰"},
   {id:"debug",     label:"Debug / AI Help",  icon:"⚙"},
   {id:"password",  label:"Change Password",  icon:"🔑"},
@@ -200,7 +206,7 @@ const ALL_TABS = [
 
 // Default permissions per role — can be overridden per user via permissions field
 const ROLE_DEFAULTS = {
-  admin:    ["dashboard","production","viscosity","printingqc","records","users","trash","lists","debug","password"],
+  admin:    ["dashboard","production","viscosity","printingqc","records","users","trash","loginlog","lists","debug","password"],
   manager:  ["dashboard","production","viscosity","printingqc","records","lists","password"],
   operator: ["dashboard","production","records","password"],
   qc:       ["dashboard","viscosity","printingqc","records","password"],
@@ -218,7 +224,7 @@ function canEdit(user)   { return user?.role === "admin"; }
 function canDelete(user) { return user?.role === "admin"; }
 function isManager(user) { return user?.role === "manager"; }
 
-function Main({ session, users, records, trashed, appLists, onLogout, reload }) {
+function Main({ session, users, records, trashed, loginLog, appLists, onLogout, reload }) {
   const [tab, setTab]     = useState("dashboard");
   const [saving, setSaving] = useState(false);
   const [toast, setToast]   = useState(null);
@@ -288,6 +294,7 @@ function Main({ session, users, records, trashed, appLists, onLogout, reload }) 
         <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
         <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="trash"     ?"block":"none"}}><TrashBin trashed={trashed} onRestore={restoreRecord} onPermDelete={permDelete} /></div>
+        <div style={{display:tab==="loginlog"  ?"block":"none"}}><LoginLog loginLog={loginLog} /></div>
         <div style={{display:tab==="lists"     ?"block":"none"}}><ListsManager appLists={appLists} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="debug"     ?"block":"none"}}><DebugPanel records={records} users={users} session={session} /></div>
         <div style={{display:tab==="password"  ?"block":"none"}}><ChangePassword session={session} flash={flash} /></div>
@@ -1094,6 +1101,81 @@ function UserMgmt({ users, session, reload, flash }) {
 // ── Change Password ───────────────────────────────────────────────────────────
 
 // ── Lists Manager ─────────────────────────────────────────────────────────────
+
+
+// ── Login Log ─────────────────────────────────────────────────────────────────
+function LoginLog({ loginLog }) {
+  const [search, setSearch] = useState("");
+  const [filterRole, setFilterRole] = useState("all");
+
+  const filtered = loginLog.filter(e=>{
+    const matchSearch = !search ||
+      e.name?.toLowerCase().includes(search.toLowerCase()) ||
+      e.username?.toLowerCase().includes(search.toLowerCase());
+    const matchRole = filterRole==="all" || e.role===filterRole;
+    return matchSearch && matchRole;
+  });
+
+  const rc = r=>r==="admin"?C.accent2:r==="manager"?C.accent:r==="qc"?C.blue:r==="viewer"?C.muted:C.success;
+
+  const fmt = iso => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}) +
+      "  " + d.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  };
+
+  return <div>
+    <PH title="Login Log" sub="A record of every login — who, date and time. Admin access only." />
+
+    <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+      <input style={{...S.input,flex:1,maxWidth:280}} placeholder="Search by name or username…"
+        value={search} onChange={e=>setSearch(e.target.value)} />
+      <select style={{...S.input,width:"auto",paddingRight:12}} value={filterRole} onChange={e=>setFilterRole(e.target.value)}>
+        <option value="all">All roles</option>
+        <option value="admin">Admin</option>
+        <option value="manager">Manager</option>
+        <option value="operator">Operator</option>
+        <option value="qc">QC Officer</option>
+        <option value="viewer">Viewer</option>
+      </select>
+      <span style={{color:C.muted,fontSize:12,marginLeft:"auto"}}>{filtered.length} entr{filtered.length!==1?"ies":"y"}</span>
+    </div>
+
+    {/* Table */}
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead>
+          <tr style={{background:C.panel,borderBottom:`2px solid ${C.border}`}}>
+            {["#","Full Name","Username","Role","Date & Time"].map(h=>(
+              <th key={h} style={{padding:"10px 14px",textAlign:"left",color:C.muted,fontWeight:700,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.length===0 && (
+            <tr><td colSpan={5} style={{padding:"40px",textAlign:"center",color:C.muted}}>
+              {loginLog.length===0?"No logins recorded yet.":"No results for your search."}
+            </td></tr>
+          )}
+          {filtered.map((e,i)=>(
+            <tr key={e.id||i} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"66"}}>
+              <td style={{padding:"10px 14px",color:C.muted,fontSize:11}}>{i+1}</td>
+              <td style={{padding:"10px 14px",color:C.text,fontWeight:600}}>{e.name}</td>
+              <td style={{padding:"10px 14px",color:C.muted,fontFamily:"'IBM Plex Mono',monospace",fontSize:12}}>{e.username}</td>
+              <td style={{padding:"10px 14px"}}>
+                <span style={{fontSize:10,padding:"2px 9px",borderRadius:4,background:rc(e.role)+"33",color:rc(e.role),fontWeight:700}}>
+                  {(e.role||"").toUpperCase()}
+                </span>
+              </td>
+              <td style={{padding:"10px 14px",color:C.text,fontFamily:"'IBM Plex Mono',monospace",fontSize:12,whiteSpace:"nowrap"}}>{fmt(e.logged_in_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>;
+}
 
 // ── Trash Bin ─────────────────────────────────────────────────────────────────
 function TrashBin({ trashed, onRestore, onPermDelete }) {
