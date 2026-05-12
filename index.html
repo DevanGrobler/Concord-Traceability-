@@ -34,7 +34,11 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const INK_ROWS   = ["Cyan","Magenta","Yellow","Black","White","Orange","Green","Varnish"]; // kept for reference only
-const TIME_SLOTS = ["6:00","7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
+const DAY_SLOTS   = ["7:00","8:00","9:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"];
+const NIGHT_SLOTS = ["19:00","20:00","21:00","22:00","23:00","0:00","1:00","2:00","3:00","4:00","5:00","6:00"];
+const TIME_SLOTS  = DAY_SLOTS;
+function getSlotsForShift(shift){ return shift==="Night Shift"?NIGHT_SLOTS:DAY_SLOTS; }
+const PRESS_OPTIONS = ["","8 Color Gravure"];
 const QC_CHECKS  = [
   "Plate mounted correctly","Doctor blade set","Impression pressure set","Register checked",
   "Ink viscosity within spec","Colour match approved","Print density checked","Trapping verified",
@@ -150,7 +154,7 @@ function Login({ users, onLogin }) {
 // ── All possible tabs with their sheet keys ───────────────────────────────────
 const ALL_TABS = [
   {id:"dashboard", label:"Dashboard",        icon:"◈"},
-  {id:"production",label:"Daily Production", icon:"▤"},
+  {id:"production",label:"Daily Production Printing", icon:"▤"},
   {id:"viscosity", label:"Viscosity QC",     icon:"◉"},
   {id:"printingqc",label:"Printing QC",      icon:"✓"},
   {id:"records",   label:"All Records",      icon:"☰"},
@@ -235,9 +239,9 @@ function Main({ session, users, records, onLogout, reload }) {
         </div>}
         {/* Forms are always mounted but hidden — preserves state when switching tabs */}
         <div style={{display:tab==="dashboard" ?"block":"none"}}><Dashboard records={records} session={session} /></div>
-        <div style={{display:tab==="production"?"block":"none"}}><ProductionForm onSave={addRecord} /></div>
-        <div style={{display:tab==="viscosity" ?"block":"none"}}><ViscosityForm  onSave={addRecord} /></div>
-        <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} /></div>
+        <div style={{display:tab==="production"?"block":"none"}}><ProductionForm onSave={addRecord} users={users} /></div>
+        <div style={{display:tab==="viscosity" ?"block":"none"}}><ViscosityForm  onSave={addRecord} users={users} /></div>
+        <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} users={users} /></div>
         <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
         <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="debug"     ?"block":"none"}}><DebugPanel records={records} users={users} session={session} /></div>
@@ -256,7 +260,7 @@ function Dashboard({ records, session }) {
   return <div>
     <PH title="Dashboard" sub={`Welcome back, ${session.name}`} />
     <div style={{display:"flex",gap:16,marginBottom:24,flexWrap:"wrap"}}>
-      {[{label:"DAILY PRODUCTION",type:"production",color:C.accent,icon:"▤"},
+      {[{label:"DAILY PRODUCTION PRINTING",type:"production",color:C.accent,icon:"▤"},
         {label:"VISCOSITY QC",type:"viscosity",color:C.blue,icon:"◉"},
         {label:"PRINTING QC",type:"printingqc",color:C.success,icon:"✓"}].map(({label,type,color,icon})=>(
         <div key={type} style={{...S.card,flex:1,minWidth:180}}>
@@ -332,18 +336,19 @@ const eP=()=>({material:"",batchNo:"",qty:"",unit:""});
 const eI=()=>({inkCode:"",shade:"",supplier:"",qty:"",returned:""});
 const eS=()=>({solvent:"",qty:"",returned:""});
 
-function ProductionForm({ onSave }) {
+function ProductionForm({ onSave, users=[] }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""});
   const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
   const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eS()]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
+  const operatorNames = users.filter(u=>u.role==="operator"||u.role==="manager").map(u=>u.name);
   const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
   const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
   const aa=(fn,e)=>fn(a=>[...a,e()]); const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
   if (saved) return <Done label="Production Sheet" reset={()=>setSaved(false)} />;
   const save=async()=>{ await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut,inks,solvents,remarks}}); setSaved(true); };
   return <div>
-    <PH title="Daily Production Sheet" sub="Record job details, materials, inks and solvents" />
+    <PH title="Daily Production Sheet Printing" sub="Record job details, materials, inks and solvents" />
     <SC title="Job Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
@@ -354,8 +359,8 @@ function ProductionForm({ onSave }) {
         <F label="Width (mm)"><TI type="number" value={hdr.width} onChange={v=>h("width",v)} /></F>
         <F label="Length (m)"><TI type="number" value={hdr.length} onChange={v=>h("length",v)} /></F>
         <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
-        <F label="Operator"><TI value={hdr.operator} onChange={v=>h("operator",v)} /></F>
-        <F label="Supervisor"><TI value={hdr.supervisor} onChange={v=>h("supervisor",v)} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
+        <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={["", ...operatorNames]} /></F>
       </Grid>
     </SC>
     {[["Raw Material Input",rawIn,setRawIn,eP],["Raw Material Output",rawOut,setRawOut,eP]].map(([title,rows,setter,empty])=>(
@@ -405,9 +410,9 @@ function ProductionForm({ onSave }) {
 }
 
 // ── Viscosity Form ────────────────────────────────────────────────────────────
-const emptyViscRow = ()=>({ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))});
+const emptyViscRow = (slots)=>({ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries((slots||DAY_SLOTS).map(t=>[t,""]))});
 
-function ViscosityForm({ onSave }) {
+function ViscosityForm({ onSave, users=[] }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",press:"",operator:""});
   const [readings,setReadings]=useState([emptyViscRow(),emptyViscRow(),emptyViscRow(),emptyViscRow()]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
@@ -425,8 +430,8 @@ function ViscosityForm({ onSave }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
-        <F label="Press"><TI value={hdr.press} onChange={v=>h("press",v)} /></F>
-        <F label="Operator"><TI value={hdr.operator} onChange={v=>h("operator",v)} /></F>
+        <F label="Press"><TS value={hdr.press} onChange={v=>h("press",v)} options={PRESS_OPTIONS} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
       </Grid>
     </SC>
     <SC title="Viscosity Readings">
@@ -437,7 +442,7 @@ function ViscosityForm({ onSave }) {
             <th style={TH}>Ink Type</th>
             <th style={TH}>Target</th>
             <th style={TH}>Unit</th>
-            {TIME_SLOTS.map(t=><th key={t} style={TH}>{t}</th>)}
+            {slots.map(t=><th key={t} style={TH}>{t}</th>)}
             <th style={TH}></th>
           </tr></thead>
           <tbody>{readings.map((r,i)=>(
@@ -446,7 +451,7 @@ function ViscosityForm({ onSave }) {
               <td style={TD}><input style={{...S.input,width:90,padding:"4px 6px"}} value={r.type}   placeholder="e.g. Solvent"   onChange={e=>sf(i,"type",e.target.value)} /></td>
               <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.target} placeholder="0"              onChange={e=>sf(i,"target",e.target.value)} /></td>
               <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.unit}                                onChange={e=>sf(i,"unit",e.target.value)} /></td>
-              {TIME_SLOTS.map(t=><td key={t} style={TD}><input style={{...S.input,width:50,padding:"4px",textAlign:"center"}} value={r.times[t]} placeholder="—" onChange={e=>st(i,t,e.target.value)} /></td>)}
+              {slots.map(t=><td key={t} style={TD}><input style={{...S.input,width:50,padding:"4px",textAlign:"center"}} value={r.times[t]||""} placeholder="—" onChange={e=>st(i,t,e.target.value)} /></td>)}
               <td style={TD}><button style={S.btn("danger",{padding:"4px 8px",fontSize:11})} onClick={()=>delRow(i)}>✕</button></td>
             </tr>
           ))}</tbody>
@@ -460,10 +465,11 @@ function ViscosityForm({ onSave }) {
 }
 
 // ── Printing QC Form ──────────────────────────────────────────────────────────
-function PrintingQCForm({ onSave }) {
+function PrintingQCForm({ onSave, users=[] }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",press:"",operator:"",inspector:""});
   const [checks,setChecks]=useState(()=>QC_CHECKS.map(label=>({label,result:"",comment:""})));
   const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
+  const operatorNames = users.filter(u=>u.role==="operator"||u.role==="manager").map(u=>u.name);
   const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
   const sc=(i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
   const passC=checks.filter(c=>c.result==="Pass").length;
@@ -479,8 +485,8 @@ function PrintingQCForm({ onSave }) {
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
         <F label="Customer"><TI value={hdr.customer} onChange={v=>h("customer",v)} /></F>
-        <F label="Press"><TI value={hdr.press} onChange={v=>h("press",v)} /></F>
-        <F label="Operator"><TI value={hdr.operator} onChange={v=>h("operator",v)} /></F>
+        <F label="Press"><TS value={hdr.press} onChange={v=>h("press",v)} options={PRESS_OPTIONS} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
         <F label="Inspector" col={2}><TI value={hdr.inspector} onChange={v=>h("inspector",v)} /></F>
       </Grid>
     </SC>
@@ -572,15 +578,16 @@ function exportToExcel(records) {
   // ── Sheet 3: Viscosity QC
   const viscRecs = records.filter(r=>r.type==="viscosity");
   if (viscRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Press","Operator","Ink Name","Ink Type","Target","Unit",...TIME_SLOTS]];
+    const rows = [["Completed By","Date","Shift","Job No.","Press","Operator","Ink Name","Ink Type","Target","Unit","Slots..."]];
     viscRecs.forEach(r=>{
       const h=r.data?.header||{};
+      const rSlots=getSlotsForShift(h.shift);
       (r.data?.readings||[]).forEach((row,i)=>{
         rows.push([
           i===0?r.created_by:"", i===0?h.date:"", i===0?h.shift:"", i===0?h.jobNo:"",
           i===0?h.press:"", i===0?h.operator:"",
           row.ink, row.type||"", row.target, row.unit,
-          ...TIME_SLOTS.map(t=>row.times?.[t]||"")
+          ...rSlots.map(t=>row.times?.[t]||"")
         ]);
       });
       rows.push(["---"]);
@@ -744,7 +751,7 @@ function EditVisc({ data, setH, setArr, addArr, delArr }) {
       <table style={{borderCollapse:"collapse",fontSize:11,width:"100%"}}>
         <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
           <th style={TH}>Ink Name</th><th style={TH}>Ink Type</th><th style={TH}>Target</th><th style={TH}>Unit</th>
-          {TIME_SLOTS.map(t=><th key={t} style={TH}>{t}</th>)}<th style={TH}></th>
+          {getSlotsForShift(h.shift).map(t=><th key={t} style={TH}>{t}</th>)}<th style={TH}></th>
         </tr></thead>
         <tbody>{(data.readings||[]).map((row,i)=>(
           <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
@@ -752,12 +759,12 @@ function EditVisc({ data, setH, setArr, addArr, delArr }) {
             <td style={TD}><input style={{...S.input,width:80,padding:"3px 5px"}} value={row.type||""} onChange={e=>setArr("readings",i,"type",e.target.value)} /></td>
             <td style={TD}><input style={{...S.input,width:55,padding:"3px 5px"}} value={row.target||""} onChange={e=>setArr("readings",i,"target",e.target.value)} /></td>
             <td style={TD}><input style={{...S.input,width:55,padding:"3px 5px"}} value={row.unit||""} onChange={e=>setArr("readings",i,"unit",e.target.value)} /></td>
-            {TIME_SLOTS.map(t=><td key={t} style={TD}><input style={{...S.input,width:46,padding:"3px",textAlign:"center"}} value={row.times?.[t]||""} onChange={e=>setArr("readings",i,`times.${t}`,e.target.value)} /></td>)}
+            {getSlotsForShift(h.shift).map(t=><td key={t} style={TD}><input style={{...S.input,width:46,padding:"3px",textAlign:"center"}} value={row.times?.[t]||""} onChange={e=>setArr("readings",i,`times.${t}`,e.target.value)} /></td>)}
             <td style={TD}><button style={S.btn("danger",{padding:"3px 6px",fontSize:11})} onClick={()=>delArr("readings",i)}>✕</button></td>
           </tr>
         ))}</tbody>
       </table>
-      <button style={S.btn("ghost",{fontSize:11,marginTop:6})} onClick={()=>addArr("readings",{ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries(TIME_SLOTS.map(t=>[t,""]))})} >+ Add Row</button>
+      <button style={S.btn("ghost",{fontSize:11,marginTop:6})} onClick={()=>addArr("readings",{ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries(getSlotsForShift(h.shift).map(t=>[t,""]))})}  >+ Add Row</button>
     </div>
   </div>;
 }
@@ -837,14 +844,14 @@ function ViscD({ d }) {
       <table style={{borderCollapse:"collapse",fontSize:11}}>
         <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
           <th style={TH}>Ink Name</th><th style={TH}>Ink Type</th><th style={TH}>Target</th><th style={TH}>Unit</th>
-          {TIME_SLOTS.map(t=><th key={t} style={TH}>{t}</th>)}
+          {getSlotsForShift(h.shift).map(t=><th key={t} style={TH}>{t}</th>)}
         </tr></thead>
         <tbody>{(d.readings||[]).map((row,i)=>(
           <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
             <td style={{...TD,color:C.accent,fontWeight:700}}>{row.ink||"—"}</td>
             <td style={{...TD,color:C.blue}}>{row.type||"—"}</td>
             <td style={TD}>{row.target||"—"}</td><td style={TD}>{row.unit}</td>
-            {TIME_SLOTS.map(t=><td key={t} style={{...TD,textAlign:"center"}}>{row.times?.[t]||"—"}</td>)}
+            {getSlotsForShift(h.shift).map(t=><td key={t} style={{...TD,textAlign:"center"}}>{row.times?.[t]||"—"}</td>)}
           </tr>
         ))}</tbody>
       </table>
@@ -889,7 +896,7 @@ function DT({ title, rows, cols }) {
 // ── User Management ───────────────────────────────────────────────────────────
 const SHEET_OPTIONS = [
   {id:"dashboard", label:"Dashboard"},
-  {id:"production",label:"Daily Production"},
+  {id:"production",label:"Daily Production Printing"},
   {id:"viscosity", label:"Viscosity QC"},
   {id:"printingqc",label:"Printing QC"},
   {id:"records",   label:"All Records"},
