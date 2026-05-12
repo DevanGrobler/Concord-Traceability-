@@ -28,7 +28,7 @@ const { useState, useEffect } = React;
 //   STEP 1 — PASTE YOUR SUPABASE CREDENTIALS HERE
 // ═══════════════════════════════════════════════════════════════
 const SUPABASE_URL  = "https://potjjodujwtvvnzttqsc.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE ";
 // ═══════════════════════════════════════════════════════════════
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -78,18 +78,44 @@ const dbDelUser = async id=>sb.from("users").delete().eq("id",id);
 const dbAddRec  = async r=>sb.from("records").insert(r).select().single();
 const dbDelRec  = async id=>sb.from("records").delete().eq("id",id);
 
+// ── Lists DB helpers ─────────────────────────────────────────────────────────
+const dbGetLists  = async ()=>{ const {data}=await sb.from("lists").select("*").order("list_name"); return data||[]; };
+const dbUpsertList= async (list_name,items)=>sb.from("lists").upsert({list_name,items},{onConflict:"list_name"});
+const DEFAULT_LISTS = {
+  substrate:  ["BOPP","BOPP MAT","PET","PET MAT"],
+  press:      ["8 Color Gravure"],
+  customer:   [],
+  ink_code:   [], // stored as [{code,description}]
+  ink_shade:  [],
+  ink_supplier:[],
+  solvent:    [],
+  raw_material:[],
+  unit:       ["kg","g","L","mL","m","mm","rolls","sheets"],
+};
+const LIST_LABELS = {
+  substrate:"Substrate",press:"Press",customer:"Customer",
+  ink_code:"Ink Codes",ink_shade:"Ink Shade",ink_supplier:"Ink Supplier",
+  solvent:"Solvent Types",raw_material:"Raw Materials",unit:"Units",
+};
+
 // ── Root App ──────────────────────────────────────────────────────────────────
 function App() {
   const [users,   setUsers]   = useState([]);
   const [records, setRecords] = useState([]);
+  const [appLists,setAppLists]= useState(DEFAULT_LISTS);
   const [session, setSession] = useState(()=>{ try{return JSON.parse(sessionStorage.getItem("cpk_sess"))||null;}catch{return null;} });
   const [status,  setStatus]  = useState("loading"); // loading | error | unconfigured | ok
 
   const reload = async () => {
     if (SUPABASE_URL==="PASTE_YOUR_SUPABASE_URL_HERE") { setStatus("unconfigured"); return; }
     try {
-      const [u,r] = await Promise.all([dbUsers(), dbRecords()]);
-      setUsers(u); setRecords(r); setStatus("ok");
+      const [u,r,l] = await Promise.all([dbUsers(), dbRecords(), dbGetLists()]);
+      setUsers(u); setRecords(r);
+      // Build lists map from DB, falling back to defaults
+      const lmap = {...DEFAULT_LISTS};
+      l.forEach(row=>{ lmap[row.list_name]=row.items; });
+      setAppLists(lmap);
+      setStatus("ok");
     } catch { setStatus("error"); }
   };
 
@@ -102,7 +128,7 @@ function App() {
   if (status==="unconfigured") return <ConfigScreen />;
   if (status==="error")        return <Splash msg="Could not reach database. Check your credentials." />;
   if (!session)                return <Login users={users} onLogin={login} />;
-  return <Main session={session} users={users} records={records} onLogout={logout} reload={reload} />;
+  return <Main session={session} users={users} records={records} appLists={appLists} onLogout={logout} reload={reload} />;
 }
 
 function Splash({ msg }) {
@@ -159,14 +185,15 @@ const ALL_TABS = [
   {id:"printingqc",label:"Printing QC",      icon:"✓"},
   {id:"records",   label:"All Records",      icon:"☰"},
   {id:"users",     label:"User Mgmt",        icon:"⌖"},
+  {id:"lists",     label:"Lists / Settings", icon:"☰"},
   {id:"debug",     label:"Debug / AI Help",  icon:"⚙"},
   {id:"password",  label:"Change Password",  icon:"🔑"},
 ];
 
 // Default permissions per role — can be overridden per user via permissions field
 const ROLE_DEFAULTS = {
-  admin:    ["dashboard","production","viscosity","printingqc","records","users","debug","password"],
-  manager:  ["dashboard","production","viscosity","printingqc","records","password"],
+  admin:    ["dashboard","production","viscosity","printingqc","records","users","lists","debug","password"],
+  manager:  ["dashboard","production","viscosity","printingqc","records","lists","password"],
   operator: ["dashboard","production","records","password"],
   qc:       ["dashboard","viscosity","printingqc","records","password"],
   viewer:   ["dashboard","records","password"],
@@ -183,7 +210,7 @@ function canEdit(user)   { return user?.role === "admin"; }
 function canDelete(user) { return user?.role === "admin"; }
 function isManager(user) { return user?.role === "manager"; }
 
-function Main({ session, users, records, onLogout, reload }) {
+function Main({ session, users, records, appLists, onLogout, reload }) {
   const [tab, setTab]     = useState("dashboard");
   const [saving, setSaving] = useState(false);
   const [toast, setToast]   = useState(null);
@@ -239,11 +266,12 @@ function Main({ session, users, records, onLogout, reload }) {
         </div>}
         {/* Forms are always mounted but hidden — preserves state when switching tabs */}
         <div style={{display:tab==="dashboard" ?"block":"none"}}><Dashboard records={records} session={session} /></div>
-        <div style={{display:tab==="production"?"block":"none"}}><ProductionForm onSave={addRecord} users={users} /></div>
-        <div style={{display:tab==="viscosity" ?"block":"none"}}><ViscosityForm  onSave={addRecord} users={users} /></div>
-        <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} users={users} /></div>
+        <div style={{display:tab==="production"?"block":"none"}}><ProductionForm onSave={addRecord} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="viscosity" ?"block":"none"}}><ViscosityForm  onSave={addRecord} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} users={users} lists={appLists} /></div>
         <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
         <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
+        <div style={{display:tab==="lists"     ?"block":"none"}}><ListsManager appLists={appLists} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="debug"     ?"block":"none"}}><DebugPanel records={records} users={users} session={session} /></div>
         <div style={{display:tab==="password"  ?"block":"none"}}><ChangePassword session={session} flash={flash} /></div>
       </div>
@@ -336,7 +364,7 @@ const eP=()=>({material:"",batchNo:"",qty:"",unit:""});
 const eI=()=>({inkCode:"",shade:"",supplier:"",qty:"",returned:""});
 const eS=()=>({solvent:"",qty:"",returned:""});
 
-function ProductionForm({ onSave, users=[] }) {
+function ProductionForm({ onSave, users=[], lists={} }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""});
   const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
   const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eS()]);
@@ -354,8 +382,8 @@ function ProductionForm({ onSave, users=[] }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /></F>
-        <F label="Customer"><TI value={hdr.customer} onChange={v=>h("customer",v)} /></F>
-        <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={["","BOPP","BOPP MAT","PET","PET MAT"]} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /></F>
+        <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={["",...(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"])]} /></F>
         <F label="Width (mm)"><TI type="number" value={hdr.width} onChange={v=>h("width",v)} /></F>
         <F label="Length (m)"><TI type="number" value={hdr.length} onChange={v=>h("length",v)} /></F>
         <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
@@ -368,10 +396,10 @@ function ProductionForm({ onSave, users=[] }) {
         <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
         {rows.map((r,i)=>(
           <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-            <TI value={r.material} onChange={v=>as(setter,i,"material",v)} />
+            <TS value={r.material} onChange={v=>as(setter,i,"material",v)} options={["",...(lists.raw_material||[])]} />
             <TI value={r.batchNo}  onChange={v=>as(setter,i,"batchNo",v)} />
             <TI type="number" value={r.qty} onChange={v=>as(setter,i,"qty",v)} />
-            <TS value={r.unit} onChange={v=>as(setter,i,"unit",v)} options={["kg","L","m","rolls","pcs"]} />
+            <TS value={r.unit} onChange={v=>as(setter,i,"unit",v)} options={["",...(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"])]} />
             <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setter,i)}>✕</button>
           </div>
         ))}
@@ -382,9 +410,9 @@ function ProductionForm({ onSave, users=[] }) {
       <THead cols={["Ink Code","Shade","Supplier","Qty Used (kg)","Returned (kg)",""]} widths={["1.2fr","1.2fr","1.2fr","1fr","1fr","40px"]} />
       {inks.map((r,i)=>(
         <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 1.2fr 1.2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.inkCode}  onChange={v=>as(setInks,i,"inkCode",v)} />
-          <TI value={r.shade}    onChange={v=>as(setInks,i,"shade",v)} />
-          <TI value={r.supplier} onChange={v=>as(setInks,i,"supplier",v)} />
+          <TS value={r.inkCode}  onChange={v=>as(setInks,i,"inkCode",v)}  options={["",...(lists.ink_code||[]).map(x=>typeof x==="object"?`${x.code} — ${x.description}`:x)]} />
+          <TS value={r.shade}    onChange={v=>as(setInks,i,"shade",v)}    options={["",...(lists.ink_shade||[])]} />
+          <TS value={r.supplier} onChange={v=>as(setInks,i,"supplier",v)} options={["",...(lists.ink_supplier||[])]} />
           <TI type="number" value={r.qty}      onChange={v=>as(setInks,i,"qty",v)} />
           <TI type="number" value={r.returned} onChange={v=>as(setInks,i,"returned",v)} />
           <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setInks,i)}>✕</button>
@@ -396,7 +424,7 @@ function ProductionForm({ onSave, users=[] }) {
       <THead cols={["Solvent","Qty Used (L)","Returned (L)",""]} widths={["2fr","1fr","1fr","40px"]} />
       {solvents.map((r,i)=>(
         <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.solvent}  onChange={v=>as(setSolv,i,"solvent",v)} />
+          <TS value={r.solvent}  onChange={v=>as(setSolv,i,"solvent",v)} options={["",...(lists.solvent||[])]} />
           <TI type="number" value={r.qty}      onChange={v=>as(setSolv,i,"qty",v)} />
           <TI type="number" value={r.returned} onChange={v=>as(setSolv,i,"returned",v)} />
           <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setSolv,i)}>✕</button>
@@ -412,7 +440,7 @@ function ProductionForm({ onSave, users=[] }) {
 // ── Viscosity Form ────────────────────────────────────────────────────────────
 const emptyViscRow = (slots)=>({ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries((slots||DAY_SLOTS).map(t=>[t,""]))});
 
-function ViscosityForm({ onSave, users=[] }) {
+function ViscosityForm({ onSave, users=[], lists={} }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",press:"",operator:""});
   const [readings,setReadings]=useState([emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS)]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
@@ -435,7 +463,7 @@ function ViscosityForm({ onSave, users=[] }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
-        <F label="Press"><TS value={hdr.press} onChange={v=>h("press",v)} options={PRESS_OPTIONS} /></F>
+        <F label="Press"><TS value={hdr.press} onChange={v=>h("press",v)} options={["",...(lists.press||["8 Color Gravure"])]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
       </Grid>
     </SC>
@@ -470,7 +498,7 @@ function ViscosityForm({ onSave, users=[] }) {
 }
 
 // ── Printing QC Form ──────────────────────────────────────────────────────────
-function PrintingQCForm({ onSave, users=[] }) {
+function PrintingQCForm({ onSave, users=[], lists={} }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",press:"",operator:"",inspector:""});
   const [checks,setChecks]=useState(()=>QC_CHECKS.map(label=>({label,result:"",comment:""})));
   const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
@@ -489,8 +517,8 @@ function PrintingQCForm({ onSave, users=[] }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /></F>
-        <F label="Customer"><TI value={hdr.customer} onChange={v=>h("customer",v)} /></F>
-        <F label="Press"><TS value={hdr.press} onChange={v=>h("press",v)} options={PRESS_OPTIONS} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /></F>
+        <F label="Press"><TS value={hdr.press} onChange={v=>h("press",v)} options={["",...(lists.press||["8 Color Gravure"])]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
         <F label="Inspector" col={2}><TI value={hdr.inspector} onChange={v=>h("inspector",v)} /></F>
       </Grid>
@@ -1048,6 +1076,104 @@ function UserMgmt({ users, session, reload, flash }) {
 }
 
 // ── Change Password ───────────────────────────────────────────────────────────
+
+// ── Lists Manager ─────────────────────────────────────────────────────────────
+function ListsManager({ appLists, reload, flash }) {
+  const [activeList, setActiveList] = useState("substrate");
+  const [items, setItems] = useState([]);
+  const [newVal, setNewVal] = useState("");
+  const [newCode, setNewCode] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const isInkCode = activeList === "ink_code";
+
+  React.useEffect(()=>{
+    const raw = appLists[activeList] || [];
+    setItems(raw.map(x=> typeof x === "object" ? x : {val:x}));
+    setNewVal(""); setNewCode(""); setNewDesc("");
+  }, [activeList, appLists]);
+
+  const addItem = () => {
+    if (isInkCode) {
+      if (!newCode.trim()) return;
+      setItems(prev=>[...prev, {code:newCode.trim(), description:newDesc.trim()}]);
+      setNewCode(""); setNewDesc("");
+    } else {
+      if (!newVal.trim()) return;
+      setItems(prev=>[...prev, {val:newVal.trim()}]);
+      setNewVal("");
+    }
+  };
+
+  const removeItem = i => setItems(prev=>prev.filter((_,x)=>x!==i));
+
+  const saveList = async () => {
+    setSaving(true);
+    const toSave = isInkCode
+      ? items.map(x=>({code:x.code||"",description:x.description||""}))
+      : items.map(x=>x.val||"").filter(Boolean);
+    await dbUpsertList(activeList, JSON.stringify(toSave));
+    await reload();
+    flash("List saved!");
+    setSaving(false);
+  };
+
+  const listKeys = Object.keys(LIST_LABELS);
+
+  return <div>
+    <PH title="Lists / Settings" sub="Manage dropdown options used across all forms — changes apply immediately after saving" />
+    <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:20}}>
+      {listKeys.map(k=>(
+        <button key={k} onClick={()=>setActiveList(k)} style={{
+          padding:"6px 16px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,
+          background:activeList===k?C.accent:C.panel,
+          color:activeList===k?"#fff":C.muted,
+          outline:activeList===k?"none":`1px solid ${C.border}`,
+          transition:"all 0.1s",
+        }}>{LIST_LABELS[k]}</button>
+      ))}
+    </div>
+
+    <SC title={LIST_LABELS[activeList]}>
+      {/* Current items */}
+      {items.length===0 && <div style={{color:C.muted,fontSize:12,marginBottom:12}}>No items yet — add some below.</div>}
+      {items.map((item,i)=>(
+        <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"6px 10px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+          {isInkCode ? (
+            <>
+              <span style={{color:C.accent,fontWeight:700,fontSize:12,minWidth:80}}>{item.code}</span>
+              <span style={{color:C.muted,fontSize:11}}>—</span>
+              <span style={{color:C.text,fontSize:12,flex:1}}>{item.description}</span>
+            </>
+          ) : (
+            <span style={{color:C.text,fontSize:13,flex:1}}>{item.val}</span>
+          )}
+          <button style={S.btn("danger",{padding:"2px 8px",fontSize:11})} onClick={()=>removeItem(i)}>✕</button>
+        </div>
+      ))}
+
+      {/* Add new */}
+      <div style={{display:"flex",gap:8,marginTop:12,alignItems:"flex-end"}}>
+        {isInkCode ? (
+          <>
+            <F label="Code"><TI value={newCode} onChange={v=>setNewCode(v)} placeholder="e.g. INK-001" /></F>
+            <F label="Description"><TI value={newDesc} onChange={v=>setNewDesc(v)} placeholder="e.g. Cyan Solvent" /></F>
+          </>
+        ) : (
+          <F label="New item"><TI value={newVal} onChange={v=>setNewVal(v)} placeholder={`Add ${LIST_LABELS[activeList]} option…`} onKeyDown={e=>e.key==="Enter"&&addItem()} /></F>
+        )}
+        <button style={{...S.btn("accent"),padding:"8px 18px",fontSize:12,flexShrink:0}} onClick={addItem}>+ Add</button>
+      </div>
+    </SC>
+
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={saveList} disabled={saving}>
+      {saving?"Saving…":"💾 Save List"}
+    </button>
+    <div style={{color:C.muted,fontSize:11,marginTop:8}}>Changes take effect immediately for all users after saving.</div>
+  </div>;
+}
+
 function ChangePassword({ session, flash }) {
   const [current,setCurrent]=useState("");
   const [newPw,setNewPw]=useState("");
