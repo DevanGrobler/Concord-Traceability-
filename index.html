@@ -28,7 +28,7 @@ const { useState, useEffect } = React;
 //   STEP 1 — PASTE YOUR SUPABASE CREDENTIALS HERE
 // ═══════════════════════════════════════════════════════════════
 const SUPABASE_URL  = "https://potjjodujwtvvnzttqsc.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE ";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE";
 // ═══════════════════════════════════════════════════════════════
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -78,6 +78,12 @@ const dbDelUser = async id=>sb.from("users").delete().eq("id",id);
 const dbAddRec  = async r=>sb.from("records").insert(r).select().single();
 const dbDelRec  = async id=>sb.from("records").delete().eq("id",id);
 
+// ── Trash DB helpers ─────────────────────────────────────────────────────────
+const dbGetTrash   = async ()=>{ const {data}=await sb.from("trash").select("*").order("deleted_at",{ascending:false}); return data||[]; };
+const dbMoveToTrash= async (rec,deletedBy)=>sb.from("trash").insert({...rec,deleted_by:deletedBy,deleted_at:new Date().toISOString()});
+const dbRestoreRec = async (rec)=>{ await sb.from("records").insert({id:rec.id,type:rec.type,title:rec.title,data:rec.data,created_by:rec.created_by,created_at:rec.created_at}); await sb.from("trash").delete().eq("id",rec.id); };
+const dbEmptyTrash = async id=>sb.from("trash").delete().eq("id",id);
+
 // ── Lists DB helpers ─────────────────────────────────────────────────────────
 const dbGetLists  = async ()=>{ const {data}=await sb.from("lists").select("*").order("list_name"); return data||[]; };
 const dbUpsertList= async (list_name,items)=>sb.from("lists").upsert({list_name,items},{onConflict:"list_name"});
@@ -102,6 +108,7 @@ const LIST_LABELS = {
 function App() {
   const [users,   setUsers]   = useState([]);
   const [records, setRecords] = useState([]);
+  const [trashed, setTrashed] = useState([]);
   const [appLists,setAppLists]= useState(DEFAULT_LISTS);
   const [session, setSession] = useState(()=>{ try{return JSON.parse(sessionStorage.getItem("cpk_sess"))||null;}catch{return null;} });
   const [status,  setStatus]  = useState("loading"); // loading | error | unconfigured | ok
@@ -109,8 +116,8 @@ function App() {
   const reload = async () => {
     if (SUPABASE_URL==="PASTE_YOUR_SUPABASE_URL_HERE") { setStatus("unconfigured"); return; }
     try {
-      const [u,r,l] = await Promise.all([dbUsers(), dbRecords(), dbGetLists()]);
-      setUsers(u); setRecords(r);
+      const [u,r,l,t] = await Promise.all([dbUsers(), dbRecords(), dbGetLists(), dbGetTrash()]);
+      setUsers(u); setRecords(r); setTrashed(t);
       // Build lists map from DB, falling back to defaults
       const lmap = {...DEFAULT_LISTS};
       l.forEach(row=>{ try{ lmap[row.list_name]=JSON.parse(row.items); }catch{} });
@@ -128,7 +135,7 @@ function App() {
   if (status==="unconfigured") return <ConfigScreen />;
   if (status==="error")        return <Splash msg="Could not reach database. Check your credentials." />;
   if (!session)                return <Login users={users} onLogin={login} />;
-  return <Main session={session} users={users} records={records} appLists={appLists} onLogout={logout} reload={reload} />;
+  return <Main session={session} users={users} records={records} trashed={trashed} appLists={appLists} onLogout={logout} reload={reload} />;
 }
 
 function Splash({ msg }) {
@@ -185,6 +192,7 @@ const ALL_TABS = [
   {id:"printingqc",label:"Printing QC",      icon:"✓"},
   {id:"records",   label:"All Records",      icon:"☰"},
   {id:"users",     label:"User Mgmt",        icon:"⌖"},
+  {id:"trash",     label:"Trash Bin",        icon:"🗑"},
   {id:"lists",     label:"Lists / Settings", icon:"☰"},
   {id:"debug",     label:"Debug / AI Help",  icon:"⚙"},
   {id:"password",  label:"Change Password",  icon:"🔑"},
@@ -192,7 +200,7 @@ const ALL_TABS = [
 
 // Default permissions per role — can be overridden per user via permissions field
 const ROLE_DEFAULTS = {
-  admin:    ["dashboard","production","viscosity","printingqc","records","users","lists","debug","password"],
+  admin:    ["dashboard","production","viscosity","printingqc","records","users","trash","lists","debug","password"],
   manager:  ["dashboard","production","viscosity","printingqc","records","lists","password"],
   operator: ["dashboard","production","records","password"],
   qc:       ["dashboard","viscosity","printingqc","records","password"],
@@ -210,7 +218,7 @@ function canEdit(user)   { return user?.role === "admin"; }
 function canDelete(user) { return user?.role === "admin"; }
 function isManager(user) { return user?.role === "manager"; }
 
-function Main({ session, users, records, appLists, onLogout, reload }) {
+function Main({ session, users, records, trashed, appLists, onLogout, reload }) {
   const [tab, setTab]     = useState("dashboard");
   const [saving, setSaving] = useState(false);
   const [toast, setToast]   = useState(null);
@@ -225,7 +233,15 @@ function Main({ session, users, records, appLists, onLogout, reload }) {
     setSaving(false);
   };
 
-  const delRecord  = async id  => { await dbDelRec(id); await reload(); flash("Record deleted."); };
+  const delRecord  = async id  => {
+    const rec = records.find(r=>r.id===id);
+    if (rec) await dbMoveToTrash(rec, session.name);
+    await dbDelRec(id);
+    await reload();
+    flash("Record moved to trash.");
+  };
+  const restoreRecord = async rec => { await dbRestoreRec(rec); await reload(); flash("Record restored."); };
+  const permDelete    = async id  => { await dbEmptyTrash(id); await reload(); flash("Permanently deleted."); };
   const saveRecord = async (id,data) => { await sb.from("records").update({data}).eq("id",id); await reload(); flash("Record updated."); };
   const rc = r=>r==="admin"?C.accent2:r==="manager"?C.accent:r==="qc"?C.blue:r==="viewer"?C.muted:C.success;
 
@@ -271,6 +287,7 @@ function Main({ session, users, records, appLists, onLogout, reload }) {
         <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} users={users} lists={appLists} /></div>
         <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
         <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
+        <div style={{display:tab==="trash"     ?"block":"none"}}><TrashBin trashed={trashed} onRestore={restoreRecord} onPermDelete={permDelete} /></div>
         <div style={{display:tab==="lists"     ?"block":"none"}}><ListsManager appLists={appLists} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="debug"     ?"block":"none"}}><DebugPanel records={records} users={users} session={session} /></div>
         <div style={{display:tab==="password"  ?"block":"none"}}><ChangePassword session={session} flash={flash} /></div>
@@ -369,7 +386,7 @@ function ProductionForm({ onSave, users=[], lists={} }) {
   const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
   const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eS()]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const operatorNames = users.filter(u=>u.role==="operator"||u.role==="manager").map(u=>u.name);
+  const operatorNames = users.filter(u=>u.role==="operator").map(u=>u.name);
   const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
   const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
   const aa=(fn,e)=>fn(a=>[...a,e()]); const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
@@ -445,7 +462,7 @@ function ViscosityForm({ onSave, users=[], lists={} }) {
   const [readings,setReadings]=useState([emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS)]);
   const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
   const slots = getSlotsForShift(hdr.shift);
-  const operatorNames = users.filter(u=>u.role==="operator"||u.role==="manager").map(u=>u.name);
+  const operatorNames = users.filter(u=>u.role==="operator").map(u=>u.name);
   const h=(k,v)=>{
     if(k==="shift"){ const ns=getSlotsForShift(v); setReadings(rs=>rs.map(r=>({...r,times:Object.fromEntries(ns.map(t=>[t,""]))}))); }
     setHdr(p=>({...p,[k]:v}));
@@ -501,7 +518,7 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",press:"8 Color Gravure",operator:"",inspector:""});
   const [checks,setChecks]=useState(()=>QC_CHECKS.map(label=>({label,result:"",comment:""})));
   const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const operatorNames = users.filter(u=>u.role==="operator"||u.role==="manager").map(u=>u.name);
+  const operatorNames = users.filter(u=>u.role==="operator").map(u=>u.name);
   const h=(k,v)=>setHdr(p=>({...p,[k]:v}));
   const sc=(i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
   const passC=checks.filter(c=>c.result==="Pass").length;
@@ -931,6 +948,7 @@ const SHEET_OPTIONS = [
   {id:"viscosity", label:"Viscosity QC"},
   {id:"printingqc",label:"Printing QC"},
   {id:"records",   label:"All Records"},
+  {id:"trash",     label:"Trash Bin (Admin only)"},
 ];
 
 function UserMgmt({ users, session, reload, flash }) {
@@ -1076,6 +1094,72 @@ function UserMgmt({ users, session, reload, flash }) {
 // ── Change Password ───────────────────────────────────────────────────────────
 
 // ── Lists Manager ─────────────────────────────────────────────────────────────
+
+// ── Trash Bin ─────────────────────────────────────────────────────────────────
+function TrashBin({ trashed, onRestore, onPermDelete }) {
+  const [search, setSearch] = useState("");
+  const [confirmId, setConfirmId] = useState(null);
+
+  const filtered = trashed.filter(r=>
+    r.title?.toLowerCase().includes(search.toLowerCase()) ||
+    r.deleted_by?.toLowerCase().includes(search.toLowerCase()) ||
+    r.type?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const typeColor = t=>t==="production"?C.accent:t==="viscosity"?C.blue:C.accent2;
+  const typeLabel = t=>t==="production"?"PRODUCTION":t==="viscosity"?"VISCOSITY QC":"PRINTING QC";
+
+  return <div>
+    <PH title="Trash Bin" sub="Deleted records — restore or permanently remove. Only admins can view this." />
+
+    <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
+      <input style={{...S.input,flex:1,maxWidth:320}} placeholder="Search trash…" value={search} onChange={e=>setSearch(e.target.value)} />
+      <span style={{color:C.muted,fontSize:12}}>{filtered.length} item{filtered.length!==1?"s":""}</span>
+    </div>
+
+    {filtered.length===0 && (
+      <div style={{textAlign:"center",padding:"48px 0",color:C.muted,fontSize:13}}>
+        <div style={{fontSize:40,marginBottom:8}}>🗑</div>
+        {trashed.length===0 ? "Trash is empty." : "No results for your search."}
+      </div>
+    )}
+
+    {filtered.map(r=>(
+      <div key={r.id} style={{borderBottom:`1px solid ${C.border}`,padding:"14px 0"}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+              <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:typeColor(r.type)+"33",color:typeColor(r.type),fontWeight:700}}>{typeLabel(r.type)}</span>
+              <span style={{color:C.text,fontWeight:600,fontSize:13}}>{r.title}</span>
+            </div>
+            <div style={{fontSize:11,color:C.muted}}>
+              Created by <span style={{color:C.text}}>{r.created_by}</span>
+              {" · "}{r.created_at?new Date(r.created_at).toLocaleString():""}
+            </div>
+            <div style={{fontSize:11,color:C.danger,marginTop:2}}>
+              🗑 Deleted by <span style={{color:C.text}}>{r.deleted_by}</span>
+              {" · "}{r.deleted_at?new Date(r.deleted_at).toLocaleString():""}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+            <button style={S.btn("ghost",{padding:"5px 14px",fontSize:12,color:C.success,outline:`1px solid ${C.success}`})}
+              onClick={()=>onRestore(r)}>↩ Restore</button>
+            {confirmId===r.id ? (
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:11,color:C.danger}}>Sure?</span>
+                <button style={S.btn("danger",{padding:"5px 12px",fontSize:12})} onClick={()=>{onPermDelete(r.id);setConfirmId(null);}}>Yes, Delete</button>
+                <button style={S.btn("ghost",{padding:"5px 10px",fontSize:12})} onClick={()=>setConfirmId(null)}>Cancel</button>
+              </div>
+            ) : (
+              <button style={S.btn("danger",{padding:"5px 14px",fontSize:12})} onClick={()=>setConfirmId(r.id)}>✕ Remove</button>
+            )}
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>;
+}
+
 function ListsManager({ appLists, reload, flash }) {
   const [activeList, setActiveList] = useState("substrate");
   const [items, setItems] = useState([]);
