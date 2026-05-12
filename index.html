@@ -1561,7 +1561,10 @@ function ListsManager({ appLists, reload, flash }) {
 
   const removeItem = i => setItems(prev=>prev.filter((_,x)=>x!==i));
 
-  // Move item up/down (for checklists — order matters)
+  const editItem = (i, field, val) => {
+    setItems(prev=>prev.map((item,x)=> x===i ? {...item,[field]:val} : item));
+  };
+
   const moveItem = (i, dir) => {
     const next = [...items];
     const swap = i + dir;
@@ -1581,10 +1584,17 @@ function ListsManager({ appLists, reload, flash }) {
     setSaving(false);
   };
 
+  const iStyle = {
+    ...S.input, padding:"4px 8px", fontSize:12, flex:1,
+    background:"transparent", border:`1px solid transparent`,
+    transition:"border 0.15s",
+  };
+  const iStyleFocus = {...iStyle, border:`1px solid ${C.border}`};
+
   const listKeys = Object.keys(LIST_LABELS);
 
   return <div>
-    <PH title="Lists / Settings" sub="Manage dropdown options and QC check items used across all forms" />
+    <PH title="Lists / Settings" sub="Manage dropdown options and QC check items — click any item to edit it inline" />
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
       {listKeys.map(k=>(
         <button key={k} onClick={()=>setActiveList(k)} style={{
@@ -1600,7 +1610,7 @@ function ListsManager({ appLists, reload, flash }) {
     <SC title={LIST_LABELS[activeList]}>
       {isChecklist && (
         <div style={{fontSize:11,color:C.muted,marginBottom:10,padding:"8px 12px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
-          📋 These items appear as Pass / Fail / N/A check rows in the form. Order matters — use the ↑ ↓ arrows to reorder. Changes apply after saving.
+          📋 Check items appear as Pass / Fail / N/A rows in the form. Click any item to edit. Use ↑ ↓ to reorder. Save when done.
         </div>
       )}
 
@@ -1609,30 +1619,59 @@ function ListsManager({ appLists, reload, flash }) {
       )}
 
       {items.map((item,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"6px 10px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+        <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,padding:"4px 8px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+
+          {/* Row number for checklists */}
           {isChecklist && (
-            <span style={{color:C.muted,fontSize:11,minWidth:22,textAlign:"center"}}>{i+1}.</span>
+            <span style={{color:C.muted,fontSize:11,minWidth:22,textAlign:"center",flexShrink:0}}>{i+1}.</span>
           )}
+
+          {/* Editable fields */}
           {isInkCode ? (
             <>
-              <span style={{color:C.accent,fontWeight:700,fontSize:12,minWidth:80}}>{item.code}</span>
-              <span style={{color:C.muted,fontSize:11}}>—</span>
-              <span style={{color:C.text,fontSize:12,flex:1}}>{item.description}</span>
+              <input
+                style={{...iStyle,maxWidth:120,color:C.accent,fontWeight:700}}
+                value={item.code}
+                onChange={e=>editItem(i,"code",e.target.value)}
+                onFocus={e=>e.target.style.border=`1px solid ${C.border}`}
+                onBlur={e=>e.target.style.border="1px solid transparent"}
+                placeholder="Code"
+              />
+              <span style={{color:C.muted,fontSize:11,flexShrink:0}}>—</span>
+              <input
+                style={{...iStyle,color:C.text}}
+                value={item.description}
+                onChange={e=>editItem(i,"description",e.target.value)}
+                onFocus={e=>e.target.style.border=`1px solid ${C.border}`}
+                onBlur={e=>e.target.style.border="1px solid transparent"}
+                placeholder="Description"
+              />
             </>
           ) : (
-            <span style={{color:C.text,fontSize:13,flex:1}}>{item.val||String(item)}</span>
+            <input
+              style={{...iStyle,color:C.text}}
+              value={item.val||""}
+              onChange={e=>editItem(i,"val",e.target.value)}
+              onFocus={e=>e.target.style.border=`1px solid ${C.border}`}
+              onBlur={e=>e.target.style.border="1px solid transparent"}
+              placeholder="Edit item…"
+            />
           )}
+
+          {/* Reorder buttons for checklists */}
           {isChecklist && (
-            <div style={{display:"flex",gap:4,flexShrink:0}}>
-              <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===0?0.3:1})} onClick={()=>moveItem(i,-1)} disabled={i===0}>↑</button>
-              <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===items.length-1?0.3:1})} onClick={()=>moveItem(i,1)} disabled={i===items.length-1}>↓</button>
+            <div style={{display:"flex",gap:3,flexShrink:0}}>
+              <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===0?0.25:1})} onClick={()=>moveItem(i,-1)} disabled={i===0}>↑</button>
+              <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===items.length-1?0.25:1})} onClick={()=>moveItem(i,1)} disabled={i===items.length-1}>↓</button>
             </div>
           )}
-          <button style={S.btn("danger",{padding:"2px 8px",fontSize:11})} onClick={()=>removeItem(i)}>✕</button>
+
+          <button style={S.btn("danger",{padding:"2px 8px",fontSize:11,flexShrink:0})} onClick={()=>removeItem(i)}>✕</button>
         </div>
       ))}
 
-      <div style={{display:"flex",gap:8,marginTop:12,alignItems:"flex-end"}}>
+      {/* Add new row */}
+      <div style={{display:"flex",gap:8,marginTop:14,alignItems:"flex-end",paddingTop:10,borderTop:`1px solid ${C.border}`}}>
         {isInkCode ? (
           <>
             <F label="Code"><TI value={newCode} onChange={v=>setNewCode(v)} placeholder="e.g. INK-001" /></F>
@@ -1652,7 +1691,7 @@ function ListsManager({ appLists, reload, flash }) {
     <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={saveList} disabled={saving}>
       {saving?"Saving…":"💾 Save List"}
     </button>
-    <div style={{color:C.muted,fontSize:11,marginTop:8}}>Changes take effect immediately for all users after saving.</div>
+    <div style={{color:C.muted,fontSize:11,marginTop:8}}>Click any item above to edit it. Changes take effect for all users after saving.</div>
   </div>;
 }
 
