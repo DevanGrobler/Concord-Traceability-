@@ -769,8 +769,8 @@ function exportToExcel(records) {
     const rows = [];
     lamRecs.forEach(r=>{
       const h=r.data?.header||{};
-      rows.push(["Date","Shift","Job Card No","Time","Customer & Product","Operator","Comments"]);
-      rows.push([h.date,h.shift,h.jobNo,h.time,h.customerProduct,h.operator,h.comments]);
+      rows.push(["Date","Shift","Job Card No","Customer & Product","Product Name","Operator","Comments"]);
+      rows.push([h.date,h.shift,h.jobNo,h.customerProduct,h.productName||"",h.operator,h.comments]);
       rows.push([]);
       if ((r.data?.filmRows||[]).length) {
         rows.push(["-- Film Input --","Adhesive Carrier Film","Film Batch No","Film KG","Film Spec/Metry"]);
@@ -1097,14 +1097,15 @@ function DT({ title, rows, cols }) {
 
 // ── User Management ───────────────────────────────────────────────────────────
 const SHEET_OPTIONS = [
-  {id:"dashboard", label:"Dashboard"},
-  {id:"production",label:"Daily Production Printing"},
-  {id:"viscosity", label:"Viscosity QC"},
-  {id:"printingqc",label:"Printing QC"},
+  {id:"dashboard",   label:"Dashboard"},
+  {id:"production",  label:"Daily Production Printing"},
+  {id:"viscosity",   label:"Viscosity QC"},
+  {id:"printingqc",  label:"Printing QC"},
   {id:"lamination",  label:"Lamination"},
   {id:"laminationqc",label:"Lamination QC"},
   {id:"records",     label:"All Records"},
-  {id:"trash",     label:"Trash Bin (Admin only)"},
+  {id:"trash",       label:"Trash Bin (Admin only)"},
+  {id:"password",    label:"Change Password"},
 ];
 
 function UserMgmt({ users, session, reload, flash }) {
@@ -1262,7 +1263,7 @@ const eLamUnwound = ()=>({unwoundFilm:"",unwoundBatchNo:"",unwoundKg:"",unwoundK
 const eLamOutput  = ()=>({laminatedRollName:"",laminatedMetryKg:""});
 
 function LaminationForm({ onSave, users=[], lists={} }) {
-  const [hdr,setHdr] = useState({date:todayStr(),shift:"",jobNo:"",time:"",customerProduct:"",productName:"",operator:"",comments:""});
+  const [hdr,setHdr] = useState({date:todayStr(),shift:"",jobNo:"",customerProduct:"",productName:"",operator:"",comments:""});
   const [filmRows,    setFilmRows]    = useState([eLamFilm()]);
   const [adhesiveRows,setAdhesiveRows]= useState([eLamAdhesive()]);
   const [unwoundRows, setUnwoundRows] = useState([eLamUnwound()]);
@@ -1310,7 +1311,6 @@ function LaminationForm({ onSave, users=[], lists={} }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
         <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
         <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customerProduct} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
