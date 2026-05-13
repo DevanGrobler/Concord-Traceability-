@@ -114,13 +114,14 @@ const DEFAULT_LISTS = {
   qc_officer:           [],
   printing_qc_checks:   DEFAULT_PRINTING_QC_CHECKS,
   lamination_qc_checks: [],
+  extruder_qc_checks:   [],
 };
 const LIST_LABELS = {
   substrate:"Substrate",customer:"Customer",product_name:"Product Name",
   ink_code:"Ink Codes",ink_shade:"Ink Shade",ink_supplier:"Ink Supplier",
   solvent:"Solvent Types",width:"Width",unit:"Units",
   operator:"Operators",supervisor:"Supervisors",qc_officer:"QC Officers",
-  printing_qc_checks:"Printing QC Checks",lamination_qc_checks:"Lamination QC Checks",
+  printing_qc_checks:"Printing QC Checks",lamination_qc_checks:"Lamination QC Checks",extruder_qc_checks:"Extruder QC Checks",
 };
 
 // ── Root App ──────────────────────────────────────────────────────────────────
@@ -212,6 +213,10 @@ const ALL_TABS = [
   {id:"printingqc",label:"Printing QC",      icon:"✓"},
   {id:"lamination", label:"Lamination",       icon:"⬡"},
   {id:"laminationqc",label:"Lamination QC",   icon:"✦"},
+  {id:"extruder1",   label:"Extruder 1",         icon:"▣"},
+  {id:"extruder1qc", label:"Extruder 1 QC",      icon:"✧"},
+  {id:"extruder2",   label:"Extruder 2",         icon:"▣"},
+  {id:"extruder2qc", label:"Extruder 2 QC",      icon:"✧"},
   {id:"records",   label:"All Records",      icon:"☰"},
   {id:"users",     label:"User Mgmt",        icon:"⌖"},
   {id:"trash",     label:"Trash Bin",        icon:"🗑"},
@@ -223,10 +228,10 @@ const ALL_TABS = [
 
 // Default permissions per role — can be overridden per user via permissions field
 const ROLE_DEFAULTS = {
-  admin:    ["dashboard","production","viscosity","printingqc","lamination","laminationqc","records","users","trash","loginlog","lists","debug","password"],
-  manager:  ["dashboard","production","viscosity","printingqc","lamination","laminationqc","records","lists","password"],
-  operator: ["dashboard","production","lamination","laminationqc","records","password"],
-  qc:       ["dashboard","viscosity","printingqc","lamination","laminationqc","records","password"],
+  admin:    ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","records","users","trash","loginlog","lists","debug","password"],
+  manager:  ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","records","lists","password"],
+  operator: ["dashboard","production","lamination","laminationqc","extruder1","extruder2","records","password"],
+  qc:       ["dashboard","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","records","password"],
   viewer:   ["dashboard","records","password"],
 };
 
@@ -310,6 +315,10 @@ function Main({ session, users, records, trashed, loginLog, appLists, onLogout, 
         <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} users={users} lists={appLists} /></div>
         <div style={{display:tab==="lamination" ?"block":"none"}}><LaminationForm    onSave={addRecord} users={users} lists={appLists} /></div>
         <div style={{display:tab==="laminationqc"?"block":"none"}}><LaminationQCForm onSave={addRecord} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="extruder1"   ?"block":"none"}}><ExtruderForm     onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="extruder1qc" ?"block":"none"}}><ExtruderQCForm   onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="extruder2"   ?"block":"none"}}><ExtruderForm     onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="extruder2qc" ?"block":"none"}}><ExtruderQCForm   onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
         <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
         <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="trash"     ?"block":"none"}}><TrashBin trashed={trashed} onRestore={restoreRecord} onPermDelete={permDelete} /></div>
@@ -335,7 +344,11 @@ function Dashboard({ records, session }) {
         {label:"VISCOSITY QC",type:"viscosity",color:C.blue,icon:"◉"},
         {label:"PRINTING QC",type:"printingqc",color:C.success,icon:"✓"},
         {label:"LAMINATION",type:"lamination",color:"#9b59b6",icon:"⬡"},
-        {label:"LAMINATION QC",type:"laminationqc",color:"#27ae60",icon:"✦"}].map(({label,type,color,icon})=>(
+        {label:"LAMINATION QC",type:"laminationqc",color:"#27ae60",icon:"✦"},
+        {label:"EXTRUDER 1",type:"extruder1",color:"#e67e22",icon:"▣"},
+        {label:"EXTRUDER 1 QC",type:"extruder1qc",color:"#d35400",icon:"✧"},
+        {label:"EXTRUDER 2",type:"extruder2",color:"#16a085",icon:"▣"},
+        {label:"EXTRUDER 2 QC",type:"extruder2qc",color:"#1abc9c",icon:"✧"}].map(({label,type,color,icon})=>(
         <div key={type} style={{...S.card,flex:1,minWidth:180}}>
           <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
           <div style={{fontSize:11,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
@@ -348,8 +361,8 @@ function Dashboard({ records, session }) {
       <div style={{fontSize:12,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:14}}>RECENT RECORDS</div>
       {records.length===0 && <div style={{color:C.muted,fontSize:13}}>No records yet.</div>}
       {records.slice(0,10).map(r=>{
-        const color=r.type==="production"?C.accent:r.type==="viscosity"?C.blue:r.type==="printingqc"?C.success:r.type==="lamination"?"#9b59b6":"#27ae60";
-        const icon=r.type==="production"?"▤":r.type==="viscosity"?"◉":r.type==="printingqc"?"✓":r.type==="lamination"?"⬡":"✦";
+        const color=r.type==="production"?C.accent:r.type==="viscosity"?C.blue:r.type==="printingqc"?C.success:r.type==="lamination"?"#9b59b6":r.type==="laminationqc"?"#27ae60":r.type==="extruder1"?"#e67e22":r.type==="extruder1qc"?"#d35400":r.type==="extruder2"?"#16a085":"#1abc9c";
+        const icon=r.type==="production"?"▤":r.type==="viscosity"?"◉":r.type==="printingqc"?"✓":r.type==="lamination"?"⬡":r.type==="laminationqc"?"✦":r.type==="extruder1"||r.type==="extruder2"?"▣":"✧";
         return <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
           <span style={{fontSize:16,color}}>{icon}</span>
           <div style={{flex:1}}>
@@ -816,6 +829,47 @@ function exportToExcel(records) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Lamination QC");
   }
 
+  // ── Sheet 7 & 8: Extruder 1 & 2
+  [1,2].forEach(m=>{
+    const extRecs = records.filter(r=>r.type===`extruder${m}`);
+    if (extRecs.length) {
+      const rows = [];
+      extRecs.forEach(r=>{
+        const h=r.data?.header||{};
+        rows.push(["Date","Shift","Job No","Customer","Product Name","Material Spec","Operator","Supervisor","Remarks"]);
+        rows.push([h.date,h.shift,h.jobNo,h.customer,h.productName,h.materialSpec,h.operator,h.supervisor,r.data?.remarks||""]);
+        rows.push([]);
+        if ((r.data?.rmaRows||[]).length) {
+          rows.push(["-- Raw Material A (Outside Layer) --","Brand","Batch No","KG"]);
+          (r.data.rmaRows||[]).forEach(x=>rows.push(["",x.brand,x.batchNo,x.kg]));
+        }
+        if ((r.data?.rmbRows||[]).length) {
+          rows.push(["-- Raw Material B (Inside Layer) --","Brand","Batch No","KG"]);
+          (r.data.rmbRows||[]).forEach(x=>rows.push(["",x.brand,x.batchNo,x.kg]));
+        }
+        if ((r.data?.rollRows||[]).length) {
+          rows.push(["-- Roll Output --","Roll No","Metres","KG"]);
+          (r.data.rollRows||[]).forEach(x=>rows.push(["",x.rollNo,x.metres,x.kg]));
+        }
+        rows.push(["---"]);
+      });
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Extruder ${m}`);
+    }
+    const extQcRecs = records.filter(r=>r.type===`extruder${m}qc`);
+    if (extQcRecs.length) {
+      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
+      extQcRecs.forEach(r=>{
+        const h=r.data?.header||{};
+        (r.data?.checks||[]).forEach((c,i)=>{
+          rows.push([i===0?r.created_by:"",i===0?h.date:"",i===0?h.shift:"",i===0?h.jobNo:"",
+            i===0?h.customer:"",i===0?h.productName:"",i===0?h.operator:"",i===0?h.inspector:"",
+            i+1,c.label,c.result,c.comment||"",i===0?r.data?.overallResult:""]);
+        });
+        rows.push(["---"]);
+      });
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Extruder ${m} QC`);
+    }
+  });
   XLSX.writeFile(wb, `Concord-Traceability-${new Date().toISOString().split("T")[0]}.xlsx`);
 }
 
@@ -829,9 +883,9 @@ function Records({ records, session, onDelete, onSave }) {
   return <div>
     <PH title="All Records" sub={`${records.length} records shared across all devices`} />
     <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
-      {["all","production","viscosity","printingqc","lamination","laminationqc"].map(f=>(
+      {["all","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc"].map(f=>(
         <button key={f} onClick={()=>setFilter(f)} style={S.btn(filter===f?"accent":"ghost",{padding:"6px 14px",fontSize:11})}>
-          {f==="all"?"All":f==="production"?"Production":f==="viscosity"?"Viscosity QC":f==="printingqc"?"Printing QC":f==="lamination"?"Lamination":"Lamination QC"}
+          {f==="all"?"All":f==="production"?"Production":f==="viscosity"?"Viscosity QC":f==="printingqc"?"Printing QC":f==="lamination"?"Lamination":f==="laminationqc"?"Lamination QC":f==="extruder1"?"Extruder 1":f==="extruder1qc"?"Extruder 1 QC":f==="extruder2"?"Extruder 2":"Extruder 2 QC"}
         </button>
       ))}
       <input style={{...S.input,width:220,padding:"6px 12px"}} value={search} placeholder="Search…" onChange={e=>setSearch(e.target.value)} />
@@ -1105,6 +1159,10 @@ const SHEET_OPTIONS = [
   {id:"laminationqc",label:"Lamination QC"},
   {id:"records",     label:"All Records"},
   {id:"trash",       label:"Trash Bin (Admin only)"},
+  {id:"extruder1",   label:"Extruder 1 Daily Production"},
+  {id:"extruder1qc", label:"Extruder 1 QC"},
+  {id:"extruder2",   label:"Extruder 2 Daily Production"},
+  {id:"extruder2qc", label:"Extruder 2 QC"},
   {id:"lists",       label:"Lists / Settings"},
   {id:"password",    label:"Change Password"},
 ];
@@ -1485,6 +1543,210 @@ function LaminationQCForm({ onSave, users=[], lists={} }) {
   </div>;
 }
 
+
+// ── Extruder Daily Production Sheet ─────────────────────────────────────────
+const eExtRMA = ()=>({brand:"",batchNo:"",kg:""});
+const eExtRMB = ()=>({brand:"",batchNo:"",kg:""});
+const eExtRoll= ()=>({rollNo:"",metres:"",kg:""});
+
+function ExtruderForm({ onSave, users=[], lists={}, machine=1 }) {
+  const [hdr,setHdr]     = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",materialSpec:"",operator:"",supervisor:""});
+  const [rmaRows,setRma] = useState([eExtRMA()]);
+  const [rmbRows,setRmb] = useState([eExtRMB()]);
+  const [rollRows,setRolls]= useState([eExtRoll(),eExtRoll()]);
+  const [remarks,setRemarks]= useState("");
+  const [saved,setSaved] = useState(false);
+  const operatorNames = (lists.operator||[]).length>0
+    ? (lists.operator||[]).map(String).filter(Boolean)
+    : users.filter(u=>u.role==="operator").map(u=>u.name);
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
+  const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
+  const aa = (fn,e)=>fn(a=>[...a,e()]);
+  const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
+  if (saved) return <Done label={`Extruder ${machine} Production Sheet`} reset={()=>setSaved(false)} />;
+  const save = async()=>{
+    if (!validate({
+      shift:   {value:hdr.shift,   label:"Shift"},
+      jobNo:   {value:hdr.jobNo,   label:"Job No."},
+      customer:{value:hdr.customer,label:"Customer"},
+      operator:{value:hdr.operator,label:"Operator"},
+    })) return;
+    await onSave({
+      type:`extruder${machine}`,
+      title:`Extruder ${machine} · ${hdr.jobNo||hdr.date} · ${hdr.date}`,
+      data:{header:hdr,rmaRows,rmbRows,rollRows,remarks}
+    });
+    setSaved(true);
+  };
+  const machineColor = machine===1?"#e67e22":"#16a085";
+  return <div>
+    <PH title={`Extruder ${machine} Daily Production Sheet`} sub="Extruder traceability — raw materials A & B, roll output and remarks" />
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
+    <SC title="Job Details">
+      <Grid cols={4}>
+        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+        <F label="Material Spec"><TI value={hdr.materialSpec} onChange={v=>h("materialSpec",v)} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+        <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={["",...(lists.supervisor||[]).map(String).filter(Boolean)]} /></F>
+      </Grid>
+    </SC>
+
+    <SC title="Raw Material A — Outside Layer">
+      <THead cols={["Brand","Batch No.","KG",""]} widths={["2fr","1.5fr","1fr","40px"]} />
+      {rmaRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.brand}   onChange={v=>as(setRma,i,"brand",v)} placeholder="Brand" />
+          <TI value={r.batchNo} onChange={v=>as(setRma,i,"batchNo",v)} />
+          <TI type="number" value={r.kg} onChange={v=>as(setRma,i,"kg",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRma,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRma,eExtRMA)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Raw Material B — Inside Layer">
+      <THead cols={["Brand","Batch No.","KG",""]} widths={["2fr","1.5fr","1fr","40px"]} />
+      {rmbRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.brand}   onChange={v=>as(setRmb,i,"brand",v)} placeholder="Brand" />
+          <TI value={r.batchNo} onChange={v=>as(setRmb,i,"batchNo",v)} />
+          <TI type="number" value={r.kg} onChange={v=>as(setRmb,i,"kg",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRmb,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRmb,eExtRMB)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Roll Output">
+      <THead cols={["Roll No.","Metres","KG",""]} widths={["1fr","1.5fr","1.5fr","40px"]} />
+      {rollRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1.5fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.rollNo}  onChange={v=>as(setRolls,i,"rollNo",v)} placeholder={`Roll ${i+1}`} />
+          <TI type="number" value={r.metres} onChange={v=>as(setRolls,i,"metres",v)} />
+          <TI type="number" value={r.kg}     onChange={v=>as(setRolls,i,"kg",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRolls,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRolls,eExtRoll)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Remarks">
+      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+    </SC>
+
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>
+      💾 Save Extruder {machine} Sheet
+    </button>
+  </div>;
+}
+
+// ── Extruder QC Form ──────────────────────────────────────────────────────────
+function ExtruderQCForm({ onSave, users=[], lists={}, machine=1 }) {
+  const checkLabels = (lists.extruder_qc_checks||[]).map(String).filter(Boolean);
+  const [hdr,setHdr]      = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
+  const [checks,setChecks]= useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
+  const [overall,setOverall]= useState("");
+  const [remarks,setRemarks]= useState("");
+  const [saved,setSaved]    = useState(false);
+  const operatorNames = (lists.operator||[]).length>0
+    ? (lists.operator||[]).map(String).filter(Boolean)
+    : users.filter(u=>u.role==="operator").map(u=>u.name);
+  const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
+  const sc = (i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
+  React.useEffect(()=>{
+    setChecks(checkLabels.map(label=>({label,result:"",comment:""})));
+  },[checkLabels.join("|")]);
+  const passC=checks.filter(c=>c.result==="Pass").length;
+  const failC=checks.filter(c=>c.result==="Fail").length;
+  const naC  =checks.filter(c=>c.result==="N/A").length;
+  if (saved) return <Done label={`Extruder ${machine} QC`} reset={()=>setSaved(false)} />;
+  const save=async()=>{
+    if (!validate({
+      shift:{value:hdr.shift,label:"Shift"},
+      jobNo:{value:hdr.jobNo,label:"Job No."},
+      customer:{value:hdr.customer,label:"Customer"},
+      operator:{value:hdr.operator,label:"Operator"},
+      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
+    })) return;
+    await onSave({type:`extruder${machine}qc`,title:`Extruder ${machine} QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks,machine}});
+    setSaved(true);
+  };
+  const machineColor = machine===1?"#e67e22":"#16a085";
+  return <div>
+    <PH title={`Extruder ${machine} QC Form`} sub="Complete all check items then set the overall result" />
+    {checkLabels.length===0 && (
+      <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
+        ⚠ No check items configured yet. Go to <strong>Lists / Settings → Extruder QC Checks</strong> to add them.
+      </div>
+    )}
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
+    <SC title="Run Details">
+      <Grid cols={4}>
+        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
+      </Grid>
+    </SC>
+    {checks.length>0 && (
+      <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
+        <THead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","150px","2fr"]} />
+        {checks.map((c,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
+            <div style={{fontSize:12,color:C.text}}>{c.label}</div>
+            <div style={{display:"flex",gap:4}}>
+              {["Pass","Fail","N/A"].map(opt=>(
+                <button key={opt} onClick={()=>sc(i,"result",opt)} style={{
+                  flex:1,padding:"5px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
+                  background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
+                  color:c.result===opt?"#fff":C.muted,
+                  outline:c.result===opt?"none":`1px solid ${C.border}`,transition:"all 0.1s",
+                }}>{opt}</button>
+              ))}
+            </div>
+            <input style={{...S.input,padding:"5px 8px"}} value={c.comment} placeholder="Add comment…" onChange={e=>sc(i,"comment",e.target.value)} />
+          </div>
+        ))}
+      </SC>
+    )}
+    <SC title="Overall Assessment">
+      <div style={{display:"flex",gap:12,marginBottom:16}}>
+        {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
+          <button key={opt} onClick={()=>setOverall(opt)} style={{
+            flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:"0.04em",
+            background:overall===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
+            color:overall===opt?"#fff":C.muted,
+            outline:overall===opt?"none":`1px solid ${C.border}`,transition:"all 0.12s",
+          }}>{opt}</button>
+        ))}
+      </div>
+      <label style={S.label}>Remarks</label>
+      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+    </SC>
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Extruder {machine} QC</button>
+  </div>;
+}
+
+
 // ── Login Log ─────────────────────────────────────────────────────────────────
 function LoginLog({ loginLog }) {
   const [search, setSearch] = useState("");
@@ -1633,7 +1895,7 @@ function ListsManager({ appLists, reload, flash }) {
   const [saving,     setSaving]     = useState(false);
 
   const isInkCode   = activeList === "ink_code";
-  const isChecklist = activeList === "printing_qc_checks" || activeList === "lamination_qc_checks";
+  const isChecklist = activeList === "printing_qc_checks" || activeList === "lamination_qc_checks" || activeList === "extruder_qc_checks";
 
   React.useEffect(()=>{
     const raw = appLists[activeList] || [];
