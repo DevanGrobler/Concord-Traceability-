@@ -1164,7 +1164,7 @@ function UserMgmt({ users, session, reload, flash }) {
         <F label="Role"><TS value={form.role} onChange={v=>f("role",v)} options={["admin","manager","operator","qc","viewer"]} /></F>
       </Grid>
       <div style={{marginTop:10,fontSize:11,color:C.muted}}>
-        Role defaults — Admin: all access · Manager: view all sheets (no edit/delete/reset) · Operator: Production + Records · QC: Viscosity + Printing QC + Records · Viewer: Records only (read)
+        Role defaults — Admin: full control · Manager: all sheets (admin can customise) · Operator: Production + Records · QC: Viscosity + Printing QC + Records · Viewer: Records only (read)
       </div>
       {err && <div style={{color:C.danger,fontSize:12,marginTop:8}}>{err}</div>}
       <button style={{...S.btn("accent"),marginTop:12}} onClick={add}>Add User</button>
@@ -1179,19 +1179,21 @@ function UserMgmt({ users, session, reload, flash }) {
               <div style={{color:C.muted,fontSize:11,marginTop:2}}>{u.username}</div>
             </div>
             <span style={{fontSize:10,padding:"2px 10px",borderRadius:4,background:rc(u.role)+"33",color:rc(u.role),fontWeight:700}}>{u.role.toUpperCase()}</span>
-            {u.role!=="admin" && u.role!=="manager" && (
+            {u.role!=="admin" && (
               <button style={S.btn("ghost",{padding:"4px 12px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
                 onClick={()=>editId===u.id?setEditId(null):startEdit(u)}>
                 {editId===u.id?"Cancel":"✎ Edit Permissions"}
               </button>
             )}
-            {u.role!=="manager" && (
-            <button style={S.btn("ghost",{padding:"4px 12px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
-              onClick={()=>{setResetId(resetId===u.id?null:u.id);setResetPw("");}}>
-              {resetId===u.id?"Cancel":"🔑 Reset Password"}
-            </button>
+            {u.id!==session.id && (
+              <button style={S.btn("ghost",{padding:"4px 12px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
+                onClick={()=>{setResetId(resetId===u.id?null:u.id);setResetPw("");}}>
+                {resetId===u.id?"Cancel":"🔑 Reset Password"}
+              </button>
             )}
-            <button style={S.btn("danger",{padding:"4px 10px",fontSize:11,opacity:u.id===session.id?0.4:1})} onClick={()=>del(u.id)}>Delete</button>
+            {u.id!==session.id && (
+              <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})} onClick={()=>del(u.id)}>Delete</button>
+            )}
           </div>
 
           {/* Inline password reset */}
