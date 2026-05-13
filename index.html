@@ -28,7 +28,7 @@ const { useState, useEffect } = React;
 //   STEP 1 — PASTE YOUR SUPABASE CREDENTIALS HERE
 // ═══════════════════════════════════════════════════════════════
 const SUPABASE_URL  = "https://potjjodujwtvvnzttqsc.supabase.co";
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBvdGpqb2R1and0dnZuenR0cXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NjQ4OTMsImV4cCI6MjA5NDA0MDg5M30.aSjaRYN137kSGFnzscEiAvaQWkHdDXlGfjumdulxDsE ";
 // ═══════════════════════════════════════════════════════════════
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -957,8 +957,7 @@ function QCFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow,
             </div>
             <input style={{...S.input,padding:"4px 8px",fontSize:12}} value={st.comment} placeholder={saved?.comment||"Comment…"} onChange={e=>setCheckStates(p=>({...p,[label]:{...st,comment:e.target.value}}))} />
             <button style={{...S.btn("accent",{fontSize:10,padding:"5px 10px"}),whiteSpace:"nowrap"}} disabled={!st.result||savingRow[label]}
-              onClick={()=>doSave("QC Check",{label,result:st.result,comment:st.comment},()=>setCheckStates(p=>({...p,[label]:{result:"",comment:""}})
-            ))}>
+              onClick={()=>doSave("QC Check",{label,result:st.result,comment:st.comment},()=>setCheckStates(p=>({...p,[label]:{result:"",comment:""}})))}>
               {savingRow[label]?"…":"💾 Save"}
             </button>
           </div>;
