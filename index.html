@@ -116,13 +116,15 @@ const DEFAULT_LISTS = {
   lamination_qc_checks: [],
   extruder_qc_checks:   [],
   slitting_qc_checks:   [],
+  bag_opener:           [],
+  bagmaking_qc_checks:  [],
 };
 const LIST_LABELS = {
   substrate:"Substrate",customer:"Customer",product_name:"Product Name",
   ink_code:"Ink Codes",ink_shade:"Ink Shade",ink_supplier:"Ink Supplier",
   solvent:"Solvent Types",width:"Width",unit:"Units",
   operator:"Operators",supervisor:"Supervisors",qc_officer:"QC Officers",
-  printing_qc_checks:"Printing QC Checks",lamination_qc_checks:"Lamination QC Checks",extruder_qc_checks:"Extruder QC Checks",slitting_qc_checks:"Slitting QC Checks",
+  printing_qc_checks:"Printing QC Checks",lamination_qc_checks:"Lamination QC Checks",extruder_qc_checks:"Extruder QC Checks",slitting_qc_checks:"Slitting QC Checks",bag_opener:"Bag Openers",bagmaking_qc_checks:"Bag Making QC Checks",
 };
 
 // ── Root App ──────────────────────────────────────────────────────────────────
@@ -222,6 +224,14 @@ const ALL_TABS = [
   {id:"slitting1qc", label:"Slitting 1 QC",       icon:"⊠"},
   {id:"slitting2",   label:"Slitting 2",          icon:"⊟"},
   {id:"slitting2qc", label:"Slitting 2 QC",       icon:"⊠"},
+  {id:"bagmaking1",  label:"Bag Making 1",         icon:"◫"},
+  {id:"bagmaking1qc",label:"Bag Making 1 QC",      icon:"◻"},
+  {id:"bagmaking2",  label:"Bag Making 2",         icon:"◫"},
+  {id:"bagmaking2qc",label:"Bag Making 2 QC",      icon:"◻"},
+  {id:"bagmaking3",  label:"Bag Making 3",         icon:"◫"},
+  {id:"bagmaking3qc",label:"Bag Making 3 QC",      icon:"◻"},
+  {id:"bagmaking4",  label:"Bag Making 4",         icon:"◫"},
+  {id:"bagmaking4qc",label:"Bag Making 4 QC",      icon:"◻"},
   {id:"records",   label:"All Records",      icon:"☰"},
   {id:"users",     label:"User Mgmt",        icon:"⌖"},
   {id:"trash",     label:"Trash Bin",        icon:"🗑"},
@@ -233,10 +243,10 @@ const ALL_TABS = [
 
 // Default permissions per role — can be overridden per user via permissions field
 const ROLE_DEFAULTS = {
-  admin:    ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","records","users","trash","loginlog","lists","debug","password"],
-  manager:  ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","records","lists","password"],
-  operator: ["dashboard","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","records","password"],
-  qc:       ["dashboard","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","records","password"],
+  admin:    ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","records","users","trash","loginlog","lists","debug","password"],
+  manager:  ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","records","lists","password"],
+  operator: ["dashboard","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","bagmaking1","bagmaking2","bagmaking3","bagmaking4","records","password"],
+  qc:       ["dashboard","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","bagmaking1qc","bagmaking2qc","bagmaking3qc","bagmaking4qc","records","password"],
   viewer:   ["dashboard","records","password"],
 };
 
@@ -328,6 +338,14 @@ function Main({ session, users, records, trashed, loginLog, appLists, onLogout, 
         <div style={{display:tab==="slitting1qc" ?"block":"none"}}><SlittingQCForm   onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
         <div style={{display:tab==="slitting2"   ?"block":"none"}}><SlittingForm     onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
         <div style={{display:tab==="slitting2qc" ?"block":"none"}}><SlittingQCForm   onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="bagmaking1"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="bagmaking1qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="bagmaking2"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="bagmaking2qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="bagmaking3"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={3} /></div>
+        <div style={{display:tab==="bagmaking3qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={3} /></div>
+        <div style={{display:tab==="bagmaking4"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
+        <div style={{display:tab==="bagmaking4qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
         <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
         <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="trash"     ?"block":"none"}}><TrashBin trashed={trashed} onRestore={restoreRecord} onPermDelete={permDelete} /></div>
@@ -361,7 +379,15 @@ function Dashboard({ records, session }) {
         {label:"SLITTING 1",type:"slitting1",color:"#8e44ad",icon:"⊟"},
         {label:"SLITTING 1 QC",type:"slitting1qc",color:"#6c3483",icon:"⊠"},
         {label:"SLITTING 2",type:"slitting2",color:"#2471a3",icon:"⊟"},
-        {label:"SLITTING 2 QC",type:"slitting2qc",color:"#1a5276",icon:"⊠"}].map(({label,type,color,icon})=>(
+        {label:"SLITTING 2 QC",type:"slitting2qc",color:"#1a5276",icon:"⊠"},
+        {label:"BAG MAKING 1",type:"bagmaking1",color:"#c0392b",icon:"◫"},
+        {label:"BAG MAKING 1 QC",type:"bagmaking1qc",color:"#922b21",icon:"◻"},
+        {label:"BAG MAKING 2",type:"bagmaking2",color:"#d68910",icon:"◫"},
+        {label:"BAG MAKING 2 QC",type:"bagmaking2qc",color:"#b7770d",icon:"◻"},
+        {label:"BAG MAKING 3",type:"bagmaking3",color:"#1e8bc3",icon:"◫"},
+        {label:"BAG MAKING 3 QC",type:"bagmaking3qc",color:"#1a6fa0",icon:"◻"},
+        {label:"BAG MAKING 4",type:"bagmaking4",color:"#27ae60",icon:"◫"},
+        {label:"BAG MAKING 4 QC",type:"bagmaking4qc",color:"#1e8449",icon:"◻"}].map(({label,type,color,icon})=>(
         <div key={type} style={{...S.card,flex:1,minWidth:180}}>
           <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
           <div style={{fontSize:11,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
@@ -374,8 +400,8 @@ function Dashboard({ records, session }) {
       <div style={{fontSize:12,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:14}}>RECENT RECORDS</div>
       {records.length===0 && <div style={{color:C.muted,fontSize:13}}>No records yet.</div>}
       {records.slice(0,10).map(r=>{
-        const typeMap={production:C.accent,viscosity:C.blue,printingqc:C.success,lamination:"#9b59b6",laminationqc:"#27ae60",extruder1:"#e67e22",extruder1qc:"#d35400",extruder2:"#16a085",extruder2qc:"#1abc9c",slitting1:"#8e44ad",slitting1qc:"#6c3483",slitting2:"#2471a3",slitting2qc:"#1a5276"};
-        const iconMap={production:"▤",viscosity:"◉",printingqc:"✓",lamination:"⬡",laminationqc:"✦",extruder1:"▣",extruder1qc:"✧",extruder2:"▣",extruder2qc:"✧",slitting1:"⊟",slitting1qc:"⊠",slitting2:"⊟",slitting2qc:"⊠"};
+        const typeMap={production:C.accent,viscosity:C.blue,printingqc:C.success,lamination:"#9b59b6",laminationqc:"#27ae60",extruder1:"#e67e22",extruder1qc:"#d35400",extruder2:"#16a085",extruder2qc:"#1abc9c",slitting1:"#8e44ad",slitting1qc:"#6c3483",slitting2:"#2471a3",slitting2qc:"#1a5276",bagmaking1:"#c0392b",bagmaking1qc:"#922b21",bagmaking2:"#d68910",bagmaking2qc:"#b7770d",bagmaking3:"#1e8bc3",bagmaking3qc:"#1a6fa0",bagmaking4:"#27ae60",bagmaking4qc:"#1e8449"};
+        const iconMap={production:"▤",viscosity:"◉",printingqc:"✓",lamination:"⬡",laminationqc:"✦",extruder1:"▣",extruder1qc:"✧",extruder2:"▣",extruder2qc:"✧",slitting1:"⊟",slitting1qc:"⊠",slitting2:"⊟",slitting2qc:"⊠",bagmaking1:"◫",bagmaking1qc:"◻",bagmaking2:"◫",bagmaking2qc:"◻",bagmaking3:"◫",bagmaking3qc:"◻",bagmaking4:"◫",bagmaking4qc:"◻"};
         const color=typeMap[r.type]||C.muted;
         const icon=iconMap[r.type]||"▪";
         return <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
@@ -920,6 +946,42 @@ function exportToExcel(records) {
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Slitting ${m} QC`);
     }
   });
+  // ── Bag Making 1–4
+  [1,2,3,4].forEach(m=>{
+    const bmRecs = records.filter(r=>r.type===`bagmaking${m}`);
+    if (bmRecs.length) {
+      const rows = [];
+      bmRecs.forEach(r=>{
+        const h=r.data?.header||{};
+        rows.push(["Date","Time","Shift","Job No","Customer","Product Name","Operator","Batch Code","PCS/Box"]);
+        rows.push([h.date,h.time,h.shift,h.jobNo,h.customer,h.productName,h.operator,h.bagMakingBatchCode,h.pcsPerBox]);
+        rows.push([]);
+        if ((r.data?.unwindARows||[]).length){rows.push(["-- Unwind A --","Batch No","KG","Metres"]);(r.data.unwindARows||[]).forEach(x=>rows.push(["",x.batchNo,x.kg,x.metres]));}
+        if ((r.data?.unwindBRows||[]).length){rows.push(["-- Unwind B --","Batch No","KG","Metres"]);(r.data.unwindBRows||[]).forEach(x=>rows.push(["",x.batchNo,x.kg,x.metres]));}
+        if ((r.data?.batchRows||[]).length){rows.push(["-- Batch Codes --","Batch Code","Boxes Produced"]);(r.data.batchRows||[]).forEach(x=>rows.push(["",x.batchCode,x.boxesProduced]));}
+        if ((r.data?.outputRows||[]).length){rows.push(["-- Output Stock --","Pallet Code","Qty"]);(r.data.outputRows||[]).forEach(x=>rows.push(["",x.palletCode,x.qty]));}
+        rows.push(["Side Tape",r.data?.sideTape||"","Waste",r.data?.waste||"","Blade Change",r.data?.bladeChange||"","Sign",r.data?.sign||""]);
+        if ((r.data?.openerRows||[]).length){rows.push(["-- Bag Openers --","Name","Amount Opened","Box Number"]);(r.data.openerRows||[]).forEach(x=>rows.push(["",x.openerName,x.amountOpened,x.boxNumber]));}
+        rows.push(["Remarks",r.data?.remarks||""]);
+        rows.push(["---"]);
+      });
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Bag Making ${m}`);
+    }
+    const bmQcRecs = records.filter(r=>r.type===`bagmaking${m}qc`);
+    if (bmQcRecs.length) {
+      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
+      bmQcRecs.forEach(r=>{
+        const h=r.data?.header||{};
+        (r.data?.checks||[]).forEach((c,i)=>{
+          rows.push([i===0?r.created_by:"",i===0?h.date:"",i===0?h.shift:"",i===0?h.jobNo:"",
+            i===0?h.customer:"",i===0?h.productName:"",i===0?h.operator:"",i===0?h.inspector:"",
+            i+1,c.label,c.result,c.comment||"",i===0?r.data?.overallResult:""]);
+        });
+        rows.push(["---"]);
+      });
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Bag Making ${m} QC`);
+    }
+  });
   XLSX.writeFile(wb, `Concord-Traceability-${new Date().toISOString().split("T")[0]}.xlsx`);
 }
 
@@ -933,11 +995,13 @@ function Records({ records, session, onDelete, onSave }) {
   return <div>
     <PH title="All Records" sub={`${records.length} records shared across all devices`} />
     <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
-      {["all","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc"].map(f=>(
-        <button key={f} onClick={()=>setFilter(f)} style={S.btn(filter===f?"accent":"ghost",{padding:"6px 14px",fontSize:11})}>
-          {{"all":"All","production":"Production","viscosity":"Viscosity QC","printingqc":"Printing QC","lamination":"Lamination","laminationqc":"Lamination QC","extruder1":"Extruder 1","extruder1qc":"Extruder 1 QC","extruder2":"Extruder 2","extruder2qc":"Extruder 2 QC","slitting1":"Slitting 1","slitting1qc":"Slitting 1 QC","slitting2":"Slitting 2","slitting2qc":"Slitting 2 QC"}[f]}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {["all","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc"].map(f=>(
+        <button key={f} onClick={()=>setFilter(f)} style={S.btn(filter===f?"accent":"ghost",{padding:"5px 12px",fontSize:10})}>
+          {{"all":"All","production":"Printing","viscosity":"Viscosity QC","printingqc":"Printing QC","lamination":"Lamination","laminationqc":"Lam QC","extruder1":"Extruder 1","extruder1qc":"Ext 1 QC","extruder2":"Extruder 2","extruder2qc":"Ext 2 QC","slitting1":"Slitting 1","slitting1qc":"Slit 1 QC","slitting2":"Slitting 2","slitting2qc":"Slit 2 QC","bagmaking1":"Bag 1","bagmaking1qc":"Bag 1 QC","bagmaking2":"Bag 2","bagmaking2qc":"Bag 2 QC","bagmaking3":"Bag 3","bagmaking3qc":"Bag 3 QC","bagmaking4":"Bag 4","bagmaking4qc":"Bag 4 QC"}[f]}
         </button>
       ))}
+      </div>
       <input style={{...S.input,width:220,padding:"6px 12px"}} value={search} placeholder="Search…" onChange={e=>setSearch(e.target.value)} />
       <div style={{flex:1}} />
       <button style={S.btn("accent",{padding:"6px 16px",fontSize:11,background:C.success})} onClick={()=>exportToExcel(filtered)}>
@@ -1217,6 +1281,14 @@ const SHEET_OPTIONS = [
   {id:"slitting1qc", label:"Slitting 1 QC"},
   {id:"slitting2",   label:"Slitting 2 Daily Production"},
   {id:"slitting2qc", label:"Slitting 2 QC"},
+  {id:"bagmaking1",  label:"Bag Making 1 Daily Production"},
+  {id:"bagmaking1qc",label:"Bag Making 1 QC"},
+  {id:"bagmaking2",  label:"Bag Making 2 Daily Production"},
+  {id:"bagmaking2qc",label:"Bag Making 2 QC"},
+  {id:"bagmaking3",  label:"Bag Making 3 Daily Production"},
+  {id:"bagmaking3qc",label:"Bag Making 3 QC"},
+  {id:"bagmaking4",  label:"Bag Making 4 Daily Production"},
+  {id:"bagmaking4qc",label:"Bag Making 4 QC"},
   {id:"lists",       label:"Lists / Settings"},
   {id:"password",    label:"Change Password"},
 ];
@@ -2032,6 +2104,253 @@ function SlittingQCForm({ onSave, users=[], lists={}, machine=1 }) {
   </div>;
 }
 
+
+// ── Bag Making Daily Production Sheet ────────────────────────────────────────
+const eBagUnwind  = ()=>({batchNo:"",kg:"",metres:""});
+const eBagBatch   = ()=>({batchCode:"",boxesProduced:""});
+const eBagOpener  = ()=>({openerName:"",amountOpened:"",boxNumber:""});
+const eBagOutput  = ()=>({palletCode:"",qty:""});
+
+function BagMakingForm({ onSave, users=[], lists={}, machine=1 }) {
+  const [hdr,setHdr]            = useState({date:todayStr(),time:"",shift:"",jobNo:"",customer:"",productName:"",pcsPerBox:"",bagMakingBatchCode:""});
+  const [unwindARows,setUnwindA]= useState([eBagUnwind()]);
+  const [unwindBRows,setUnwindB]= useState([eBagUnwind()]);
+  const [batchRows, setBatch]   = useState([eBagBatch(),eBagBatch(),eBagBatch()]);
+  const [openerRows,setOpener]  = useState([eBagOpener()]);
+  const [outputRows,setOutput]  = useState([eBagOutput()]);
+  const [sideTape,  setSideTape]= useState("");
+  const [waste,     setWaste]   = useState("");
+  const [bladeChange,setBladeChange]= useState("");
+  const [sign,      setSign]    = useState("");
+  const [remarks,   setRemarks] = useState("");
+  const [saved,     setSaved]   = useState(false);
+
+  const operatorNames = (lists.operator||[]).length>0
+    ? (lists.operator||[]).map(String).filter(Boolean)
+    : users.filter(u=>u.role==="operator").map(u=>u.name);
+  const bagOpenerNames = (lists.bag_opener||[]).map(String).filter(Boolean);
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
+  const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
+  const aa = (fn,e)=>fn(a=>[...a,e()]);
+  const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
+
+  if (saved) return <Done label={`Bag Making ${machine} Production Sheet`} reset={()=>setSaved(false)} />;
+  const save = async()=>{
+    if (!validate({
+      shift:   {value:hdr.shift,   label:"Shift"},
+      jobNo:   {value:hdr.jobNo,   label:"Job Card No."},
+      customer:{value:hdr.customer,label:"Customer"},
+    })) return;
+    await onSave({
+      type:`bagmaking${machine}`,
+      title:`Bag Making ${machine} · ${hdr.jobNo||hdr.date} · ${hdr.date}`,
+      data:{header:hdr,unwindARows,unwindBRows,batchRows,openerRows,outputRows,sideTape,waste,bladeChange,sign,remarks}
+    });
+    setSaved(true);
+  };
+
+  return <div>
+    <PH title={`Bag Making ${machine} (Cut) Daily Production Sheet`} sub="Bag making traceability — unwind stock, batch codes, output and bag opener details" />
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
+
+    <SC title="Job Details">
+      <Grid cols={4}>
+        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+        <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+        <F label="Operator"><TS value={hdr.operator||""} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
+        <F label="Bag Making Batch Code"><TI value={hdr.bagMakingBatchCode} onChange={v=>h("bagMakingBatchCode",v)} /></F>
+        <F label="PCS Per Box"><TI type="number" value={hdr.pcsPerBox} onChange={v=>h("pcsPerBox",v)} /></F>
+      </Grid>
+    </SC>
+
+    <SC title="Input Stock Received from Warehouse — Unwind A">
+      <THead cols={["Batch No.","KG","Metres",""]} widths={["2fr","1fr","1fr","40px"]} />
+      {unwindARows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.batchNo} onChange={v=>as(setUnwindA,i,"batchNo",v)} placeholder="Batch No." />
+          <TI type="number" value={r.kg}     onChange={v=>as(setUnwindA,i,"kg",v)} />
+          <TI type="number" value={r.metres} onChange={v=>as(setUnwindA,i,"metres",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setUnwindA,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setUnwindA,eBagUnwind)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Input Stock Received from Warehouse — Unwind B">
+      <THead cols={["Batch No.","KG","Metres",""]} widths={["2fr","1fr","1fr","40px"]} />
+      {unwindBRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.batchNo} onChange={v=>as(setUnwindB,i,"batchNo",v)} placeholder="Batch No." />
+          <TI type="number" value={r.kg}     onChange={v=>as(setUnwindB,i,"kg",v)} />
+          <TI type="number" value={r.metres} onChange={v=>as(setUnwindB,i,"metres",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setUnwindB,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setUnwindB,eBagUnwind)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Boxes Produced — Batch Codes">
+      <THead cols={["Bag Making Batch Code","Boxes Produced",""]} widths={["2fr","1.5fr","40px"]} />
+      {batchRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.batchCode}      onChange={v=>as(setBatch,i,"batchCode",v)} placeholder={`e.g. BR${539+i}`} />
+          <TI type="number" value={r.boxesProduced} onChange={v=>as(setBatch,i,"boxesProduced",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setBatch,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setBatch,eBagBatch)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Output Stock to Warehouse — Loaded onto Pallet">
+      <THead cols={["Pallet Code","Qty (Boxes)",""]} widths={["2fr","1.5fr","40px"]} />
+      {outputRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TI value={r.palletCode} onChange={v=>as(setOutput,i,"palletCode",v)} placeholder="Pallet code" />
+          <TI type="number" value={r.qty} onChange={v=>as(setOutput,i,"qty",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setOutput,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setOutput,eBagOutput)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Slit / Waste / Blade Change">
+      <Grid cols={3}>
+        <F label="Side Tape"><TI value={sideTape} onChange={v=>setSideTape(v)} /></F>
+        <F label="Waste"><TI value={waste} onChange={v=>setWaste(v)} /></F>
+        <F label="Blade Change"><TI value={bladeChange} onChange={v=>setBladeChange(v)} /></F>
+      </Grid>
+    </SC>
+
+    <SC title="Sign">
+      <TI value={sign} onChange={v=>setSign(v)} placeholder="Operator signature / initials" />
+    </SC>
+
+    <SC title="Name of Bag Opener, Amount Opened and Box Number">
+      <THead cols={["Bag Opener Name","Amount Opened","Box Number",""]} widths={["2fr","1.5fr","1.5fr","40px"]} />
+      {openerRows.map((r,i)=>(
+        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+          <TS value={r.openerName}    onChange={v=>as(setOpener,i,"openerName",v)}    options={["", ...bagOpenerNames]} />
+          <TI value={r.amountOpened}  onChange={v=>as(setOpener,i,"amountOpened",v)} />
+          <TI value={r.boxNumber}     onChange={v=>as(setOpener,i,"boxNumber",v)} />
+          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setOpener,i)}>✕</button>
+        </div>
+      ))}
+      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setOpener,eBagOpener)}>+ Add Row</button>
+    </SC>
+
+    <SC title="Remarks">
+      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+    </SC>
+
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>
+      💾 Save Bag Making {machine} Sheet
+    </button>
+  </div>;
+}
+
+// ── Bag Making QC Form ────────────────────────────────────────────────────────
+function BagMakingQCForm({ onSave, users=[], lists={}, machine=1 }) {
+  const checkLabels = (lists.bagmaking_qc_checks||[]).map(String).filter(Boolean);
+  const [hdr,setHdr]       = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
+  const [checks,setChecks] = useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
+  const [overall,setOverall]= useState("");
+  const [remarks,setRemarks]= useState("");
+  const [saved,setSaved]    = useState(false);
+  const operatorNames = (lists.operator||[]).length>0
+    ? (lists.operator||[]).map(String).filter(Boolean)
+    : users.filter(u=>u.role==="operator").map(u=>u.name);
+  const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
+  const sc = (i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
+  React.useEffect(()=>{ setChecks(checkLabels.map(label=>({label,result:"",comment:""})));  },[checkLabels.join("|")]);
+  const passC=checks.filter(c=>c.result==="Pass").length;
+  const failC=checks.filter(c=>c.result==="Fail").length;
+  const naC  =checks.filter(c=>c.result==="N/A").length;
+  if (saved) return <Done label={`Bag Making ${machine} QC`} reset={()=>setSaved(false)} />;
+  const save=async()=>{
+    if (!validate({
+      shift:    {value:hdr.shift,    label:"Shift"},
+      jobNo:    {value:hdr.jobNo,    label:"Job No."},
+      customer: {value:hdr.customer, label:"Customer"},
+      operator: {value:hdr.operator, label:"Operator"},
+      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
+    })) return;
+    await onSave({type:`bagmaking${machine}qc`,title:`Bag Making ${machine} QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks,machine}});
+    setSaved(true);
+  };
+  return <div>
+    <PH title={`Bag Making ${machine} QC Form`} sub="Complete all check items then set the overall result" />
+    {checkLabels.length===0 && (
+      <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
+        ⚠ No check items configured yet. Go to <strong>Lists / Settings → Bag Making QC Checks</strong> to add them.
+      </div>
+    )}
+    {Object.keys(fErr).length>0 && (
+      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
+        ⚠ Please complete all required fields before saving.
+      </div>
+    )}
+    <SC title="Run Details">
+      <Grid cols={4}>
+        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
+      </Grid>
+    </SC>
+    {checks.length>0 && (
+      <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
+        <THead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","150px","2fr"]} />
+        {checks.map((c,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
+            <div style={{fontSize:12,color:C.text}}>{c.label}</div>
+            <div style={{display:"flex",gap:4}}>
+              {["Pass","Fail","N/A"].map(opt=>(
+                <button key={opt} onClick={()=>sc(i,"result",opt)} style={{
+                  flex:1,padding:"5px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
+                  background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
+                  color:c.result===opt?"#fff":C.muted,
+                  outline:c.result===opt?"none":`1px solid ${C.border}`,transition:"all 0.1s",
+                }}>{opt}</button>
+              ))}
+            </div>
+            <input style={{...S.input,padding:"5px 8px"}} value={c.comment} placeholder="Add comment…" onChange={e=>sc(i,"comment",e.target.value)} />
+          </div>
+        ))}
+      </SC>
+    )}
+    <SC title="Overall Assessment">
+      <div style={{display:"flex",gap:12,marginBottom:16}}>
+        {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
+          <button key={opt} onClick={()=>setOverall(opt)} style={{
+            flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:"0.04em",
+            background:overall===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
+            color:overall===opt?"#fff":C.muted,
+            outline:overall===opt?"none":`1px solid ${C.border}`,transition:"all 0.12s",
+          }}>{opt}</button>
+        ))}
+      </div>
+      <label style={S.label}>Remarks</label>
+      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+    </SC>
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Bag Making {machine} QC</button>
+  </div>;
+}
+
 // ── Login Log ─────────────────────────────────────────────────────────────────
 function LoginLog({ loginLog }) {
   const [search, setSearch] = useState("");
@@ -2180,7 +2499,7 @@ function ListsManager({ appLists, reload, flash }) {
   const [saving,     setSaving]     = useState(false);
 
   const isInkCode   = activeList === "ink_code";
-  const isChecklist = ["printing_qc_checks","lamination_qc_checks","extruder_qc_checks","slitting_qc_checks"].includes(activeList);
+  const isChecklist = ["printing_qc_checks","lamination_qc_checks","extruder_qc_checks","slitting_qc_checks","bagmaking_qc_checks"].includes(activeList);
 
   React.useEffect(()=>{
     const raw = appLists[activeList] || [];
