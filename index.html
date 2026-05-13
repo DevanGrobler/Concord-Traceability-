@@ -88,6 +88,46 @@ const dbMoveToTrash= async (rec,deletedBy)=>sb.from("trash").insert({...rec,dele
 const dbRestoreRec = async (rec)=>{ await sb.from("records").insert({id:rec.id,type:rec.type,title:rec.title,data:rec.data,created_by:rec.created_by,created_at:rec.created_at}); await sb.from("trash").delete().eq("id",rec.id); };
 const dbEmptyTrash = async id=>sb.from("trash").delete().eq("id",id);
 
+// ── Job Card DB helpers ──────────────────────────────────────────────────────
+const dbFindOpenJobCard = async (type,jobNo)=>{
+  const {data}=await sb.from("job_cards").select("*")
+    .eq("type",type).eq("job_no",jobNo).eq("status","open").maybeSingle();
+  return data||null;
+};
+const dbCreateJobCard = async (type,jobNo,header,createdBy)=>{
+  const {data,error}=await sb.from("job_cards").insert({
+    type,job_no:jobNo,header,status:"open",
+    created_by:createdBy,created_at:new Date().toISOString()
+  }).select().single();
+  return {data,error};
+};
+const dbGetJobTransactions = async (jobCardId)=>{
+  const {data}=await sb.from("job_transactions").select("*")
+    .eq("job_card_id",jobCardId).order("saved_at",{ascending:true});
+  return data||[];
+};
+const dbSaveTransaction = async (jobCardId,section,rowData,savedBy)=>{
+  const {data,error}=await sb.from("job_transactions").insert({
+    job_card_id:jobCardId,section,row_data:rowData,
+    saved_by:savedBy,saved_at:new Date().toISOString()
+  }).select().single();
+  return {data,error};
+};
+const dbCompleteJobCard = async (jobCardId,completedBy,completionNote)=>{
+  return sb.from("job_cards").update({
+    status:"completed",completed_by:completedBy,
+    completed_at:new Date().toISOString(),
+    completion_note:completionNote
+  }).eq("id",jobCardId);
+};
+const dbReopenJobCard = async (jobCardId,reopenedBy)=>{
+  return sb.from("job_cards").update({
+    status:"open",completed_by:null,completed_at:null,
+    reopened_by:reopenedBy,reopened_at:new Date().toISOString()
+  }).eq("id",jobCardId);
+};
+const dbDeleteTransaction = async (txId)=>sb.from("job_transactions").delete().eq("id",txId);
+
 // ── Lists DB helpers ─────────────────────────────────────────────────────────
 const dbGetLists  = async ()=>{ const {data}=await sb.from("lists").select("*").order("list_name"); return data||[]; };
 const dbUpsertList= async (list_name,items)=>sb.from("lists").upsert({list_name,items},{onConflict:"list_name"});
@@ -286,6 +326,13 @@ function Main({ session, users, records, trashed, loginLog, appLists, onLogout, 
   const restoreRecord = async rec => { await dbRestoreRec(rec); await reload(); flash("Record restored."); };
   const permDelete    = async id  => { await dbEmptyTrash(id); await reload(); flash("Permanently deleted."); };
   const saveRecord = async (id,data) => { await sb.from("records").update({data}).eq("id",id); await reload(); flash("Record updated."); };
+  const reopenJobCard = async (jobCardId, recordId) => {
+    if (!window.confirm("Reopen this job card? It will be removed from All Records and set back to open.")) return;
+    await dbReopenJobCard(jobCardId, session.name);
+    await dbDelRec(recordId);
+    await reload();
+    flash("Job card reopened.");
+  };
   const rc = r=>r==="admin"?C.accent2:r==="manager"?C.accent:r==="qc"?C.blue:r==="viewer"?C.muted:C.success;
 
   const visibleTabs = getTabs(session);
@@ -325,28 +372,28 @@ function Main({ session, users, records, trashed, loginLog, appLists, onLogout, 
         </div>}
         {/* Forms are always mounted but hidden — preserves state when switching tabs */}
         <div style={{display:tab==="dashboard" ?"block":"none"}}><Dashboard records={records} session={session} /></div>
-        <div style={{display:tab==="production"?"block":"none"}}><ProductionForm onSave={addRecord} users={users} lists={appLists} /></div>
-        <div style={{display:tab==="viscosity" ?"block":"none"}}><ViscosityForm  onSave={addRecord} users={users} lists={appLists} /></div>
-        <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm onSave={addRecord} users={users} lists={appLists} /></div>
-        <div style={{display:tab==="lamination" ?"block":"none"}}><LaminationForm    onSave={addRecord} users={users} lists={appLists} /></div>
-        <div style={{display:tab==="laminationqc"?"block":"none"}}><LaminationQCForm onSave={addRecord} users={users} lists={appLists} /></div>
-        <div style={{display:tab==="extruder1"   ?"block":"none"}}><ExtruderForm     onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
-        <div style={{display:tab==="extruder1qc" ?"block":"none"}}><ExtruderQCForm   onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
-        <div style={{display:tab==="extruder2"   ?"block":"none"}}><ExtruderForm     onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
-        <div style={{display:tab==="extruder2qc" ?"block":"none"}}><ExtruderQCForm   onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
-        <div style={{display:tab==="slitting1"   ?"block":"none"}}><SlittingForm     onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
-        <div style={{display:tab==="slitting1qc" ?"block":"none"}}><SlittingQCForm   onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
-        <div style={{display:tab==="slitting2"   ?"block":"none"}}><SlittingForm     onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
-        <div style={{display:tab==="slitting2qc" ?"block":"none"}}><SlittingQCForm   onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
-        <div style={{display:tab==="bagmaking1"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
-        <div style={{display:tab==="bagmaking1qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={1} /></div>
-        <div style={{display:tab==="bagmaking2"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
-        <div style={{display:tab==="bagmaking2qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={2} /></div>
-        <div style={{display:tab==="bagmaking3"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={3} /></div>
-        <div style={{display:tab==="bagmaking3qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={3} /></div>
-        <div style={{display:tab==="bagmaking4"  ?"block":"none"}}><BagMakingForm    onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
-        <div style={{display:tab==="bagmaking4qc"?"block":"none"}}><BagMakingQCForm  onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
-        <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} /></div>
+        <div style={{display:tab==="production"?"block":"none"}}><ProductionForm session={session} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="viscosity" ?"block":"none"}}><ViscosityForm  session={session} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="printingqc"?"block":"none"}}><PrintingQCForm session={session} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="lamination" ?"block":"none"}}><LaminationForm    session={session} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="laminationqc"?"block":"none"}}><LaminationQCForm session={session} users={users} lists={appLists} /></div>
+        <div style={{display:tab==="extruder1"   ?"block":"none"}}><ExtruderForm     session={session} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="extruder1qc" ?"block":"none"}}><ExtruderQCForm   session={session} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="extruder2"   ?"block":"none"}}><ExtruderForm     session={session} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="extruder2qc" ?"block":"none"}}><ExtruderQCForm   session={session} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="slitting1"   ?"block":"none"}}><SlittingForm     session={session} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="slitting1qc" ?"block":"none"}}><SlittingQCForm   session={session} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="slitting2"   ?"block":"none"}}><SlittingForm     session={session} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="slitting2qc" ?"block":"none"}}><SlittingQCForm   session={session} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="bagmaking1"  ?"block":"none"}}><BagMakingForm    session={session} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="bagmaking1qc"?"block":"none"}}><BagMakingQCForm  session={session} users={users} lists={appLists} machine={1} /></div>
+        <div style={{display:tab==="bagmaking2"  ?"block":"none"}}><BagMakingForm    session={session} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="bagmaking2qc"?"block":"none"}}><BagMakingQCForm  session={session} users={users} lists={appLists} machine={2} /></div>
+        <div style={{display:tab==="bagmaking3"  ?"block":"none"}}><BagMakingForm    session={session} users={users} lists={appLists} machine={3} /></div>
+        <div style={{display:tab==="bagmaking3qc"?"block":"none"}}><BagMakingQCForm  session={session} users={users} lists={appLists} machine={3} /></div>
+        <div style={{display:tab==="bagmaking4"  ?"block":"none"}}><BagMakingForm    session={session} users={users} lists={appLists} machine={4} /></div>
+        <div style={{display:tab==="bagmaking4qc"?"block":"none"}}><BagMakingQCForm  session={session} users={users} lists={appLists} machine={4} /></div>
+        <div style={{display:tab==="records"   ?"block":"none"}}><Records records={records} session={session} onDelete={delRecord} onSave={saveRecord} onReopen={reopenJobCard} /></div>
         <div style={{display:tab==="users"     ?"block":"none"}}><UserMgmt users={users} session={session} reload={reload} flash={flash} /></div>
         <div style={{display:tab==="trash"     ?"block":"none"}}><TrashBin trashed={trashed} onRestore={restoreRecord} onPermDelete={permDelete} /></div>
         <div style={{display:tab==="loginlog"  ?"block":"none"}}><LoginLog loginLog={loginLog} /></div>
@@ -458,6 +505,202 @@ function Done({ label, reset }) {
   </div>;
 }
 
+
+// ── Job Card Shell ────────────────────────────────────────────────────────────
+// Shared wrapper for all forms. Handles: find/create job card, live transactions,
+// complete with summary, admin reopen.
+
+function JobCardShell({ type, formLabel, session, lists, users, onComplete, children }) {
+  // children is a render prop: children({ jc, txns, saveRow, phase })
+  const [phase, setPhase]     = useState("lookup");   // lookup | header | active | summary | done
+  const [jobNo, setJobNo]     = useState("");
+  const [searching,setSearching]= useState(false);
+  const [jc, setJc]           = useState(null);       // current job card row
+  const [txns, setTxns]       = useState([]);         // saved transactions
+  const [headerData,setHeaderData]= useState({});
+  const [summaryNote,setSummaryNote]= useState("");
+  const [saving,setSaving]    = useState(false);
+  const [err,setErr]          = useState("");
+
+  // Lookup job card by jobNo
+  const lookup = async () => {
+    if (!jobNo.trim()) { setErr("Please enter a Job No."); return; }
+    setSearching(true); setErr("");
+    const found = await dbFindOpenJobCard(type, jobNo.trim());
+    if (found) {
+      const txList = await dbGetJobTransactions(found.id);
+      setJc(found); setTxns(txList); setHeaderData(found.header||{});
+      setPhase("active");
+    } else {
+      setPhase("header");
+    }
+    setSearching(false);
+  };
+
+  // Create new job card with header
+  const startJobCard = async (header) => {
+    setSaving(true); setErr("");
+    const {data,error} = await dbCreateJobCard(type, jobNo.trim(), header, session.name);
+    if (error) { setErr("Could not create job card: "+error.message); setSaving(false); return; }
+    setJc(data); setHeaderData(header); setTxns([]); setPhase("active");
+    setSaving(false);
+  };
+
+  // Save a single row transaction
+  const saveRow = async (section, rowData) => {
+    if (!jc) return null;
+    const {data,error} = await dbSaveTransaction(jc.id, section, rowData, session.name);
+    if (error) { setErr("Save failed: "+error.message); return null; }
+    setTxns(prev=>[...prev,data]);
+    return data;
+  };
+
+  // Delete a transaction row (admin only)
+  const deleteRow = async (txId) => {
+    await dbDeleteTransaction(txId);
+    setTxns(prev=>prev.filter(t=>t.id!==txId));
+  };
+
+  // Complete job card — show summary first
+  const requestComplete = () => { setSummaryNote(""); setPhase("summary"); };
+
+  const confirmComplete = async () => {
+    setSaving(true);
+    await dbCompleteJobCard(jc.id, session.name, summaryNote);
+    // Also save to records table for All Records view
+    const grouped = {};
+    txns.forEach(t=>{ if(!grouped[t.section]) grouped[t.section]=[]; grouped[t.section].push(t.row_data); });
+    await sb.from("records").insert({
+      type, title:`${formLabel} · ${jc.job_no} · ${jc.created_at?.split("T")[0]}`,
+      data:{header:headerData, transactions:grouped, completionNote:summaryNote, jobCardId:jc.id},
+      created_by:session.name, created_at:new Date().toISOString()
+    });
+    setSaving(false);
+    setPhase("done");
+    if (onComplete) onComplete();
+  };
+
+  const fmtTime = iso => iso ? new Date(iso).toLocaleString("en-ZA",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "";
+
+  // ── LOOKUP SCREEN ──
+  if (phase==="lookup") return (
+    <div>
+      <PH title={formLabel} sub="Enter a Job No. to continue an existing job card or start a new one" />
+      <SC title="Job No. Lookup">
+        <div style={{display:"flex",gap:10,alignItems:"flex-end",maxWidth:480}}>
+          <F label="Job No.">
+            <TI value={jobNo} onChange={v=>{setJobNo(v);setErr("");}}
+              placeholder="e.g. CPK-0001"
+              onKeyDown={e=>e.key==="Enter"&&lookup()} />
+          </F>
+          <button style={{...S.btn("accent"),padding:"8px 24px",fontSize:13,flexShrink:0,marginBottom:1}}
+            onClick={lookup} disabled={searching}>
+            {searching?"Searching…":"→ Open"}
+          </button>
+        </div>
+        {err && <div style={{color:C.danger,fontSize:12,marginTop:8}}>{err}</div>}
+        <div style={{color:C.muted,fontSize:11,marginTop:12}}>
+          If this Job No. already has an open card, it will load it. Otherwise you'll set up a new one.
+        </div>
+      </SC>
+    </div>
+  );
+
+  // ── DONE SCREEN ──
+  if (phase==="done") return (
+    <div>
+      <PH title={formLabel} sub="Job card completed" />
+      <div style={{...S.card,textAlign:"center",padding:40}}>
+        <div style={{fontSize:36,marginBottom:12}}>✅</div>
+        <div style={{fontSize:18,fontWeight:700,color:C.success,marginBottom:8}}>Job Card Completed</div>
+        <div style={{color:C.muted,fontSize:13,marginBottom:24}}>
+          Job No. <strong style={{color:C.text}}>{jc?.job_no}</strong> has been finalised and saved to All Records.
+        </div>
+        <button style={{...S.btn("accent"),padding:"10px 28px"}}
+          onClick={()=>{setPhase("lookup");setJobNo("");setJc(null);setTxns([]);setHeaderData({});}}>
+          Start Another Job Card
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── SUMMARY/COMPLETE SCREEN ──
+  if (phase==="summary") {
+    const grouped = {};
+    txns.forEach(t=>{ if(!grouped[t.section]) grouped[t.section]=[]; grouped[t.section].push(t); });
+    return (
+      <div>
+        <PH title={`Complete Job Card — ${jc?.job_no}`} sub="Review all transactions before finalising" />
+        <SC title="Job Card Header">
+          <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
+            {Object.entries(headerData||{}).map(([k,v])=>v?(
+              <div key={k} style={{minWidth:120}}>
+                <div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{k.replace(/([A-Z])/g," $1")}</div>
+                <div style={{fontSize:13,color:C.text}}>{String(v)}</div>
+              </div>
+            ):null)}
+          </div>
+        </SC>
+        {Object.entries(grouped).map(([section,rows])=>(
+          <SC key={section} title={section}>
+            {rows.map((t,i)=>(
+              <div key={i} style={{padding:"8px 10px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{fontSize:10,color:C.muted,whiteSpace:"nowrap"}}>
+                  {fmtTime(t.saved_at)} · <span style={{color:C.accent}}>{t.saved_by}</span>
+                </span>
+                {Object.entries(t.row_data||{}).map(([k,v])=>v?(
+                  <span key={k} style={{fontSize:12}}>
+                    <span style={{color:C.muted,fontSize:10}}>{k}: </span>
+                    <span style={{color:C.text}}>{String(v)}</span>
+                  </span>
+                ):null)}
+              </div>
+            ))}
+          </SC>
+        ))}
+        {txns.length===0 && <div style={{color:C.warn,fontSize:13,marginBottom:16,padding:"12px 16px",background:C.warn+"22",borderRadius:8,border:`1px solid ${C.warn}`}}>⚠ No transactions saved yet on this job card.</div>}
+        <SC title="Completion Note (optional)">
+          <textarea style={{...S.input,minHeight:60,resize:"vertical"}} value={summaryNote}
+            onChange={e=>setSummaryNote(e.target.value)} placeholder="Any final notes or sign-off remarks…" />
+        </SC>
+        <div style={{display:"flex",gap:12}}>
+          <button style={{...S.btn("ghost"),padding:"12px 28px"}} onClick={()=>setPhase("active")}>← Back</button>
+          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={confirmComplete} disabled={saving}>
+            {saving?"Saving…":"✅ Confirm Complete Job Card"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── HEADER SETUP (new job card) ──
+  if (phase==="header") return (
+    <div>
+      <PH title={`New Job Card — ${jobNo}`} sub={`Set up the header for this ${formLabel} job card`} />
+      {children({phase:"header", jobNo, startJobCard, saving, lists, users, session})}
+    </div>
+  );
+
+  // ── ACTIVE (live capture) ──
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,padding:"10px 16px",
+        background:C.panel,borderRadius:8,border:`1px solid ${C.border}`}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,color:C.muted,fontWeight:700}}>OPEN JOB CARD</div>
+          <div style={{fontSize:15,fontWeight:700,color:C.accent}}>{jc?.job_no}</div>
+          <div style={{fontSize:11,color:C.muted}}>Started by {jc?.created_by} · {fmtTime(jc?.created_at)} · {txns.length} transaction{txns.length!==1?"s":""} saved</div>
+        </div>
+        <button style={{...S.btn("accent"),padding:"8px 22px",fontSize:13}} onClick={requestComplete}>
+          ✅ Complete Job Card
+        </button>
+      </div>
+      {err && <div style={{color:C.danger,fontSize:12,marginBottom:10}}>{err}</div>}
+      {children({phase:"active", jobNo, jc, txns, saveRow, deleteRow, setErr, lists, users, session})}
+    </div>
+  );
+}
+
 // ── Validation helper ────────────────────────────────────────────────────────
 function useFormValidation() {
   const [errors, setErrors] = React.useState({});
@@ -478,1632 +721,640 @@ function ErrMsg({ msg }) {
   return <div style={{color:C.danger,fontSize:10,marginTop:2,fontWeight:600}}>{msg}</div>;
 }
 
+// ── Transaction Row display helper ───────────────────────────────────────────
+function TxnList({ txns, section, session, deleteRow, columns }) {
+  const rows = txns.filter(t=>t.section===section);
+  if (!rows.length) return null;
+  return (
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:10,color:C.muted,fontWeight:700,marginBottom:6,letterSpacing:"0.05em"}}>SAVED ENTRIES</div>
+      {rows.map((t,i)=>(
+        <div key={t.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",
+          background:C.bg,borderRadius:6,border:`1px solid ${C.border}`,marginBottom:4,flexWrap:"wrap"}}>
+          <span style={{fontSize:10,color:C.muted,whiteSpace:"nowrap",flexShrink:0}}>
+            {new Date(t.saved_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit"})}
+            {" · "}<span style={{color:C.accent}}>{t.saved_by}</span>
+          </span>
+          {columns.map(col=>(t.row_data[col.key]!=null&&t.row_data[col.key]!=="")?
+            <span key={col.key} style={{fontSize:12}}>
+              <span style={{color:C.muted,fontSize:10}}>{col.label}: </span>
+              <span style={{color:C.text,fontWeight:600}}>{String(t.row_data[col.key])}</span>
+            </span>
+          :null)}
+          {session?.role==="admin" && deleteRow && (
+            <button style={{...S.btn("danger",{padding:"1px 7px",fontSize:10}),marginLeft:"auto",flexShrink:0}}
+              onClick={()=>deleteRow(t.id)}>✕</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Production Form ───────────────────────────────────────────────────────────
 const eP=()=>({material:"",batchNo:"",qty:"",unit:""});
 const eI=()=>({inkCode:"",shade:"",supplier:"",qty:"",returned:""});
 const eS=()=>({solvent:"",qty:"",returned:""});
 
-function ProductionForm({ onSave, users=[], lists={} }) {
-  const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""});
-  const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
-  const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eS()]);
-  const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
+function ProductionFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow, deleteRow, setErr, lists={}, users=[], session }) {
+  const [hdr,setHdr]=useState({date:todayStr(),shift:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""});
+  const [rawInRow,  setRawInRow]  = useState(eP());
+  const [rawOutRow, setRawOutRow] = useState(eP());
+  const [inkRow,    setInkRow]    = useState(eI());
+  const [solvRow,   setSolvRow]   = useState(eS());
+  const [remarks,   setRemarks]   = useState("");
+  const [savingRow, setSavingRow] = useState({});
   const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
-  const aa=(fn,e)=>fn(a=>[...a,e()]); const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
-  if (saved) return <Done label="Production Sheet" reset={()=>setSaved(false)} />;
-  const save=async()=>{
-    if (!validate({
-      shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
-      customer:{value:hdr.customer,label:"Customer"},
-      substrate:{value:hdr.substrate,label:"Substrate"},
-      operator:{value:hdr.operator,label:"Operator"},
-    })) return;
-    await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut,inks,solvents,remarks}}); setSaved(true);
+  const operatorNames = (lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
+  const h=(k,v)=>{clrErr(k);setHdr(p=>({...p,[k]:v}));};
+
+  const doSaveRow = async (section, data, reset) => {
+    setSavingRow(p=>({...p,[section]:true}));
+    const res = await saveRow(section, data);
+    if (res) reset();
+    setSavingRow(p=>({...p,[section]:false}));
   };
+
+  if (phase==="header") {
+    return <div>
+      <SC title="Job Details">
+        <Grid cols={4}>
+          <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+          <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+          <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+          <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+          <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={["",...(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.substrate} /></F>
+          <F label="Width (mm)"><TS value={hdr.width} onChange={v=>h("width",v)} options={["",...(lists.width||[]).map(String).filter(Boolean)]} /></F>
+          <F label="Length (m)"><TI type="number" value={hdr.length} onChange={v=>h("length",v)} /></F>
+          <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
+          <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+          <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={["",...(lists.supervisor||[]).map(String).filter(Boolean)]} /></F>
+        </Grid>
+      </SC>
+      <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} disabled={saving}
+        onClick={()=>{
+          if(!validate({shift:{value:hdr.shift,label:"Shift"},customer:{value:hdr.customer,label:"Customer"},substrate:{value:hdr.substrate,label:"Substrate"},operator:{value:hdr.operator,label:"Operator"}})) return;
+          startJobCard({...hdr,jobNo});
+        }}>
+        {saving?"Creating…":"▶ Start Job Card"}
+      </button>
+    </div>;
+  }
+
   return <div>
-    <PH title="Daily Production Sheet Printing" sub="Record job details, materials, inks and solvents" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    <SC title="Job Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={["",...(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.substrate} /></F>
-        <F label="Width (mm)"><TS value={hdr.width} onChange={v=>h("width",v)} options={["",...(lists.width||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Length (m)"><TI type="number" value={hdr.length} onChange={v=>h("length",v)} /></F>
-        <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-        <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={["",...(lists.supervisor||[]).map(String).filter(Boolean)]} /></F>
-      </Grid>
-    </SC>
-    {[["Raw Material Input",rawIn,setRawIn,eP],["Raw Material Output",rawOut,setRawOut,eP]].map(([title,rows,setter,empty])=>(
-      <SC key={title} title={title}>
-        <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
-        {rows.map((r,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-            <TI value={r.material} onChange={v=>as(setter,i,"material",v)} placeholder="Material" />
-            <TI value={r.batchNo}  onChange={v=>as(setter,i,"batchNo",v)} />
-            <TI type="number" value={r.qty} onChange={v=>as(setter,i,"qty",v)} />
-            <TS value={r.unit} onChange={v=>as(setter,i,"unit",v)} options={["",...(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)]} />
-            <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setter,i)}>✕</button>
-          </div>
+    <SC title="Job Details" >
+      <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
+        {Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+          <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
         ))}
-        <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setter,empty)}>+ Add Row</button>
+      </div>
+    </SC>
+
+    {[["Raw Material Input",rawInRow,setRawInRow,eP,[{key:"material",label:"Material"},{key:"batchNo",label:"Batch"},{key:"qty",label:"Qty"},{key:"unit",label:"Unit"}]],
+      ["Raw Material Output",rawOutRow,setRawOutRow,eP,[{key:"material",label:"Material"},{key:"batchNo",label:"Batch"},{key:"qty",label:"Qty"},{key:"unit",label:"Unit"}]]].map(([title,row,setRow,empty,cols])=>(
+      <SC key={title} title={title}>
+        <TxnList txns={txns} section={title} session={session} deleteRow={deleteRow} columns={cols} />
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px auto",gap:6,alignItems:"center"}}>
+          <TI value={row.material} onChange={v=>setRow(p=>({...p,material:v}))} placeholder="Material" />
+          <TI value={row.batchNo}  onChange={v=>setRow(p=>({...p,batchNo:v}))} placeholder="Batch No." />
+          <TI type="number" value={row.qty} onChange={v=>setRow(p=>({...p,qty:v}))} placeholder="Qty" />
+          <TS value={row.unit} onChange={v=>setRow(p=>({...p,unit:v}))} options={["",...(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)]} />
+          <div/>
+          <button style={{...S.btn("accent",{fontSize:11,padding:"6px 14px"}),whiteSpace:"nowrap"}} disabled={savingRow[title]}
+            onClick={()=>doSaveRow(title,{...row},()==>{setRow(empty());})}>
+            {savingRow[title]?"…":"💾 Save Row"}
+          </button>
+        </div>
       </SC>
     ))}
+
     <SC title="Ink Input">
-      <THead cols={["Ink Code","Shade","Supplier","Qty Used (kg)","Returned (kg)",""]} widths={["1.2fr","1.2fr","1.2fr","1fr","1fr","40px"]} />
-      {inks.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 1.2fr 1.2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TS value={r.inkCode}  onChange={v=>as(setInks,i,"inkCode",v)}  options={["",...(lists.ink_code||[]).map(x=>typeof x==="object"?`${x.code} — ${x.description}`:x)]} />
-          <TS value={r.shade}    onChange={v=>as(setInks,i,"shade",v)}    options={["",...(lists.ink_shade||[]).map(String).filter(Boolean)]} />
-          <TS value={r.supplier} onChange={v=>as(setInks,i,"supplier",v)} options={["",...(lists.ink_supplier||[]).map(String).filter(Boolean)]} />
-          <TI type="number" value={r.qty}      onChange={v=>as(setInks,i,"qty",v)} />
-          <TI type="number" value={r.returned} onChange={v=>as(setInks,i,"returned",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setInks,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setInks,eI)}>+ Add Row</button>
+      <TxnList txns={txns} section="Ink Input" session={session} deleteRow={deleteRow} columns={[{key:"inkCode",label:"Code"},{key:"shade",label:"Shade"},{key:"supplier",label:"Supplier"},{key:"qty",label:"Qty"},{key:"returned",label:"Returned"}]} />
+      <div style={{display:"grid",gridTemplateColumns:"1.2fr 1.2fr 1.2fr 1fr 1fr auto",gap:6,alignItems:"center"}}>
+        <TS value={inkRow.inkCode} onChange={v=>setInkRow(p=>({...p,inkCode:v}))} options={["",...(lists.ink_code||[]).map(x=>typeof x==="object"?`${x.code} — ${x.description}`:x)]} />
+        <TS value={inkRow.shade}   onChange={v=>setInkRow(p=>({...p,shade:v}))}   options={["",...(lists.ink_shade||[]).map(String).filter(Boolean)]} />
+        <TS value={inkRow.supplier}onChange={v=>setInkRow(p=>({...p,supplier:v}))} options={["",...(lists.ink_supplier||[]).map(String).filter(Boolean)]} />
+        <TI type="number" value={inkRow.qty}      onChange={v=>setInkRow(p=>({...p,qty:v}))} placeholder="Qty kg" />
+        <TI type="number" value={inkRow.returned} onChange={v=>setInkRow(p=>({...p,returned:v}))} placeholder="Returned" />
+        <button style={{...S.btn("accent",{fontSize:11,padding:"6px 14px"}),whiteSpace:"nowrap"}} disabled={savingRow["Ink Input"]}
+          onClick={()=>doSaveRow("Ink Input",{...inkRow},()=>setInkRow(eI()))}>
+          {savingRow["Ink Input"]?"…":"💾 Save Row"}
+        </button>
+      </div>
     </SC>
+
     <SC title="Solvent Input">
-      <THead cols={["Solvent","Qty Used (L)","Returned (L)",""]} widths={["2fr","1fr","1fr","40px"]} />
-      {solvents.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TS value={r.solvent}  onChange={v=>as(setSolv,i,"solvent",v)} options={["",...(lists.solvent||[]).map(String).filter(Boolean)]} />
-          <TI type="number" value={r.qty}      onChange={v=>as(setSolv,i,"qty",v)} />
-          <TI type="number" value={r.returned} onChange={v=>as(setSolv,i,"returned",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setSolv,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setSolv,eS)}>+ Add Row</button>
+      <TxnList txns={txns} section="Solvent Input" session={session} deleteRow={deleteRow} columns={[{key:"solvent",label:"Solvent"},{key:"qty",label:"Qty"},{key:"returned",label:"Returned"}]} />
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:6,alignItems:"center"}}>
+        <TS value={solvRow.solvent} onChange={v=>setSolvRow(p=>({...p,solvent:v}))} options={["",...(lists.solvent||[]).map(String).filter(Boolean)]} />
+        <TI type="number" value={solvRow.qty}      onChange={v=>setSolvRow(p=>({...p,qty:v}))} placeholder="Qty" />
+        <TI type="number" value={solvRow.returned} onChange={v=>setSolvRow(p=>({...p,returned:v}))} placeholder="Returned" />
+        <button style={{...S.btn("accent",{fontSize:11,padding:"6px 14px"}),whiteSpace:"nowrap"}} disabled={savingRow["Solvent Input"]}
+          onClick={()=>doSaveRow("Solvent Input",{...solvRow},()=>setSolvRow(eS()))}>
+          {savingRow["Solvent Input"]?"…":"💾 Save Row"}
+        </button>
+      </div>
     </SC>
-    <SC title="Remarks"><textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} /></SC>
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Production Sheet</button>
+
+    <SC title="Remarks">
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <textarea style={{...S.input,minHeight:60,resize:"vertical",flex:1}} value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Add a remark…" />
+        <button style={{...S.btn("ghost",{fontSize:11,padding:"8px 14px"}),flexShrink:0}} disabled={savingRow["Remarks"]||!remarks.trim()}
+          onClick={()=>doSaveRow("Remarks",{text:remarks},()=>setRemarks(""))}>
+          {savingRow["Remarks"]?"…":"💾 Save Remark"}
+        </button>
+      </div>
+      <TxnList txns={txns} section="Remarks" session={session} deleteRow={deleteRow} columns={[{key:"text",label:"Note"}]} />
+    </SC>
   </div>;
 }
 
-// ── Viscosity Form ────────────────────────────────────────────────────────────
-const emptyViscRow = (slots)=>({ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries((slots||DAY_SLOTS).map(t=>[t,""]))});
-
-function ViscosityForm({ onSave, users=[], lists={} }) {
-  const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",productName:"",press:"8 Color Gravure",operator:""});
-  const [readings,setReadings]=useState([emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS)]);
-  const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const slots = getSlotsForShift(hdr.shift);
-  const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h=(k,v)=>{
-    clrErr(k);
-    if(k==="shift"){ const ns=getSlotsForShift(v); setReadings(rs=>rs.map(r=>({...r,times:Object.fromEntries(ns.map(t=>[t,""]))}))); }
-    setHdr(p=>({...p,[k]:v}));
-  };
-  const st=(i,slot,val)=>setReadings(rs=>rs.map((r,x)=>x===i?{...r,times:{...r.times,[slot]:val}}:r));
-  const sf=(i,k,val) =>setReadings(rs=>rs.map((r,x)=>x===i?{...r,[k]:val}:r));
-  const addRow=()=>setReadings(rs=>[...rs,emptyViscRow(slots)]);
-  const delRow=i=>setReadings(rs=>rs.filter((_,x)=>x!==i));
-  if (saved) return <Done label="Viscosity QC" reset={()=>setSaved(false)} />;
-  const save=async()=>{
-    if (!validate({
-      shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
-      operator:{value:hdr.operator,label:"Operator"},
-    })) return;
-    await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true);
-  };
+function ProductionForm({ session, users=[], lists={} }) {
   return <div>
-    <PH title="Viscosity QC Form" sub="Add your ink rows below — type in ink name and type freely" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    <SC title="Run Details">
-      <Grid cols={5}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-      </Grid>
-    </SC>
-    <SC title="Viscosity Readings">
-      <div style={{overflowX:"auto"}}>
-        <table style={{borderCollapse:"collapse",fontSize:11,width:"100%"}}>
-          <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>
-            <th style={TH}>Ink Name</th>
-            <th style={TH}>Ink Type</th>
-            <th style={TH}>Target</th>
-            <th style={TH}>Unit</th>
-            {slots.map(t=><th key={t} style={TH}>{t}</th>)}
-            <th style={TH}></th>
-          </tr></thead>
-          <tbody>{readings.map((r,i)=>(
-            <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
-              <td style={TD}><input style={{...S.input,width:90,padding:"4px 6px"}} value={r.ink}    placeholder="e.g. Cyan"      onChange={e=>sf(i,"ink",e.target.value)} /></td>
-              <td style={TD}><input style={{...S.input,width:90,padding:"4px 6px"}} value={r.type}   placeholder="e.g. Solvent"   onChange={e=>sf(i,"type",e.target.value)} /></td>
-              <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.target} placeholder="0"              onChange={e=>sf(i,"target",e.target.value)} /></td>
-              <td style={TD}><input style={{...S.input,width:60,padding:"4px 6px"}} value={r.unit}                                onChange={e=>sf(i,"unit",e.target.value)} /></td>
-              {slots.map(t=><td key={t} style={TD}><input style={{...S.input,width:50,padding:"4px",textAlign:"center"}} value={r.times[t]||""} placeholder="—" onChange={e=>st(i,t,e.target.value)} /></td>)}
-              <td style={TD}><button style={S.btn("danger",{padding:"4px 8px",fontSize:11})} onClick={()=>delRow(i)}>✕</button></td>
-            </tr>
-          ))}</tbody>
-        </table>
-      </div>
-      <button style={S.btn("ghost",{marginTop:10,fontSize:11})} onClick={addRow}>+ Add Ink Row</button>
-    </SC>
-    <SC title="Remarks"><textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} /></SC>
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Viscosity QC</button>
+    <PH title="Daily Production Sheet Printing" sub="Live capture — each row saves immediately, linked to this job card" />
+    <JobCardShell type="production" formLabel="Daily Production Printing" session={session} lists={lists} users={users}>
+      {(props)=><ProductionFormInner {...props} lists={lists} users={users} session={session} />}
+    </JobCardShell>
   </div>;
 }
 
-// ── Printing QC Form ──────────────────────────────────────────────────────────
-function PrintingQCForm({ onSave, users=[], lists={} }) {
-  const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",press:"8 Color Gravure",operator:"",inspector:""});
-  const checkLabels = (lists.printing_qc_checks||DEFAULT_PRINTING_QC_CHECKS).map(String).filter(Boolean);
-  const [checks,setChecks]=useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
-  const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
-  const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
+
+// ── Generic QC Form Inner ────────────────────────────────────────────────────
+function QCFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow, deleteRow, setErr, lists={}, users=[], session, checkListKey, qcLabel }) {
+  const [hdr,setHdr] = useState({date:todayStr(),shift:"",customer:"",productName:"",operator:"",inspector:""});
+  const [savingHdr, setSavingHdr] = useState(false);
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const operatorNames = (lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
   const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const sc=(i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
-  // Sync checks if list changes (e.g. admin adds a new item)
-  React.useEffect(()=>{
-    setChecks(checkLabels.map(label=>({label,result:"",comment:""})));
-  },[checkLabels.join("|")]);
-  const passC=checks.filter(c=>c.result==="Pass").length;
-  const failC=checks.filter(c=>c.result==="Fail").length;
-  const naC  =checks.filter(c=>c.result==="N/A").length;
-  if (saved) return <Done label="Printing QC" reset={()=>setSaved(false)} />;
-  const save=async()=>{
-    if (!validate({
-      shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
-      customer:{value:hdr.customer,label:"Customer"},
-      operator:{value:hdr.operator,label:"Operator"},
-      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
-    })) return;
-    await onSave({type:"printingqc",title:`Printing QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); setSaved(true);
+  const checkLabels = (lists[checkListKey]||[]).map(String).filter(Boolean);
+  const h=(k,v)=>{clrErr(k);setHdr(p=>({...p,[k]:v}));};
+  const [checkStates,setCheckStates] = useState({});
+  const [overall,setOverall] = useState("");
+  const [remark,setRemark]   = useState("");
+  const [savingRow,setSavingRow] = useState({});
+
+  const doSave = async (section,data,reset)=>{
+    setSavingRow(p=>({...p,[section]:true}));
+    const res = await saveRow(section,data);
+    if(res) reset();
+    setSavingRow(p=>({...p,[section]:false}));
   };
-  return <div>
-    <PH title="Printing QC Form" sub="Complete all check items then set overall result" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
+
+  if (phase==="header") return <div>
     <SC title="Run Details">
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /><ErrMsg msg={fErr.customer} /></F>
+        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
         <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
       </Grid>
     </SC>
-    <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
-      <THead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","150px","2fr"]} />
-      {checks.map((c,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-          <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
-          <div style={{fontSize:12,color:C.text}}>{c.label}</div>
-          <div style={{display:"flex",gap:4}}>
-            {["Pass","Fail","N/A"].map(opt=>(
-              <button key={opt} onClick={()=>sc(i,"result",opt)} style={{
-                flex:1,padding:"5px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
-                background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
-                color:c.result===opt?"#fff":C.muted,
-                outline:c.result===opt?"none":`1px solid ${C.border}`,transition:"all 0.1s",
-              }}>{opt}</button>
-            ))}
-          </div>
-          <input style={{...S.input,padding:"5px 8px"}} value={c.comment} placeholder="Add comment…" onChange={e=>sc(i,"comment",e.target.value)} />
-        </div>
-      ))}
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} disabled={saving}
+      onClick={()=>{
+        if(!validate({shift:{value:hdr.shift,label:"Shift"},customer:{value:hdr.customer,label:"Customer"},operator:{value:hdr.operator,label:"Operator"},inspector:{value:hdr.inspector,label:"Inspector"}})) return;
+        startJobCard({...hdr,jobNo});
+      }}>{saving?"Creating…":"▶ Start Job Card"}</button>
+  </div>;
+
+  const savedChecks = txns.filter(t=>t.section==="QC Check");
+  const savedCheckMap = {};
+  savedChecks.forEach(t=>{ savedCheckMap[t.row_data.label]={result:t.row_data.result,comment:t.row_data.comment,txId:t.id}; });
+
+  return <div>
+    <SC title="Run Details">
+      <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
+        {Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+          <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
+        ))}
+      </div>
     </SC>
+    {checkLabels.length===0 && (
+      <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
+        ⚠ No check items configured yet. Go to <strong>Lists / Settings → {qcLabel} QC Checks</strong> to add them.
+      </div>
+    )}
+    {checkLabels.length>0 && (
+      <SC title={`QC Checks (${checkLabels.length} items)`}>
+        <THead cols={["#","Check Item","Result","Comment",""]} widths={["36px","2fr","130px","2fr","auto"]} />
+        {checkLabels.map((label,i)=>{
+          const saved=savedCheckMap[label];
+          const st=checkStates[label]||{result:"",comment:""};
+          return <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 130px 2fr auto",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
+            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
+            <div style={{fontSize:12,color:saved?C.success:C.text,fontWeight:saved?"700":"400"}}>
+              {label}{saved&&<span style={{fontSize:10,marginLeft:6,color:C.muted}}>✓ saved</span>}
+            </div>
+            <div style={{display:"flex",gap:3}}>
+              {["Pass","Fail","N/A"].map(opt=>(
+                <button key={opt} onClick={()=>setCheckStates(p=>({...p,[label]:{...st,result:opt}}))} style={{
+                  flex:1,padding:"4px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:10,fontWeight:600,
+                  background:st.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):(saved?.result===opt?(opt==="Pass"?C.success+"44":C.danger+"44":C.muted+"44"):C.bg),
+                  color:st.result===opt?"#fff":C.muted,outline:st.result===opt?"none":`1px solid ${C.border}`,
+                }}>{opt}</button>
+              ))}
+            </div>
+            <input style={{...S.input,padding:"4px 8px",fontSize:12}} value={st.comment} placeholder={saved?.comment||"Comment…"} onChange={e=>setCheckStates(p=>({...p,[label]:{...st,comment:e.target.value}}))} />
+            <button style={{...S.btn("accent",{fontSize:10,padding:"5px 10px"}),whiteSpace:"nowrap"}} disabled={!st.result||savingRow[label]}
+              onClick={()=>doSave("QC Check",{label,result:st.result,comment:st.comment},()=>setCheckStates(p=>({...p,[label]:{result:"",comment:""}})
+            ))}>
+              {savingRow[label]?"…":"💾 Save"}
+            </button>
+          </div>;
+        })}
+      </SC>
+    )}
     <SC title="Overall Assessment">
-      <div style={{display:"flex",gap:12,marginBottom:16}}>
+      <div style={{display:"flex",gap:12,marginBottom:12}}>
         {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
           <button key={opt} onClick={()=>setOverall(opt)} style={{
-            flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:"0.04em",
+            flex:1,padding:"10px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,
             background:overall===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
-            color:overall===opt?"#fff":C.muted,
-            outline:overall===opt?"none":`1px solid ${C.border}`,transition:"all 0.12s",
+            color:overall===opt?"#fff":C.muted,outline:overall===opt?"none":`1px solid ${C.border}`,
           }}>{opt}</button>
         ))}
       </div>
-      <label style={S.label}>Remarks</label>
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
-    </SC>
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Printing QC</button>
-  </div>;
-}
-
-// ── Excel Export ──────────────────────────────────────────────────────────────
-function exportToExcel(records) {
-  const wb = XLSX.utils.book_new();
-
-  // ── Sheet 1: Summary
-  const summaryData = [
-    ["Concord Packaging Traceability — Export"],
-    ["Generated:", new Date().toLocaleString()],
-    ["Total Records:", records.length],
-    [],
-    ["ID","Type","Title","Completed By","Date & Time"],
-    ...records.map(r=>[r.id, r.type, r.title, r.created_by, new Date(r.created_at).toLocaleString()])
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), "Summary");
-
-  // ── Sheet 2: Production
-  const prodRecs = records.filter(r=>r.type==="production");
-  if (prodRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Customer","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]];
-    prodRecs.forEach(r=>{
-      const h=r.data?.header||{};
-      rows.push([r.created_by, h.date,h.shift,h.jobNo,h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
-      // Raw material input
-      if (r.data?.rawIn?.length) {
-        rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]);
-        r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit]));
-      }
-      // Raw material output
-      if (r.data?.rawOut?.length) {
-        rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit"]);
-        r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit]));
-      }
-      // Inks
-      if (r.data?.inks?.length) {
-        rows.push([]); rows.push(["  INK INPUT","Ink Code","Shade","Supplier","Qty Used (kg)","Returned (kg)"]);
-        r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.shade,x.supplier,x.qty,x.returned]));
-      }
-      // Solvents
-      if (r.data?.solvents?.length) {
-        rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Qty Used (L)","Returned (L)"]);
-        r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.qty,x.returned]));
-      }
-      rows.push(["---"]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Production");
-  }
-
-  // ── Sheet 3: Viscosity QC
-  const viscRecs = records.filter(r=>r.type==="viscosity");
-  if (viscRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Press","Operator","Ink Name","Ink Type","Target","Unit","Slots..."]];
-    viscRecs.forEach(r=>{
-      const h=r.data?.header||{};
-      const rSlots=getSlotsForShift(h.shift);
-      (r.data?.readings||[]).forEach((row,i)=>{
-        rows.push([
-          i===0?r.created_by:"", i===0?h.date:"", i===0?h.shift:"", i===0?h.jobNo:"",
-          i===0?h.press:"", i===0?h.operator:"",
-          row.ink, row.type||"", row.target, row.unit,
-          ...rSlots.map(t=>row.times?.[t]||"")
-        ]);
-      });
-      rows.push(["---"]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Viscosity QC");
-  }
-
-  // ── Sheet 4: Printing QC
-  const qcRecs = records.filter(r=>r.type==="printingqc");
-  if (qcRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Customer","Press","Operator","Inspector","Overall Result","#","Check Item","Result","Comment"]];
-    qcRecs.forEach(r=>{
-      const h=r.data?.header||{};
-      (r.data?.checks||[]).forEach((c,i)=>{
-        rows.push([
-          i===0?r.created_by:"", i===0?h.date:"", i===0?h.shift:"", i===0?h.jobNo:"",
-          i===0?h.customer:"", i===0?h.press:"", i===0?h.operator:"", i===0?h.inspector:"",
-          i===0?(r.data?.overallResult||""):"",
-          i+1, c.label, c.result, c.comment
-        ]);
-      });
-      rows.push(["---"]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Printing QC");
-  }
-
-  // ── Sheet 5: Lamination
-  const lamRecs = records.filter(r=>r.type==="lamination");
-  if (lamRecs.length) {
-    const rows = [];
-    lamRecs.forEach(r=>{
-      const h=r.data?.header||{};
-      rows.push(["Date","Shift","Job Card No","Customer & Product","Product Name","Operator","Comments"]);
-      rows.push([h.date,h.shift,h.jobNo,h.customerProduct,h.productName||"",h.operator,h.comments]);
-      rows.push([]);
-      if ((r.data?.filmRows||[]).length) {
-        rows.push(["-- Film Input --","Adhesive Carrier Film","Film Batch No","Film KG","Film Spec/Metry"]);
-        (r.data.filmRows||[]).forEach(x=>rows.push(["",x.adhesiveCarrierFilm,x.filmBatchNo,x.filmKg,x.filmSpec]));
-      }
-      if ((r.data?.adhesiveRows||[]).length) {
-        rows.push(["-- Adhesive Input --","Adhesive Carrier KG","Adhesive Name","Adhesive Batch No"]);
-        (r.data.adhesiveRows||[]).forEach(x=>rows.push(["",x.adhesiveCarrierKg,x.adhesiveName,x.adhesiveBatchNo]));
-      }
-      if ((r.data?.unwoundRows||[]).length) {
-        rows.push(["-- Unwound Film --","Unwound Film","Batch No","KG","KG/Metry"]);
-        (r.data.unwoundRows||[]).forEach(x=>rows.push(["",x.unwoundFilm,x.unwoundBatchNo,x.unwoundKg,x.unwoundKgPerMetry]));
-      }
-      if ((r.data?.outputRows||[]).length) {
-        rows.push(["-- Output Stock --","Laminated Roll Name","Metry/KG"]);
-        (r.data.outputRows||[]).forEach(x=>rows.push(["",x.laminatedRollName,x.laminatedMetryKg]));
-      }
-      if ((r.data?.qcRows||[]).length) {
-        rows.push(["-- QC --","Adhesive Amount","GSM","Waste"]);
-        (r.data.qcRows||[]).forEach(x=>rows.push(["",x.adhesiveAmount,x.gsm,x.waste]));
-      }
-      rows.push(["---"]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Lamination");
-  }
-
-  // ── Sheet 6: Lamination QC
-  const lamQcRecs = records.filter(r=>r.type==="laminationqc");
-  if (lamQcRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Customer","Operator","Inspector","#","Check Item","Result","Comment","Overall Result"]];
-    lamQcRecs.forEach(r=>{
-      const h=r.data?.header||{};
-      (r.data?.checks||[]).forEach((c,i)=>{
-        rows.push([
-          i===0?r.created_by:"", i===0?h.date:"", i===0?h.shift:"", i===0?h.jobNo:"",
-          i===0?h.customer:"", i===0?h.operator:"", i===0?h.inspector:"",
-          i+1, c.label, c.result, c.comment||"",
-          i===0?r.data?.overallResult:""
-        ]);
-      });
-      rows.push(["---"]);
-    });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Lamination QC");
-  }
-
-  // ── Sheet 7 & 8: Extruder 1 & 2
-  [1,2].forEach(m=>{
-    const extRecs = records.filter(r=>r.type===`extruder${m}`);
-    if (extRecs.length) {
-      const rows = [];
-      extRecs.forEach(r=>{
-        const h=r.data?.header||{};
-        rows.push(["Date","Shift","Job No","Customer","Product Name","Material Spec","Operator","Supervisor","Remarks"]);
-        rows.push([h.date,h.shift,h.jobNo,h.customer,h.productName,h.materialSpec,h.operator,h.supervisor,r.data?.remarks||""]);
-        rows.push([]);
-        if ((r.data?.rmaRows||[]).length) {
-          rows.push(["-- Raw Material A (Outside Layer) --","Brand","Batch No","KG"]);
-          (r.data.rmaRows||[]).forEach(x=>rows.push(["",x.brand,x.batchNo,x.kg]));
-        }
-        if ((r.data?.rmbRows||[]).length) {
-          rows.push(["-- Raw Material B (Inside Layer) --","Brand","Batch No","KG"]);
-          (r.data.rmbRows||[]).forEach(x=>rows.push(["",x.brand,x.batchNo,x.kg]));
-        }
-        if ((r.data?.rollRows||[]).length) {
-          rows.push(["-- Roll Output --","Roll No","Metres","KG"]);
-          (r.data.rollRows||[]).forEach(x=>rows.push(["",x.rollNo,x.metres,x.kg]));
-        }
-        rows.push(["---"]);
-      });
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Extruder ${m}`);
-    }
-    const extQcRecs = records.filter(r=>r.type===`extruder${m}qc`);
-    if (extQcRecs.length) {
-      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
-      extQcRecs.forEach(r=>{
-        const h=r.data?.header||{};
-        (r.data?.checks||[]).forEach((c,i)=>{
-          rows.push([i===0?r.created_by:"",i===0?h.date:"",i===0?h.shift:"",i===0?h.jobNo:"",
-            i===0?h.customer:"",i===0?h.productName:"",i===0?h.operator:"",i===0?h.inspector:"",
-            i+1,c.label,c.result,c.comment||"",i===0?r.data?.overallResult:""]);
-        });
-        rows.push(["---"]);
-      });
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Extruder ${m} QC`);
-    }
-  });
-  // ── Slitting 1 & 2
-  [1,2].forEach(m=>{
-    const slitRecs = records.filter(r=>r.type===`slitting${m}`);
-    if (slitRecs.length) {
-      const rows = [];
-      slitRecs.forEach(r=>{
-        const h=r.data?.header||{};
-        rows.push(["Date","Time","Shift","Job No","Customer","Product Name"]);
-        rows.push([h.date,h.time,h.shift,h.jobNo,h.customer,h.productName]);
-        rows.push([]);
-        if ((r.data?.inputRows||[]).length){rows.push(["-- Input Stock --","Batch No","Metry","KG"]);(r.data.inputRows||[]).forEach(x=>rows.push(["",x.batchNo,x.metry,x.kg]));}
-        if ((r.data?.paperRows||[]).length){rows.push(["-- Paper Rolls --","Supplier","Batch No","Slitting","Amount"]);(r.data.paperRows||[]).forEach(x=>rows.push(["",x.supplierName,x.batchNo,x.slitting,x.amount]));}
-        if ((r.data?.rollRows||[]).length){rows.push(["-- Rolls After Slitting --","Roll No","Metry","KG"]);(r.data.rollRows||[]).forEach(x=>rows.push(["",x.rollNo,x.metry,x.kg]));}
-        if ((r.data?.outputRows||[]).length){rows.push(["-- Output Stock --","Pallet Code","Metry","KG"]);(r.data.outputRows||[]).forEach(x=>rows.push(["",x.palletCode,x.metry,x.kg]));}
-        if ((r.data?.slitRows||[]).length){rows.push(["-- Slit Details --","Tape","Waste","Blades","Operator","Sign"]);(r.data.slitRows||[]).forEach(x=>rows.push(["",x.tape,x.waste,x.blades,x.operator,x.sign]));}
-        rows.push(["Remarks",r.data?.remarks||""]);
-        rows.push(["---"]);
-      });
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Slitting ${m}`);
-    }
-    const slitQcRecs = records.filter(r=>r.type===`slitting${m}qc`);
-    if (slitQcRecs.length) {
-      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
-      slitQcRecs.forEach(r=>{
-        const h=r.data?.header||{};
-        (r.data?.checks||[]).forEach((c,i)=>{
-          rows.push([i===0?r.created_by:"",i===0?h.date:"",i===0?h.shift:"",i===0?h.jobNo:"",
-            i===0?h.customer:"",i===0?h.productName:"",i===0?h.operator:"",i===0?h.inspector:"",
-            i+1,c.label,c.result,c.comment||"",i===0?r.data?.overallResult:""]);
-        });
-        rows.push(["---"]);
-      });
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Slitting ${m} QC`);
-    }
-  });
-  // ── Bag Making 1–4
-  [1,2,3,4].forEach(m=>{
-    const bmRecs = records.filter(r=>r.type===`bagmaking${m}`);
-    if (bmRecs.length) {
-      const rows = [];
-      bmRecs.forEach(r=>{
-        const h=r.data?.header||{};
-        rows.push(["Date","Time","Shift","Job No","Customer","Product Name","Operator","Batch Code","PCS/Box"]);
-        rows.push([h.date,h.time,h.shift,h.jobNo,h.customer,h.productName,h.operator,h.bagMakingBatchCode,h.pcsPerBox]);
-        rows.push([]);
-        if ((r.data?.unwindARows||[]).length){rows.push(["-- Unwind A --","Batch No","KG","Metres"]);(r.data.unwindARows||[]).forEach(x=>rows.push(["",x.batchNo,x.kg,x.metres]));}
-        if ((r.data?.unwindBRows||[]).length){rows.push(["-- Unwind B --","Batch No","KG","Metres"]);(r.data.unwindBRows||[]).forEach(x=>rows.push(["",x.batchNo,x.kg,x.metres]));}
-        if ((r.data?.batchRows||[]).length){rows.push(["-- Batch Codes --","Batch Code","Boxes Produced"]);(r.data.batchRows||[]).forEach(x=>rows.push(["",x.batchCode,x.boxesProduced]));}
-        if ((r.data?.outputRows||[]).length){rows.push(["-- Output Stock --","Pallet Code","Qty"]);(r.data.outputRows||[]).forEach(x=>rows.push(["",x.palletCode,x.qty]));}
-        rows.push(["Side Tape",r.data?.sideTape||"","Waste",r.data?.waste||"","Blade Change",r.data?.bladeChange||"","Sign",r.data?.sign||""]);
-        if ((r.data?.openerRows||[]).length){rows.push(["-- Bag Openers --","Name","Amount Opened","Box Number"]);(r.data.openerRows||[]).forEach(x=>rows.push(["",x.openerName,x.amountOpened,x.boxNumber]));}
-        rows.push(["Remarks",r.data?.remarks||""]);
-        rows.push(["---"]);
-      });
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Bag Making ${m}`);
-    }
-    const bmQcRecs = records.filter(r=>r.type===`bagmaking${m}qc`);
-    if (bmQcRecs.length) {
-      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
-      bmQcRecs.forEach(r=>{
-        const h=r.data?.header||{};
-        (r.data?.checks||[]).forEach((c,i)=>{
-          rows.push([i===0?r.created_by:"",i===0?h.date:"",i===0?h.shift:"",i===0?h.jobNo:"",
-            i===0?h.customer:"",i===0?h.productName:"",i===0?h.operator:"",i===0?h.inspector:"",
-            i+1,c.label,c.result,c.comment||"",i===0?r.data?.overallResult:""]);
-        });
-        rows.push(["---"]);
-      });
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),`Bag Making ${m} QC`);
-    }
-  });
-  XLSX.writeFile(wb, `Concord-Traceability-${new Date().toISOString().split("T")[0]}.xlsx`);
-}
-
-// ── Records ───────────────────────────────────────────────────────────────────
-function Records({ records, session, onDelete, onSave }) {
-  const [filter,setFilter]=useState("all"); const [search,setSearch]=useState("");
-  const [exp,setExp]=useState(null); const [editing,setEditing]=useState(null);
-  const filtered=records.filter(r=>(filter==="all"||r.type===filter)&&(search===""||r.title.toLowerCase().includes(search.toLowerCase())));
-  const isAdmin = session.role==="admin";
-
-  return <div>
-    <PH title="All Records" sub={`${records.length} records shared across all devices`} />
-    <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      {["all","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc"].map(f=>(
-        <button key={f} onClick={()=>setFilter(f)} style={S.btn(filter===f?"accent":"ghost",{padding:"5px 12px",fontSize:10})}>
-          {{"all":"All","production":"Printing","viscosity":"Viscosity QC","printingqc":"Printing QC","lamination":"Lamination","laminationqc":"Lam QC","extruder1":"Extruder 1","extruder1qc":"Ext 1 QC","extruder2":"Extruder 2","extruder2qc":"Ext 2 QC","slitting1":"Slitting 1","slitting1qc":"Slit 1 QC","slitting2":"Slitting 2","slitting2qc":"Slit 2 QC","bagmaking1":"Bag 1","bagmaking1qc":"Bag 1 QC","bagmaking2":"Bag 2","bagmaking2qc":"Bag 2 QC","bagmaking3":"Bag 3","bagmaking3qc":"Bag 3 QC","bagmaking4":"Bag 4","bagmaking4qc":"Bag 4 QC"}[f]}
+      <TxnList txns={txns} section="Overall" session={session} deleteRow={deleteRow} columns={[{key:"result",label:"Result"},{key:"remark",label:"Note"}]} />
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <textarea style={{...S.input,minHeight:60,resize:"vertical",flex:1}} value={remark} onChange={e=>setRemark(e.target.value)} placeholder="Remarks…" />
+        <button style={{...S.btn("accent",{fontSize:11,padding:"8px 14px"}),flexShrink:0,whiteSpace:"nowrap"}} disabled={!overall||savingRow["Overall"]}
+          onClick={()=>doSave("Overall",{result:overall,remark},()=>{setRemark("");})}>
+          {savingRow["Overall"]?"…":"💾 Save Assessment"}
         </button>
-      ))}
       </div>
-      <input style={{...S.input,width:220,padding:"6px 12px"}} value={search} placeholder="Search…" onChange={e=>setSearch(e.target.value)} />
-      <div style={{flex:1}} />
-      <button style={S.btn("accent",{padding:"6px 16px",fontSize:11,background:C.success})} onClick={()=>exportToExcel(filtered)}>
-        ⬇ Export to Excel ({filtered.length})
-      </button>
-    </div>
-    {filtered.length===0 && <div style={{color:C.muted,fontSize:13}}>No records found.</div>}
-    {filtered.map(r=>{
-      const color=r.type==="production"?C.accent:r.type==="viscosity"?C.blue:r.type==="printingqc"?C.success:"#9b59b6";
-      const icon=r.type==="production"?"▤":r.type==="viscosity"?"◉":"✓";
-      const isExp=exp===r.id; const isEdit=editing===r.id;
-      return <div key={r.id} style={{...S.card,marginBottom:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>{setExp(isExp?null:r.id);setEditing(null);}}>
-          <span style={{fontSize:18,color}}>{icon}</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
-              <span>📋 Completed by: <span style={{color:C.accent,fontWeight:700}}>{r.created_by}</span></span>
-              <span>🕐 {new Date(r.created_at).toLocaleString()}</span>
-            </div>
-          </div>
-          <span style={{fontSize:10,color}}>{isExp?"▲":"▼"}</span>
-          {isAdmin && <>
-            <button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
-              onClick={e=>{e.stopPropagation();setExp(r.id);setEditing(isEdit?null:r.id);}}>
-              {isEdit?"Cancel Edit":"✎ Edit"}
-            </button>
-            <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})}
-              onClick={e=>{e.stopPropagation();if(window.confirm("Delete this record?"))onDelete(r.id);}}>Delete</button>
-          </>}
-        </div>
-        {isExp && !isEdit && <RecDetail r={r} createdBy={r.created_by} />}
-        {isExp && isEdit  && <RecEdit r={r} onSave={async(data)=>{await onSave(r.id,data);setEditing(null);}} onCancel={()=>setEditing(null)} />}
-      </div>;
-    })}
+    </SC>
   </div>;
 }
 
-function RecDetail({ r, createdBy }) {
-  const d=r.data||{};
-  return <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,fontSize:12}}>
-    <div style={{marginBottom:12,padding:"8px 12px",background:C.bg,borderRadius:6,display:"inline-block"}}>
-      <span style={{color:C.muted}}>Completed by: </span>
-      <span style={{color:C.accent,fontWeight:700}}>{createdBy}</span>
-      <span style={{color:C.muted,marginLeft:12}}>on {new Date(r.created_at).toLocaleString()}</span>
-    </div>
-    {r.type==="production" && <ProdD d={d} />}
-    {r.type==="viscosity"  && <ViscD d={d} />}
-    {r.type==="printingqc" && <QCD   d={d} />}
-  </div>;
-}
+// ── Generic Section Form Inner ─────────────────────────────────────────────────
+// Used by Viscosity, Lamination, Extruder, Slitting, BagMaking production forms
+// Each passes a `sections` render prop for the active phase
 
-// ── Inline record editor (admin only) ────────────────────────────────────────
-function RecEdit({ r, onSave, onCancel }) {
-  const [data, setData] = useState(JSON.parse(JSON.stringify(r.data||{})));
-  const setH=(k,v)=>setData(d=>({...d,header:{...d.header,[k]:v}}));
-  const setArr=(key,i,k,v)=>setData(d=>({...d,[key]:d[key].map((x,xi)=>xi===i?{...x,[k]:v}:x)}));
-  const addArr=(key,empty)=>setData(d=>({...d,[key]:[...(d[key]||[]),empty]}));
-  const delArr=(key,i)=>setData(d=>({...d,[key]:d[key].filter((_,xi)=>xi!==i)}));
+// ── Viscosity Form ────────────────────────────────────────────────────────────
+function ViscosityFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow, deleteRow, setErr, lists={}, users=[], session }) {
+  const [hdr,setHdr]    = useState({date:todayStr(),shift:"",productName:"",press:"8 Color Gravure"});
+  const [row,setRow]    = useState({ink:"",type:"",target:"",unit:"sec",...Object.fromEntries((getSlotsForShift("")).map(t=>[t,""]))});
+  const [remark,setRemark] = useState("");
+  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
+  const operatorNames = (lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
+  const h=(k,v)=>{clrErr(k);setHdr(p=>({...p,[k]:v}));};
+  const [savingRow,setSavingRow]=useState({});
+  const doSave=async(section,data,reset)=>{setSavingRow(p=>({...p,[section]:true}));const res=await saveRow(section,data);if(res)reset();setSavingRow(p=>({...p,[section]:false}));};
 
-  return <div style={{marginTop:16,paddingTop:16,borderTop:`2px solid ${C.accent}`,fontSize:12}}>
-    <div style={{fontSize:11,fontWeight:700,color:C.accent,letterSpacing:"0.08em",marginBottom:14}}>EDITING RECORD — ADMIN MODE</div>
+  const slots = getSlotsForShift(hdr.shift||jc?.header?.shift||"");
 
-    {r.type==="production" && <EditProd data={data} setH={setH} setArr={setArr} addArr={addArr} delArr={delArr} setData={setData} />}
-    {r.type==="viscosity"  && <EditVisc data={data} setH={setH} setArr={setArr} addArr={addArr} delArr={delArr} setData={setData} />}
-    {r.type==="printingqc" && <EditQC   data={data} setH={setH} setArr={setArr} addArr={addArr} delArr={delArr} setData={setData} />}
-
-    <div style={{display:"flex",gap:10,marginTop:16}}>
-      <button style={S.btn("accent",{padding:"8px 24px"})} onClick={()=>onSave(data)}>Save Changes</button>
-      <button style={S.btn("ghost",{padding:"8px 24px"})} onClick={onCancel}>Cancel</button>
-    </div>
-  </div>;
-}
-
-function EditProd({ data, setH, setArr, addArr, delArr, setData }) {
-  const h=data.header||{};
-  return <div>
-    <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>JOB DETAILS</div>
-    <Grid cols={4}>
-      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["customer","Customer","text"],
-        ["substrate","Substrate","text"],["width","Width","number"],["length","Length","number"],["speed","Speed","number"],
-        ["operator","Operator","text"],["supervisor","Supervisor","text"]].map(([k,label,type])=>(
-        <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
-      ))}
-    </Grid>
-    {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"]],
-      ["rawOut","Raw Material Output",["material","batchNo","qty","unit"]]].map(([key,title,cols])=>(
-      <div key={key} style={{marginTop:14}}>
-        <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
-        {(data[key]||[]).map((row,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 36px",gap:6,marginBottom:6,alignItems:"center"}}>
-            {cols.map(c=><TI key={c} value={row[c]||""} onChange={v=>setArr(key,i,c,v)} />)}
-            <button style={S.btn("danger",{padding:"3px 6px",fontSize:11})} onClick={()=>delArr(key,i)}>✕</button>
-          </div>
-        ))}
-        <button style={S.btn("ghost",{fontSize:11,marginTop:4})} onClick={()=>addArr(key,{material:"",batchNo:"",qty:"",unit:""})}>+ Add Row</button>
-      </div>
-    ))}
-    <div style={{marginTop:14}}>
-      <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>REMARKS</div>
-      <textarea style={{...S.input,minHeight:60,resize:"vertical"}} value={data.remarks||""} onChange={e=>setData(d=>({...d,remarks:e.target.value}))} />
-    </div>
-  </div>;
-}
-
-function EditVisc({ data, setH, setArr, addArr, delArr }) {
-  const h=data.header||{};
-  return <div>
-    <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>RUN DETAILS</div>
-    <Grid cols={5}>
-      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["press","Press","text"],["operator","Operator","text"]].map(([k,label,type])=>(
-        <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
-      ))}
-    </Grid>
-    <div style={{marginTop:14,overflowX:"auto"}}>
-      <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>READINGS</div>
-      <table style={{borderCollapse:"collapse",fontSize:11,width:"100%"}}>
-        <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
-          <th style={TH}>Ink Name</th><th style={TH}>Ink Type</th><th style={TH}>Target</th><th style={TH}>Unit</th>
-          {getSlotsForShift(h.shift).map(t=><th key={t} style={TH}>{t}</th>)}<th style={TH}></th>
-        </tr></thead>
-        <tbody>{(data.readings||[]).map((row,i)=>(
-          <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
-            <td style={TD}><input style={{...S.input,width:80,padding:"3px 5px"}} value={row.ink||""} onChange={e=>setArr("readings",i,"ink",e.target.value)} /></td>
-            <td style={TD}><input style={{...S.input,width:80,padding:"3px 5px"}} value={row.type||""} onChange={e=>setArr("readings",i,"type",e.target.value)} /></td>
-            <td style={TD}><input style={{...S.input,width:55,padding:"3px 5px"}} value={row.target||""} onChange={e=>setArr("readings",i,"target",e.target.value)} /></td>
-            <td style={TD}><input style={{...S.input,width:55,padding:"3px 5px"}} value={row.unit||""} onChange={e=>setArr("readings",i,"unit",e.target.value)} /></td>
-            {getSlotsForShift(h.shift).map(t=><td key={t} style={TD}><input style={{...S.input,width:46,padding:"3px",textAlign:"center"}} value={row.times?.[t]||""} onChange={e=>setArr("readings",i,`times.${t}`,e.target.value)} /></td>)}
-            <td style={TD}><button style={S.btn("danger",{padding:"3px 6px",fontSize:11})} onClick={()=>delArr("readings",i)}>✕</button></td>
-          </tr>
-        ))}</tbody>
-      </table>
-      <button style={S.btn("ghost",{fontSize:11,marginTop:6})} onClick={()=>addArr("readings",{ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries(getSlotsForShift(h.shift).map(t=>[t,""]))})}  >+ Add Row</button>
-    </div>
-  </div>;
-}
-
-function EditQC({ data, setH, setArr, setData }) {
-  const h=data.header||{};
-  return <div>
-    <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>RUN DETAILS</div>
-    <Grid cols={4}>
-      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["customer","Customer","text"],
-        ["press","Press","text"],["operator","Operator","text"],["inspector","Inspector","text"]].map(([k,label,type])=>(
-        <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
-      ))}
-    </Grid>
-    <div style={{marginTop:14}}>
-      <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>QC CHECKS</div>
-      {(data.checks||[]).map((c,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-          <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
-          <div style={{fontSize:12,color:C.text}}>{c.label}</div>
-          <div style={{display:"flex",gap:4}}>
-            {["Pass","Fail","N/A"].map(opt=>(
-              <button key={opt} onClick={()=>setArr("checks",i,"result",opt)} style={{
-                flex:1,padding:"4px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
-                background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
-                color:c.result===opt?"#fff":C.muted,outline:c.result===opt?"none":`1px solid ${C.border}`,
-              }}>{opt}</button>
-            ))}
-          </div>
-          <input style={{...S.input,padding:"4px 8px"}} value={c.comment||""} onChange={e=>setArr("checks",i,"comment",e.target.value)} />
-        </div>
-      ))}
-      <div style={{marginTop:12}}>
-        <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>OVERALL RESULT</div>
-        <div style={{display:"flex",gap:10}}>
-          {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
-            <button key={opt} onClick={()=>setData(d=>({...d,overallResult:opt}))} style={{
-              flex:1,padding:"8px",border:"none",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,
-              background:data.overallResult===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
-              color:data.overallResult===opt?"#fff":C.muted,outline:data.overallResult===opt?"none":`1px solid ${C.border}`,
-            }}>{opt}</button>
-          ))}
-        </div>
-      </div>
-    </div>
-  </div>;
-}
-
-
-function ProdD({ d }) {
-  const h=d.header||{};
-  return <div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
-      {[["Date",h.date],["Shift",h.shift],["Job No.",h.jobNo],["Customer",h.customer],
-        ["Substrate",h.substrate],["Width",h.width],["Length",h.length],["Speed",h.speed],
-        ["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
-        <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
-      ))}
-    </div>
-    <DT title="Raw Material Input"  rows={d.rawIn}   cols={["material","batchNo","qty","unit"]} />
-    <DT title="Raw Material Output" rows={d.rawOut}  cols={["material","batchNo","qty","unit"]} />
-    <DT title="Ink Input"           rows={d.inks}    cols={["inkCode","shade","supplier","qty","returned"]} />
-    <DT title="Solvent Input"       rows={d.solvents} cols={["solvent","qty","returned"]} />
-    {d.remarks && <div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
-  </div>;
-}
-
-function ViscD({ d }) {
-  const h=d.header||{};
-  return <div>
-    <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
-      {[["Date",h.date],["Shift",h.shift],["Job",h.jobNo],["Press",h.press],["Operator",h.operator]].map(([k,v])=>(
-        <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
-      ))}
-    </div>
-    <div style={{overflowX:"auto"}}>
-      <table style={{borderCollapse:"collapse",fontSize:11}}>
-        <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
-          <th style={TH}>Ink Name</th><th style={TH}>Ink Type</th><th style={TH}>Target</th><th style={TH}>Unit</th>
-          {getSlotsForShift(h.shift).map(t=><th key={t} style={TH}>{t}</th>)}
-        </tr></thead>
-        <tbody>{(d.readings||[]).map((row,i)=>(
-          <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
-            <td style={{...TD,color:C.accent,fontWeight:700}}>{row.ink||"—"}</td>
-            <td style={{...TD,color:C.blue}}>{row.type||"—"}</td>
-            <td style={TD}>{row.target||"—"}</td><td style={TD}>{row.unit}</td>
-            {getSlotsForShift(h.shift).map(t=><td key={t} style={{...TD,textAlign:"center"}}>{row.times?.[t]||"—"}</td>)}
-          </tr>
-        ))}</tbody>
-      </table>
-    </div>
-  </div>;
-}
-
-function QCD({ d }) {
-  const h=d.header||{};
-  return <div>
-    <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
-      {[["Date",h.date],["Shift",h.shift],["Job",h.jobNo],["Customer",h.customer],["Press",h.press],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
-        <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
-      ))}
-    </div>
-    <div style={{marginBottom:12}}>
-      <span style={{color:C.muted}}>Overall: </span>
-      <span style={{fontWeight:700,color:d.overallResult==="APPROVED"?C.success:d.overallResult==="REJECTED"?C.danger:C.warn}}>{d.overallResult||"—"}</span>
-    </div>
-    {(d.checks||[]).map((c,i)=>(
-      <div key={i} style={{display:"flex",gap:10,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
-        <span style={{width:20,color:C.muted,textAlign:"right",flexShrink:0}}>{i+1}</span>
-        <span style={{flex:2}}>{c.label}</span>
-        <span style={{width:50,fontWeight:700,flexShrink:0,color:c.result==="Pass"?C.success:c.result==="Fail"?C.danger:C.muted}}>{c.result||"—"}</span>
-        <span style={{flex:2,color:C.muted}}>{c.comment}</span>
-      </div>
-    ))}
-  </div>;
-}
-
-function DT({ title, rows, cols }) {
-  if (!rows?.length) return null;
-  return <div style={{marginBottom:12}}>
-    <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{title.toUpperCase()}</div>
-    <div style={{display:"flex",gap:4,marginBottom:4}}>{cols.map(c=><div key={c} style={{flex:1,fontSize:10,color:C.muted,textTransform:"capitalize"}}>{c.replace(/([A-Z])/g," $1")}</div>)}</div>
-    {rows.map((r,i)=><div key={i} style={{display:"flex",gap:4,padding:"3px 0",borderTop:`1px solid ${C.border}`}}>
-      {cols.map(c=><div key={c} style={{flex:1,color:C.text}}>{r[c]||"—"}</div>)}
-    </div>)}
-  </div>;
-}
-
-// ── User Management ───────────────────────────────────────────────────────────
-const SHEET_OPTIONS = [
-  {id:"dashboard",   label:"Dashboard"},
-  {id:"production",  label:"Daily Production Printing"},
-  {id:"viscosity",   label:"Viscosity QC"},
-  {id:"printingqc",  label:"Printing QC"},
-  {id:"lamination",  label:"Lamination"},
-  {id:"laminationqc",label:"Lamination QC"},
-  {id:"records",     label:"All Records"},
-  {id:"trash",       label:"Trash Bin (Admin only)"},
-  {id:"extruder1",   label:"Extruder 1 Daily Production"},
-  {id:"extruder1qc", label:"Extruder 1 QC"},
-  {id:"extruder2",   label:"Extruder 2 Daily Production"},
-  {id:"extruder2qc", label:"Extruder 2 QC"},
-  {id:"slitting1",   label:"Slitting 1 Daily Production"},
-  {id:"slitting1qc", label:"Slitting 1 QC"},
-  {id:"slitting2",   label:"Slitting 2 Daily Production"},
-  {id:"slitting2qc", label:"Slitting 2 QC"},
-  {id:"bagmaking1",  label:"Bag Making 1 Daily Production"},
-  {id:"bagmaking1qc",label:"Bag Making 1 QC"},
-  {id:"bagmaking2",  label:"Bag Making 2 Daily Production"},
-  {id:"bagmaking2qc",label:"Bag Making 2 QC"},
-  {id:"bagmaking3",  label:"Bag Making 3 Daily Production"},
-  {id:"bagmaking3qc",label:"Bag Making 3 QC"},
-  {id:"bagmaking4",  label:"Bag Making 4 Daily Production"},
-  {id:"bagmaking4qc",label:"Bag Making 4 QC"},
-  {id:"lists",       label:"Lists / Settings"},
-  {id:"password",    label:"Change Password"},
-];
-
-function UserMgmt({ users, session, reload, flash }) {
-  const [form,setForm]=useState({username:"",password:"",name:"",role:"operator",permissions:null});
-  const [err,setErr]=useState("");
-  const [editId,setEditId]=useState(null);
-  const [editPerms,setEditPerms]=useState({});
-  const [resetId,setResetId]=useState(null);
-  const [resetPw,setResetPw]=useState("");
-  const f=(k,v)=>setForm(p=>({...p,[k]:v}));
-
-  const add=async()=>{
-    if (!form.username||!form.password||!form.name){setErr("All fields required.");return;}
-    if (users.find(u=>u.username===form.username)){setErr("Username taken.");return;}
-    // Use role defaults unless viewer (viewer gets only dashboard+records by default)
-    const perms = form.role==="admin" ? null : (ROLE_DEFAULTS[form.role]||["dashboard","records"]);
-    const {error}=await dbAddUser({username:form.username,password:form.password,name:form.name,role:form.role,permissions:perms});
-    if (error){setErr("Error: "+error.message);return;}
-    setForm({username:"",password:"",name:"",role:"operator",permissions:null});setErr("");
-    await reload(); flash("User added.");
-  };
-
-  const del=async id=>{
-    if (id===session.id){alert("Cannot delete yourself.");return;}
-    await dbDelUser(id); await reload(); flash("User deleted.");
-  };
-
-  const startEdit=(u)=>{
-    setEditId(u.id);
-    const perms = u.permissions || ROLE_DEFAULTS[u.role] || ["dashboard","records"];
-    setEditPerms(Object.fromEntries(perms.map(p=>[p,true])));
-  };
-
-  const savePerms=async(u)=>{
-    const perms = SHEET_OPTIONS.map(s=>s.id).filter(id=>editPerms[id]);
-    await sb.from("users").update({permissions:perms}).eq("id",u.id);
-    await reload(); setEditId(null); flash("Permissions updated.");
-  };
-
-  const doReset=async(u)=>{
-    if (!resetPw.trim()){flash("Password cannot be empty.","danger");return;}
-    await sb.from("users").update({password:resetPw}).eq("id",u.id);
-    setResetId(null); setResetPw(""); await reload(); flash(`Password reset for ${u.name}.`);
-  };
-
-  const togglePerm=(id)=>setEditPerms(p=>({...p,[id]:!p[id]}));
-  const rc=r=>r==="admin"?C.accent2:r==="manager"?C.accent:r==="qc"?C.blue:r==="viewer"?C.muted:C.success;
-
-  return <div>
-    <PH title="User Management" sub="Control user roles and which sheets each user can access" />
-
-    <SC title="Add New User">
+  if(phase==="header") return <div>
+    <SC title="Run Details">
       <Grid cols={4}>
-        <F label="Full Name"><TI value={form.name} onChange={v=>f("name",v)} /></F>
-        <F label="Username"><TI value={form.username} onChange={v=>f("username",v)} /></F>
-        <F label="Password"><TI value={form.password} onChange={v=>f("password",v)} /></F>
-        <F label="Role"><TS value={form.role} onChange={v=>f("role",v)} options={["admin","manager","operator","qc","viewer"]} /></F>
+        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+        <F label="Shift"><TS value={hdr.shift} onChange={v=>{h("shift",v);setRow(p=>({...p,...Object.fromEntries(getSlotsForShift(v).map(t=>[t,""]))}));}} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+        <F label="Operator"><TS value={hdr.operator||""} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
       </Grid>
-      <div style={{marginTop:10,fontSize:11,color:C.muted}}>
-        Role defaults — Admin: full control · Manager: all sheets (admin can customise) · Operator: Production + Records · QC: Viscosity + Printing QC + Records · Viewer: Records only (read)
-      </div>
-      {err && <div style={{color:C.danger,fontSize:12,marginTop:8}}>{err}</div>}
-      <button style={{...S.btn("accent"),marginTop:12}} onClick={add}>Add User</button>
     </SC>
+    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} disabled={saving}
+      onClick={()=>{if(!validate({shift:{value:hdr.shift,label:"Shift"},operator:{value:hdr.operator,label:"Operator"}}))return;startJobCard({...hdr,jobNo});}}>{saving?"Creating…":"▶ Start Job Card"}</button>
+  </div>;
 
-    <SC title="Current Users & Permissions">
-      {users.map(u=>(
-        <div key={u.id} style={{borderBottom:`1px solid ${C.border}`,padding:"14px 0"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <div style={{flex:1,minWidth:160}}>
-              <div style={{color:C.text,fontWeight:600,fontSize:13}}>{u.name}</div>
-              <div style={{color:C.muted,fontSize:11,marginTop:2}}>{u.username}</div>
-            </div>
-            <span style={{fontSize:10,padding:"2px 10px",borderRadius:4,background:rc(u.role)+"33",color:rc(u.role),fontWeight:700}}>{u.role.toUpperCase()}</span>
-            {u.role!=="admin" && (
-              <button style={S.btn("ghost",{padding:"4px 12px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
-                onClick={()=>editId===u.id?setEditId(null):startEdit(u)}>
-                {editId===u.id?"Cancel":"✎ Edit Permissions"}
-              </button>
-            )}
-            {u.id!==session.id && (
-              <button style={S.btn("ghost",{padding:"4px 12px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
-                onClick={()=>{setResetId(resetId===u.id?null:u.id);setResetPw("");}}>
-                {resetId===u.id?"Cancel":"🔑 Reset Password"}
-              </button>
-            )}
-            {u.id!==session.id && (
-              <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})} onClick={()=>del(u.id)}>Delete</button>
-            )}
-          </div>
-
-          {/* Inline password reset */}
-          {resetId===u.id && (
-            <div style={{marginTop:10,display:"flex",gap:8,alignItems:"center",padding:12,background:C.bg,borderRadius:6,border:`1px solid ${C.warn}`}}>
-              <span style={{fontSize:11,color:C.warn,fontWeight:600,flexShrink:0}}>New password for {u.name}:</span>
-              <input style={{...S.input,maxWidth:220,padding:"5px 10px"}} type="text" value={resetPw} placeholder="Enter new password" onChange={e=>setResetPw(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&doReset(u)} />
-              <button style={S.btn("accent",{padding:"5px 16px",fontSize:12,background:C.warn})} onClick={()=>doReset(u)}>Save</button>
-            </div>
-          )}
-
-          {/* Permission chips when not editing */}
-          {editId!==u.id && u.role!=="admin" && (
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
-              {(u.permissions||ROLE_DEFAULTS[u.role]||[]).map(p=>{
-                const tab=ALL_TABS.find(t=>t.id===p);
-                return tab ? <span key={p} style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:`${C.accent}22`,color:C.accent}}>{tab.icon} {tab.label}</span> : null;
-              })}
-            </div>
-          )}
-
-          {/* Permission editor */}
-          {editId===u.id && (
-            <div style={{marginTop:12,padding:14,background:C.bg,borderRadius:8,border:`1px solid ${C.border}`}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:10}}>SELECT ACCESSIBLE SHEETS</div>
-              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-                {SHEET_OPTIONS.map(s=>(
-                  <button key={s.id} onClick={()=>togglePerm(s.id)} style={{
-                    padding:"6px 14px",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,
-                    background:editPerms[s.id]?C.accent:C.panel,
-                    color:editPerms[s.id]?"#fff":C.muted,
-                    outline:editPerms[s.id]?"none":`1px solid ${C.border}`,
-                    transition:"all 0.12s",
-                  }}>{s.label}</button>
-                ))}
-              </div>
-              <button style={S.btn("accent",{padding:"6px 20px",fontSize:12})} onClick={()=>savePerms(u)}>Save Permissions</button>
-            </div>
-          )}
-        </div>
-      ))}
-    </SC>
-
-    <SC title="Role Reference">
-      <div style={{fontSize:12,color:C.muted,lineHeight:2.2}}>
-        <div><span style={{color:C.accent2,fontWeight:700}}>Admin</span> — Full access to everything including User Mgmt, Debug, and editing/deleting any record.</div>
-        <div><span style={{color:C.success,fontWeight:700}}>Operator</span> — Can fill Daily Production sheets and view All Records. Cannot edit or delete.</div>
-        <div><span style={{color:C.blue,fontWeight:700}}>QC Officer</span> — Can fill Viscosity QC and Printing QC sheets and view All Records. Cannot edit or delete.</div>
-        <div><span style={{color:C.muted,fontWeight:700}}>Viewer</span> — Read-only access. Can only view records they are given access to. Cannot fill any sheets.</div>
+  return <div>
+    <SC title="Run Details">
+      <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
+        {Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+          <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
+        ))}
       </div>
+    </SC>
+    <SC title="Viscosity Readings">
+      <TxnList txns={txns} section="Viscosity Reading" session={session} deleteRow={deleteRow}
+        columns={[{key:"ink",label:"Ink"},{key:"type",label:"Type"},{key:"target",label:"Target"},...slots.map(s=>({key:s,label:s}))]} />
+      <div style={{overflowX:"auto"}}>
+        <table style={{borderCollapse:"collapse",fontSize:11,width:"100%"}}>
+          <thead><tr style={{borderBottom:`2px solid ${C.border}`}}>
+            {["Ink Name","Ink Type","Target","Unit",...slots,""].map(t=><th key={t} style={TH}>{t}</th>)}
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style={TD}><TI value={row.ink}    onChange={v=>setRow(p=>({...p,ink:v}))} /></td>
+              <td style={TD}><TI value={row.type}   onChange={v=>setRow(p=>({...p,type:v}))} /></td>
+              <td style={TD}><TI value={row.target} onChange={v=>setRow(p=>({...p,target:v}))} /></td>
+              <td style={TD}><TI value={row.unit}   onChange={v=>setRow(p=>({...p,unit:v}))} /></td>
+              {slots.map(t=><td key={t} style={TD}><input style={{...S.input,width:50,padding:"4px",textAlign:"center"}} value={row[t]||""} onChange={e=>setRow(p=>({...p,[t]:e.target.value}))} /></td>)}
+              <td style={TD}><button style={{...S.btn("accent",{fontSize:10,padding:"5px 10px"}),whiteSpace:"nowrap"}} disabled={!row.ink||savingRow["Viscosity Reading"]}
+                onClick={()=>doSave("Viscosity Reading",{...row},()=>setRow({ink:"",type:"",target:"",unit:"sec",...Object.fromEntries(slots.map(t=>[t,""]))}))}>
+                {savingRow["Viscosity Reading"]?"…":"💾 Save"}
+              </button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </SC>
+    <SC title="Remarks">
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <textarea style={{...S.input,minHeight:60,resize:"vertical",flex:1}} value={remark} onChange={e=>setRemark(e.target.value)} placeholder="Remark…" />
+        <button style={{...S.btn("ghost",{fontSize:11,padding:"8px 14px"}),flexShrink:0}} disabled={!remark.trim()||savingRow["Remark"]}
+          onClick={()=>doSave("Remark",{text:remark},()=>setRemark(""))}>
+          {savingRow["Remark"]?"…":"💾 Save Remark"}
+        </button>
+      </div>
+      <TxnList txns={txns} section="Remark" session={session} deleteRow={deleteRow} columns={[{key:"text",label:"Note"}]} />
     </SC>
   </div>;
 }
 
-// ── Change Password ───────────────────────────────────────────────────────────
+function ViscosityForm({ session, users=[], lists={} }) {
+  return <div>
+    <PH title="Viscosity QC Form" sub="Live capture — each reading saves immediately" />
+    <JobCardShell type="viscosity" formLabel="Viscosity QC" session={session} lists={lists} users={users}>
+      {(props)=><ViscosityFormInner {...props} lists={lists} users={users} session={session} />}
+    </JobCardShell>
+  </div>;
+}
 
-// ── Lists Manager ─────────────────────────────────────────────────────────────
-
-
+// ── Printing QC Form ──────────────────────────────────────────────────────────
+function PrintingQCForm({ session, users=[], lists={} }) {
+  return <div>
+    <PH title="Printing QC Form" sub="Live capture — save each check item individually" />
+    <JobCardShell type="printingqc" formLabel="Printing QC" session={session} lists={lists} users={users}>
+      {(props)=><QCFormInner {...props} lists={lists} users={users} session={session} checkListKey="printing_qc_checks" qcLabel="Printing" />}
+    </JobCardShell>
+  </div>;
+}
 
 // ── Lamination Daily Production Sheet ────────────────────────────────────────
 const eLamFilm    = ()=>({adhesiveCarrierFilm:"",filmBatchNo:"",filmKg:"",filmSpec:""});
 const eLamAdhesive= ()=>({adhesiveCarrierKg:"",adhesiveName:"",adhesiveBatchNo:""});
 const eLamUnwound = ()=>({unwoundFilm:"",unwoundBatchNo:"",unwoundKg:"",unwoundKgPerMetry:""});
 const eLamOutput  = ()=>({laminatedRollName:"",laminatedMetryKg:""});
+const eLamQC      = ()=>({adhesiveAmount:"",gsm:"",waste:""});
 
-function LaminationForm({ onSave, users=[], lists={} }) {
-  const [hdr,setHdr] = useState({date:todayStr(),shift:"",jobNo:"",customerProduct:"",productName:"",operator:"",comments:""});
-  const [filmRows,    setFilmRows]    = useState([eLamFilm()]);
-  const [adhesiveRows,setAdhesiveRows]= useState([eLamAdhesive()]);
-  const [unwoundRows, setUnwoundRows] = useState([eLamUnwound()]);
-  const [outputRows,  setOutputRows]  = useState([eLamOutput()]);
-  const [qcRows,      setQcRows]      = useState([{adhesiveAmount:"",gsm:"",waste:""}]);
-  const [remarks,     setRemarks]     = useState("");
-  const [saved,       setSaved]       = useState(false);
+function LaminationFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow, deleteRow, setErr, lists={}, users=[], session }) {
+  const [hdr,setHdr]=useState({date:todayStr(),shift:"",customerProduct:"",productName:"",operator:""});
+  const {errors:fErr,validate,clear:clrErr}=useFormValidation();
+  const operatorNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
+  const h=(k,v)=>{clrErr(k);setHdr(p=>({...p,[k]:v}));};
+  const [rows,setRows]=useState({film:eLamFilm(),adhesive:eLamAdhesive(),unwound:eLamUnwound(),output:eLamOutput(),qc:eLamQC(),remark:""});
+  const [savingRow,setSavingRow]=useState({});
+  const doSave=async(section,data,reset)=>{setSavingRow(p=>({...p,[section]:true}));const res=await saveRow(section,data);if(res)reset();setSavingRow(p=>({...p,[section]:false}));};
+  const sr=(k,v)=>setRows(p=>({...p,[k]:v}));
 
-  const operatorNames = (lists.operator||[]).length>0
-    ? (lists.operator||[]).map(String).filter(Boolean)
-    : users.filter(u=>u.role==="operator").map(u=>u.name);
+  if(phase==="header") return <div>
+    <SC title="Job Details"><Grid cols={3}>
+      <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+      <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+      <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customerProduct} /></F>
+      <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+      <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+    </Grid></SC>
+    <button style={{...S.btn("accent"),padding:"12px 32px"}} disabled={saving}
+      onClick={()=>{if(!validate({shift:{value:hdr.shift,label:"Shift"},customerProduct:{value:hdr.customerProduct,label:"Customer"},operator:{value:hdr.operator,label:"Operator"}}))return;startJobCard({...hdr,jobNo});}}>
+      {saving?"Creating…":"▶ Start Job Card"}
+    </button>
+  </div>;
 
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
-  const aa = (fn,e)=>fn(a=>[...a,e()]);
-  const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
-
-  if (saved) return <Done label="Lamination Sheet" reset={()=>setSaved(false)} />;
-
-  const save = async()=>{
-    if (!validate({
-      shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job Card No."},
-      customerProduct:{value:hdr.customerProduct,label:"Customer & Product"},
-      operator:{value:hdr.operator,label:"Operator"},
-    })) return;
-    await onSave({
-      type:"lamination",
-      title:`Lamination · ${hdr.jobNo||(hdr.date)} · ${hdr.date}`,
-      data:{header:hdr,filmRows,adhesiveRows,unwoundRows,outputRows,qcRows,remarks}
-    });
-    setSaved(true);
-  };
-
+  const sv=(s,fn)=>({...S.btn("accent",{fontSize:10,padding:"5px 12px"}),whiteSpace:"nowrap"});
   return <div>
-    <PH title="Lamination Traceability" sub="Daily lamination production — input stock, output stock, QC and operator" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
     <SC title="Job Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customerProduct} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-      </Grid>
+      <div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+        <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
+      ))}</div>
     </SC>
-
-    <SC title="Input Stock — Film (Received from Warehouse)">
-      <THead cols={["Adhesive Carrier Film","Film Batch No","Film KG","Film Spec / Metry",""]} widths={["2fr","1.5fr","1fr","1.5fr","40px"]} />
-      {filmRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.adhesiveCarrierFilm} onChange={v=>as(setFilmRows,i,"adhesiveCarrierFilm",v)} />
-          <TI value={r.filmBatchNo}         onChange={v=>as(setFilmRows,i,"filmBatchNo",v)} />
-          <TI type="number" value={r.filmKg} onChange={v=>as(setFilmRows,i,"filmKg",v)} />
-          <TI value={r.filmSpec}            onChange={v=>as(setFilmRows,i,"filmSpec",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setFilmRows,i)}>✕</button>
+    {[
+      ["Film Input","film",{adhesiveCarrierFilm:"Carrier Film",filmBatchNo:"Batch No",filmKg:"KG",filmSpec:"Spec/Metry"},eLamFilm],
+      ["Adhesive Input","adhesive",{adhesiveCarrierKg:"Carrier KG",adhesiveName:"Name",adhesiveBatchNo:"Batch No"},eLamAdhesive],
+      ["Unwound Film","unwound",{unwoundFilm:"Film",unwoundBatchNo:"Batch No",unwoundKg:"KG",unwoundKgPerMetry:"KG/Metry"},eLamUnwound],
+      ["Output Stock","output",{laminatedRollName:"Roll Name",laminatedMetryKg:"Metry/KG"},eLamOutput],
+      ["QC Measurements","qc",{adhesiveAmount:"Adhesive Amt",gsm:"GSM",waste:"Waste"},eLamQC],
+    ].map(([title,key,fields,empty])=>(
+      <SC key={title} title={title}>
+        <TxnList txns={txns} section={title} session={session} deleteRow={deleteRow} columns={Object.entries(fields).map(([k,l])=>({key:k,label:l}))} />
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {Object.entries(fields).map(([k,l])=>(
+            <div key={k} style={{flex:"1 0 100px"}}>
+              <div style={{fontSize:10,color:C.muted,marginBottom:2}}>{l}</div>
+              <TI value={rows[key][k]||""} onChange={v=>sr(key,{...rows[key],[k]:v})} />
+            </div>
+          ))}
+          <button style={{...S.btn("accent",{fontSize:11,padding:"7px 16px"}),flexShrink:0,whiteSpace:"nowrap",alignSelf:"flex-end"}}
+            disabled={savingRow[title]} onClick={()=>doSave(title,{...rows[key]},()=>sr(key,empty()))}>
+            {savingRow[title]?"…":"💾 Save Row"}
+          </button>
         </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setFilmRows,eLamFilm)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Input Stock — Adhesive (Received from Warehouse)">
-      <THead cols={["Adhesive Carrier KG","Adhesive Name","Adhesive Batch No",""]} widths={["1.5fr","2fr","1.5fr","40px"]} />
-      {adhesiveRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI type="number" value={r.adhesiveCarrierKg} onChange={v=>as(setAdhesiveRows,i,"adhesiveCarrierKg",v)} />
-          <TI value={r.adhesiveName}  onChange={v=>as(setAdhesiveRows,i,"adhesiveName",v)} />
-          <TI value={r.adhesiveBatchNo} onChange={v=>as(setAdhesiveRows,i,"adhesiveBatchNo",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setAdhesiveRows,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setAdhesiveRows,eLamAdhesive)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Input Stock — Unwound Film (Received from Warehouse)">
-      <THead cols={["Unwound Film","Batch No","KG","KG / Metry",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
-      {unwoundRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.unwoundFilm}       onChange={v=>as(setUnwoundRows,i,"unwoundFilm",v)} />
-          <TI value={r.unwoundBatchNo}    onChange={v=>as(setUnwoundRows,i,"unwoundBatchNo",v)} />
-          <TI type="number" value={r.unwoundKg} onChange={v=>as(setUnwoundRows,i,"unwoundKg",v)} />
-          <TI type="number" value={r.unwoundKgPerMetry} onChange={v=>as(setUnwoundRows,i,"unwoundKgPerMetry",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setUnwoundRows,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setUnwoundRows,eLamUnwound)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Output Stock — Laminated Roll (Sent to Warehouse)">
-      <THead cols={["Laminated Roll Name","Metry / KG",""]} widths={["2fr","1.5fr","40px"]} />
-      {outputRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.laminatedRollName} onChange={v=>as(setOutputRows,i,"laminatedRollName",v)} />
-          <TI value={r.laminatedMetryKg}  onChange={v=>as(setOutputRows,i,"laminatedMetryKg",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setOutputRows,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setOutputRows,eLamOutput)}>+ Add Row</button>
-    </SC>
-
-    <SC title="QC Measurements">
-      <THead cols={["Adhesive Amount","GSM","Waste",""]} widths={["1.5fr","1fr","1fr","40px"]} />
-      {qcRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.adhesiveAmount} onChange={v=>as(setQcRows,i,"adhesiveAmount",v)} />
-          <TI value={r.gsm}            onChange={v=>as(setQcRows,i,"gsm",v)} />
-          <TI value={r.waste}          onChange={v=>as(setQcRows,i,"waste",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setQcRows,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setQcRows,()=>({adhesiveAmount:"",gsm:"",waste:""}))}>+ Add Row</button>
-    </SC>
-
+      </SC>
+    ))}
     <SC title="Remarks">
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <textarea style={{...S.input,minHeight:60,resize:"vertical",flex:1}} value={rows.remark} onChange={e=>sr("remark",e.target.value)} placeholder="Remark…"/>
+        <button style={{...S.btn("ghost",{fontSize:11,padding:"8px 14px"}),flexShrink:0}} disabled={!rows.remark.trim()||savingRow["Remark"]}
+          onClick={()=>doSave("Remark",{text:rows.remark},()=>sr("remark",""))}>
+          {savingRow["Remark"]?"…":"💾 Save Remark"}
+        </button>
+      </div>
+      <TxnList txns={txns} section="Remark" session={session} deleteRow={deleteRow} columns={[{key:"text",label:"Note"}]} />
     </SC>
-
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Lamination Sheet</button>
   </div>;
 }
 
+function LaminationForm({ session, users=[], lists={} }) {
+  return <div>
+    <PH title="Lamination Traceability" sub="Live capture — each row saves immediately" />
+    <JobCardShell type="lamination" formLabel="Lamination" session={session} lists={lists} users={users}>
+      {(props)=><LaminationFormInner {...props} lists={lists} users={users} session={session} />}
+    </JobCardShell>
+  </div>;
+}
 
 // ── Lamination QC Form ────────────────────────────────────────────────────────
-function LaminationQCForm({ onSave, users=[], lists={} }) {
-  const checkLabels = (lists.lamination_qc_checks||[]).map(String).filter(Boolean);
-  const [hdr,setHdr]     = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
-  const [checks,setChecks]= useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
-  const [overall,setOverall]= useState("");
-  const [remarks,setRemarks]= useState("");
-  const [saved,setSaved]    = useState(false);
-  const operatorNames = (lists.operator||[]).length>0 ? (lists.operator||[]).map(String).filter(Boolean) : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const qcNames       = (lists.qc_officer||[]).map(String).filter(Boolean);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const sc = (i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
-  React.useEffect(()=>{
-    setChecks(checkLabels.map(label=>({label,result:"",comment:""})));
-  },[checkLabels.join("|")]);
-  const passC=checks.filter(c=>c.result==="Pass").length;
-  const failC=checks.filter(c=>c.result==="Fail").length;
-  const naC  =checks.filter(c=>c.result==="N/A").length;
-  if (saved) return <Done label="Lamination QC" reset={()=>setSaved(false)} />;
-  const save=async()=>{
-    if (!validate({
-      shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
-      customer:{value:hdr.customer,label:"Customer"},
-      operator:{value:hdr.operator,label:"Operator"},
-      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
-    })) return;
-    await onSave({type:"laminationqc",title:`Lamination QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); setSaved(true); };
+function LaminationQCForm({ session, users=[], lists={} }) {
   return <div>
-    <PH title="Lamination QC Form" sub="Complete all lamination check items then set overall result" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    {checkLabels.length===0 && (
-      <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
-        ⚠ No check items configured yet. Go to <strong>Lists / Settings → Lamination QC Checks</strong> and add your check items first.
-      </div>
-    )}
-    <SC title="Run Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
-      </Grid>
-    </SC>
-    {checks.length>0 && (
-      <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
-        <THead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","150px","2fr"]} />
-        {checks.map((c,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
-            <div style={{fontSize:12,color:C.text}}>{c.label}</div>
-            <div style={{display:"flex",gap:4}}>
-              {["Pass","Fail","N/A"].map(opt=>(
-                <button key={opt} onClick={()=>sc(i,"result",opt)} style={{
-                  flex:1,padding:"5px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
-                  background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
-                  color:c.result===opt?"#fff":C.muted,
-                  outline:c.result===opt?"none":`1px solid ${C.border}`,transition:"all 0.1s",
-                }}>{opt}</button>
-              ))}
-            </div>
-            <input style={{...S.input,padding:"5px 8px"}} value={c.comment} placeholder="Add comment…" onChange={e=>sc(i,"comment",e.target.value)} />
-          </div>
-        ))}
-      </SC>
-    )}
-    <SC title="Overall Assessment">
-      <div style={{display:"flex",gap:12,marginBottom:16}}>
-        {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
-          <button key={opt} onClick={()=>setOverall(opt)} style={{
-            flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:"0.04em",
-            background:overall===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
-            color:overall===opt?"#fff":C.muted,
-            outline:overall===opt?"none":`1px solid ${C.border}`,transition:"all 0.12s",
-          }}>{opt}</button>
-        ))}
-      </div>
-      <label style={S.label}>Remarks</label>
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
-    </SC>
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Lamination QC</button>
+    <PH title="Lamination QC Form" sub="Live capture — save each check item individually" />
+    <JobCardShell type="laminationqc" formLabel="Lamination QC" session={session} lists={lists} users={users}>
+      {(props)=><QCFormInner {...props} lists={lists} users={users} session={session} checkListKey="lamination_qc_checks" qcLabel="Lamination" />}
+    </JobCardShell>
   </div>;
 }
-
 
 // ── Extruder Daily Production Sheet ─────────────────────────────────────────
 const eExtRMA = ()=>({brand:"",batchNo:"",kg:""});
 const eExtRMB = ()=>({brand:"",batchNo:"",kg:""});
 const eExtRoll= ()=>({rollNo:"",metres:"",kg:""});
 
-function ExtruderForm({ onSave, users=[], lists={}, machine=1 }) {
-  const [hdr,setHdr]     = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",materialSpec:"",operator:"",supervisor:""});
-  const [rmaRows,setRma] = useState([eExtRMA()]);
-  const [rmbRows,setRmb] = useState([eExtRMB()]);
-  const [rollRows,setRolls]= useState([eExtRoll(),eExtRoll()]);
-  const [remarks,setRemarks]= useState("");
-  const [saved,setSaved] = useState(false);
-  const operatorNames = (lists.operator||[]).length>0
-    ? (lists.operator||[]).map(String).filter(Boolean)
-    : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
-  const aa = (fn,e)=>fn(a=>[...a,e()]);
-  const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
-  if (saved) return <Done label={`Extruder ${machine} Production Sheet`} reset={()=>setSaved(false)} />;
-  const save = async()=>{
-    if (!validate({
-      shift:   {value:hdr.shift,   label:"Shift"},
-      jobNo:   {value:hdr.jobNo,   label:"Job No."},
-      customer:{value:hdr.customer,label:"Customer"},
-      operator:{value:hdr.operator,label:"Operator"},
-    })) return;
-    await onSave({
-      type:`extruder${machine}`,
-      title:`Extruder ${machine} · ${hdr.jobNo||hdr.date} · ${hdr.date}`,
-      data:{header:hdr,rmaRows,rmbRows,rollRows,remarks}
-    });
-    setSaved(true);
-  };
-  const machineColor = machine===1?"#e67e22":"#16a085";
-  return <div>
-    <PH title={`Extruder ${machine} Daily Production Sheet`} sub="Extruder traceability — raw materials A & B, roll output and remarks" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    <SC title="Job Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Material Spec"><TI value={hdr.materialSpec} onChange={v=>h("materialSpec",v)} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-        <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={["",...(lists.supervisor||[]).map(String).filter(Boolean)]} /></F>
-      </Grid>
-    </SC>
+function ExtruderFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow, deleteRow, setErr, lists={}, users=[], session, machine }) {
+  const [hdr,setHdr]=useState({date:todayStr(),shift:"",customer:"",productName:"",materialSpec:"",operator:"",supervisor:""});
+  const {errors:fErr,validate,clear:clrErr}=useFormValidation();
+  const operatorNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
+  const h=(k,v)=>{clrErr(k);setHdr(p=>({...p,[k]:v}));};
+  const [rmaRow,setRma]=useState(eExtRMA());
+  const [rmbRow,setRmb]=useState(eExtRMB());
+  const [rollRow,setRoll]=useState(eExtRoll());
+  const [remark,setRemark]=useState("");
+  const [savingRow,setSavingRow]=useState({});
+  const doSave=async(section,data,reset)=>{setSavingRow(p=>({...p,[section]:true}));const res=await saveRow(section,data);if(res)reset();setSavingRow(p=>({...p,[section]:false}));};
 
-    <SC title="Raw Material A — Outside Layer">
-      <THead cols={["Brand","Batch No.","KG",""]} widths={["2fr","1.5fr","1fr","40px"]} />
-      {rmaRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.brand}   onChange={v=>as(setRma,i,"brand",v)} placeholder="Brand" />
-          <TI value={r.batchNo} onChange={v=>as(setRma,i,"batchNo",v)} />
-          <TI type="number" value={r.kg} onChange={v=>as(setRma,i,"kg",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRma,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRma,eExtRMA)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Raw Material B — Inside Layer">
-      <THead cols={["Brand","Batch No.","KG",""]} widths={["2fr","1.5fr","1fr","40px"]} />
-      {rmbRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.brand}   onChange={v=>as(setRmb,i,"brand",v)} placeholder="Brand" />
-          <TI value={r.batchNo} onChange={v=>as(setRmb,i,"batchNo",v)} />
-          <TI type="number" value={r.kg} onChange={v=>as(setRmb,i,"kg",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRmb,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRmb,eExtRMB)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Roll Output">
-      <THead cols={["Roll No.","Metres","KG",""]} widths={["1fr","1.5fr","1.5fr","40px"]} />
-      {rollRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1.5fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.rollNo}  onChange={v=>as(setRolls,i,"rollNo",v)} placeholder={`Roll ${i+1}`} />
-          <TI type="number" value={r.metres} onChange={v=>as(setRolls,i,"metres",v)} />
-          <TI type="number" value={r.kg}     onChange={v=>as(setRolls,i,"kg",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRolls,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRolls,eExtRoll)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Remarks">
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
-    </SC>
-
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>
-      💾 Save Extruder {machine} Sheet
+  if(phase==="header") return <div>
+    <SC title="Job Details"><Grid cols={4}>
+      <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+      <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+      <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+      <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+      <F label="Material Spec"><TI value={hdr.materialSpec} onChange={v=>h("materialSpec",v)} /></F>
+      <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+      <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={["",...(lists.supervisor||[]).map(String).filter(Boolean)]} /></F>
+    </Grid></SC>
+    <button style={{...S.btn("accent"),padding:"12px 32px"}} disabled={saving}
+      onClick={()=>{if(!validate({shift:{value:hdr.shift,label:"Shift"},customer:{value:hdr.customer,label:"Customer"},operator:{value:hdr.operator,label:"Operator"}}))return;startJobCard({...hdr,jobNo});}}>
+      {saving?"Creating…":"▶ Start Job Card"}
     </button>
+  </div>;
+
+  return <div>
+    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+      <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
+    ))}</div></SC>
+    {[["Raw Material A — Outside Layer","RMA",rmaRow,setRma,eExtRMA,{brand:"Brand",batchNo:"Batch No",kg:"KG"}],
+      ["Raw Material B — Inside Layer","RMB",rmbRow,setRmb,eExtRMB,{brand:"Brand",batchNo:"Batch No",kg:"KG"}],
+      ["Roll Output","Roll",rollRow,setRoll,eExtRoll,{rollNo:"Roll No",metres:"Metres",kg:"KG"}]
+    ].map(([title,key,row,setRow,empty,fields])=>(
+      <SC key={title} title={title}>
+        <TxnList txns={txns} section={title} session={session} deleteRow={deleteRow} columns={Object.entries(fields).map(([k,l])=>({key:k,label:l}))} />
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {Object.entries(fields).map(([k,l])=>(
+            <div key={k} style={{flex:"1 0 100px"}}>
+              <div style={{fontSize:10,color:C.muted,marginBottom:2}}>{l}</div>
+              <TI value={row[k]||""} onChange={v=>setRow(p=>({...p,[k]:v}))} />
+            </div>
+          ))}
+          <button style={{...S.btn("accent",{fontSize:11,padding:"7px 16px"}),flexShrink:0,whiteSpace:"nowrap",alignSelf:"flex-end"}}
+            disabled={savingRow[title]} onClick={()=>doSave(title,{...row},()=>setRow(empty()))}>
+            {savingRow[title]?"…":"💾 Save Row"}
+          </button>
+        </div>
+      </SC>
+    ))}
+    <SC title="Remarks">
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <textarea style={{...S.input,minHeight:60,resize:"vertical",flex:1}} value={remark} onChange={e=>setRemark(e.target.value)} placeholder="Remark…"/>
+        <button style={{...S.btn("ghost",{fontSize:11,padding:"8px 14px"}),flexShrink:0}} disabled={!remark.trim()||savingRow["Remark"]}
+          onClick={()=>doSave("Remark",{text:remark},()=>setRemark(""))}>
+          {savingRow["Remark"]?"…":"💾 Save Remark"}
+        </button>
+      </div>
+      <TxnList txns={txns} section="Remark" session={session} deleteRow={deleteRow} columns={[{key:"text",label:"Note"}]} />
+    </SC>
+  </div>;
+}
+
+function ExtruderForm({ session, users=[], lists={}, machine=1 }) {
+  return <div>
+    <PH title={`Extruder ${machine} Daily Production Sheet`} sub="Live capture — each row saves immediately" />
+    <JobCardShell type={`extruder${machine}`} formLabel={`Extruder ${machine}`} session={session} lists={lists} users={users}>
+      {(props)=><ExtruderFormInner {...props} lists={lists} users={users} session={session} machine={machine} />}
+    </JobCardShell>
   </div>;
 }
 
 // ── Extruder QC Form ──────────────────────────────────────────────────────────
-function ExtruderQCForm({ onSave, users=[], lists={}, machine=1 }) {
-  const checkLabels = (lists.extruder_qc_checks||[]).map(String).filter(Boolean);
-  const [hdr,setHdr]      = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
-  const [checks,setChecks]= useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
-  const [overall,setOverall]= useState("");
-  const [remarks,setRemarks]= useState("");
-  const [saved,setSaved]    = useState(false);
-  const operatorNames = (lists.operator||[]).length>0
-    ? (lists.operator||[]).map(String).filter(Boolean)
-    : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const sc = (i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
-  React.useEffect(()=>{
-    setChecks(checkLabels.map(label=>({label,result:"",comment:""})));
-  },[checkLabels.join("|")]);
-  const passC=checks.filter(c=>c.result==="Pass").length;
-  const failC=checks.filter(c=>c.result==="Fail").length;
-  const naC  =checks.filter(c=>c.result==="N/A").length;
-  if (saved) return <Done label={`Extruder ${machine} QC`} reset={()=>setSaved(false)} />;
-  const save=async()=>{
-    if (!validate({
-      shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
-      customer:{value:hdr.customer,label:"Customer"},
-      operator:{value:hdr.operator,label:"Operator"},
-      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
-    })) return;
-    await onSave({type:`extruder${machine}qc`,title:`Extruder ${machine} QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks,machine}});
-    setSaved(true);
-  };
-  const machineColor = machine===1?"#e67e22":"#16a085";
+function ExtruderQCForm({ session, users=[], lists={}, machine=1 }) {
   return <div>
-    <PH title={`Extruder ${machine} QC Form`} sub="Complete all check items then set the overall result" />
-    {checkLabels.length===0 && (
-      <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
-        ⚠ No check items configured yet. Go to <strong>Lists / Settings → Extruder QC Checks</strong> to add them.
-      </div>
-    )}
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    <SC title="Run Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
-      </Grid>
-    </SC>
-    {checks.length>0 && (
-      <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
-        <THead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","150px","2fr"]} />
-        {checks.map((c,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
-            <div style={{fontSize:12,color:C.text}}>{c.label}</div>
-            <div style={{display:"flex",gap:4}}>
-              {["Pass","Fail","N/A"].map(opt=>(
-                <button key={opt} onClick={()=>sc(i,"result",opt)} style={{
-                  flex:1,padding:"5px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
-                  background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
-                  color:c.result===opt?"#fff":C.muted,
-                  outline:c.result===opt?"none":`1px solid ${C.border}`,transition:"all 0.1s",
-                }}>{opt}</button>
-              ))}
-            </div>
-            <input style={{...S.input,padding:"5px 8px"}} value={c.comment} placeholder="Add comment…" onChange={e=>sc(i,"comment",e.target.value)} />
-          </div>
-        ))}
-      </SC>
-    )}
-    <SC title="Overall Assessment">
-      <div style={{display:"flex",gap:12,marginBottom:16}}>
-        {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
-          <button key={opt} onClick={()=>setOverall(opt)} style={{
-            flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:"0.04em",
-            background:overall===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
-            color:overall===opt?"#fff":C.muted,
-            outline:overall===opt?"none":`1px solid ${C.border}`,transition:"all 0.12s",
-          }}>{opt}</button>
-        ))}
-      </div>
-      <label style={S.label}>Remarks</label>
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
-    </SC>
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Extruder {machine} QC</button>
+    <PH title={`Extruder ${machine} QC Form`} sub="Live capture — save each check item individually" />
+    <JobCardShell type={`extruder${machine}qc`} formLabel={`Extruder ${machine} QC`} session={session} lists={lists} users={users}>
+      {(props)=><QCFormInner {...props} lists={lists} users={users} session={session} checkListKey="extruder_qc_checks" qcLabel="Extruder" />}
+    </JobCardShell>
   </div>;
 }
-
-
 
 // ── Slitting Daily Production Sheet ──────────────────────────────────────────
 const eSlitInput  = ()=>({batchNo:"",metry:"",kg:""});
 const eSlitPaper  = ()=>({supplierName:"",batchNo:"",slitting:"",amount:""});
 const eSlitRoll   = ()=>({rollNo:"",metry:"",kg:""});
 const eSlitOutput = ()=>({palletCode:"",metry:"",kg:""});
+const eSlitDetail = ()=>({tape:"",waste:"",blades:"",operator:"",sign:""});
 
-function SlittingForm({ onSave, users=[], lists={}, machine=1 }) {
-  const [hdr,setHdr]          = useState({date:todayStr(),time:"",shift:"",jobNo:"",customer:"",productName:""});
-  const [inputRows, setInput] = useState([eSlitInput()]);
-  const [paperRows, setPaper] = useState([eSlitPaper()]);
-  const [rollRows,  setRolls] = useState([eSlitRoll()]);
-  const [outputRows,setOutput]= useState([eSlitOutput()]);
-  const [slitRows,  setSlit]  = useState([{tape:"",waste:"",blades:"",operator:"",sign:""}]);
-  const [remarks,   setRemarks]= useState("");
-  const [saved,     setSaved] = useState(false);
-  const operatorNames = (lists.operator||[]).length>0
-    ? (lists.operator||[]).map(String).filter(Boolean)
-    : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
-  const aa = (fn,e)=>fn(a=>[...a,e()]);
-  const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
-  if (saved) return <Done label={`Slitting ${machine} Production Sheet`} reset={()=>setSaved(false)} />;
-  const save = async()=>{
-    if (!validate({
-      shift:   {value:hdr.shift,   label:"Shift"},
-      jobNo:   {value:hdr.jobNo,   label:"Job No."},
-      customer:{value:hdr.customer,label:"Customer"},
-    })) return;
-    await onSave({
-      type:`slitting${machine}`,
-      title:`Slitting ${machine} · ${hdr.jobNo||hdr.date} · ${hdr.date}`,
-      data:{header:hdr,inputRows,paperRows,rollRows,outputRows,slitRows,remarks}
-    });
-    setSaved(true);
-  };
-  const machineColor = machine===1?"#8e44ad":"#2471a3";
-  return <div>
-    <PH title={`Slitting ${machine} Daily Production Sheet`} sub="Slitting traceability — input stock, paper rolls, roll output, pallet output and slit details" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    <SC title="Job Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-      </Grid>
-    </SC>
+function SlittingFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow, deleteRow, setErr, lists={}, users=[], session, machine }) {
+  const [hdr,setHdr]=useState({date:todayStr(),time:"",shift:"",customer:"",productName:""});
+  const {errors:fErr,validate,clear:clrErr}=useFormValidation();
+  const operatorNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
+  const h=(k,v)=>{clrErr(k);setHdr(p=>({...p,[k]:v}));};
+  const [rows,setRows]=useState({input:eSlitInput(),paper:eSlitPaper(),roll:eSlitRoll(),output:eSlitOutput(),detail:eSlitDetail(),remark:""});
+  const [savingRow,setSavingRow]=useState({});
+  const doSave=async(section,data,reset)=>{setSavingRow(p=>({...p,[section]:true}));const res=await saveRow(section,data);if(res)reset();setSavingRow(p=>({...p,[section]:false}));};
+  const sr=(k,v)=>setRows(p=>({...p,[k]:v}));
 
-    <SC title="Input Stock Received (from Warehouse)">
-      <THead cols={["Batch No.","Metry","KG",""]} widths={["2fr","1.5fr","1fr","40px"]} />
-      {inputRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.batchNo} onChange={v=>as(setInput,i,"batchNo",v)} placeholder="Batch No." />
-          <TI type="number" value={r.metry} onChange={v=>as(setInput,i,"metry",v)} />
-          <TI type="number" value={r.kg}    onChange={v=>as(setInput,i,"kg",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setInput,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setInput,eSlitInput)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Paper Rolls Received from Supplier">
-      <THead cols={["Supplier Name","Batch No.","Slitting","Amount",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
-      {paperRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.supplierName} onChange={v=>as(setPaper,i,"supplierName",v)} placeholder="Supplier name" />
-          <TI value={r.batchNo}     onChange={v=>as(setPaper,i,"batchNo",v)} />
-          <TI value={r.slitting}    onChange={v=>as(setPaper,i,"slitting",v)} />
-          <TI type="number" value={r.amount} onChange={v=>as(setPaper,i,"amount",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setPaper,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setPaper,eSlitPaper)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Roll Numbers After Slitting">
-      <THead cols={["Roll No.","Metry","KG",""]} widths={["1fr","1.5fr","1.5fr","40px"]} />
-      {rollRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1.5fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.rollNo}  onChange={v=>as(setRolls,i,"rollNo",v)} placeholder={`Roll ${i+1}`} />
-          <TI type="number" value={r.metry} onChange={v=>as(setRolls,i,"metry",v)} />
-          <TI type="number" value={r.kg}    onChange={v=>as(setRolls,i,"kg",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRolls,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRolls,eSlitRoll)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Output Stock Sent to Warehouse (Loaded on Pallet)">
-      <THead cols={["Pallet Code","Metry","KG",""]} widths={["2fr","1.5fr","1fr","40px"]} />
-      {outputRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.palletCode} onChange={v=>as(setOutput,i,"palletCode",v)} placeholder="Pallet code" />
-          <TI type="number" value={r.metry} onChange={v=>as(setOutput,i,"metry",v)} />
-          <TI type="number" value={r.kg}    onChange={v=>as(setOutput,i,"kg",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setOutput,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setOutput,eSlitOutput)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Slit Details">
-      <THead cols={["Tape","Waste","Blades","Operator","Sign",""]} widths={["1fr","1fr","1fr","1.5fr","1fr","40px"]} />
-      {slitRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1.5fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.tape}     onChange={v=>as(setSlit,i,"tape",v)} />
-          <TI value={r.waste}    onChange={v=>as(setSlit,i,"waste",v)} />
-          <TI value={r.blades}   onChange={v=>as(setSlit,i,"blades",v)} />
-          <TS value={r.operator} onChange={v=>as(setSlit,i,"operator",v)} options={["", ...operatorNames]} />
-          <TI value={r.sign}     onChange={v=>as(setSlit,i,"sign",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setSlit,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setSlit,()=>({tape:"",waste:"",blades:"",operator:"",sign:""}))}>+ Add Row</button>
-    </SC>
-
-    <SC title="Remarks">
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
-    </SC>
-
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>
-      💾 Save Slitting {machine} Sheet
+  if(phase==="header") return <div>
+    <SC title="Job Details"><Grid cols={4}>
+      <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+      <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
+      <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+      <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+      <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+    </Grid></SC>
+    <button style={{...S.btn("accent"),padding:"12px 32px"}} disabled={saving}
+      onClick={()=>{if(!validate({shift:{value:hdr.shift,label:"Shift"},customer:{value:hdr.customer,label:"Customer"}}))return;startJobCard({...hdr,jobNo});}}>
+      {saving?"Creating…":"▶ Start Job Card"}
     </button>
+  </div>;
+
+  return <div>
+    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+      <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
+    ))}</div></SC>
+    {[
+      ["Input Stock Received","input",{batchNo:"Batch No",metry:"Metry",kg:"KG"},eSlitInput],
+      ["Paper Rolls from Supplier","paper",{supplierName:"Supplier",batchNo:"Batch No",slitting:"Slitting",amount:"Amount"},eSlitPaper],
+      ["Roll Numbers After Slitting","roll",{rollNo:"Roll No",metry:"Metry",kg:"KG"},eSlitRoll],
+      ["Output Stock to Warehouse","output",{palletCode:"Pallet Code",metry:"Metry",kg:"KG"},eSlitOutput],
+      ["Slit Details","detail",{tape:"Tape",waste:"Waste",blades:"Blades",operator:"Operator",sign:"Sign"},eSlitDetail],
+    ].map(([title,key,fields,empty])=>(
+      <SC key={title} title={title}>
+        <TxnList txns={txns} section={title} session={session} deleteRow={deleteRow} columns={Object.entries(fields).map(([k,l])=>({key:k,label:l}))} />
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {Object.entries(fields).map(([k,l])=>(
+            <div key={k} style={{flex:"1 0 90px"}}>
+              <div style={{fontSize:10,color:C.muted,marginBottom:2}}>{l}</div>
+              {k==="operator"
+                ?<TS value={rows[key][k]||""} onChange={v=>sr(key,{...rows[key],[k]:v})} options={["", ...operatorNames]} />
+                :<TI value={rows[key][k]||""} onChange={v=>sr(key,{...rows[key],[k]:v})} />
+              }
+            </div>
+          ))}
+          <button style={{...S.btn("accent",{fontSize:11,padding:"7px 16px"}),flexShrink:0,whiteSpace:"nowrap",alignSelf:"flex-end"}}
+            disabled={savingRow[title]} onClick={()=>doSave(title,{...rows[key]},()=>sr(key,empty()))}>
+            {savingRow[title]?"…":"💾 Save Row"}
+          </button>
+        </div>
+      </SC>
+    ))}
+    <SC title="Remarks">
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <textarea style={{...S.input,minHeight:60,resize:"vertical",flex:1}} value={rows.remark} onChange={e=>sr("remark",e.target.value)} placeholder="Remark…"/>
+        <button style={{...S.btn("ghost",{fontSize:11,padding:"8px 14px"}),flexShrink:0}} disabled={!rows.remark.trim()||savingRow["Remark"]}
+          onClick={()=>doSave("Remark",{text:rows.remark},()=>sr("remark",""))}>
+          {savingRow["Remark"]?"…":"💾 Save Remark"}
+        </button>
+      </div>
+      <TxnList txns={txns} section="Remark" session={session} deleteRow={deleteRow} columns={[{key:"text",label:"Note"}]} />
+    </SC>
+  </div>;
+}
+
+function SlittingForm({ session, users=[], lists={}, machine=1 }) {
+  return <div>
+    <PH title={`Slitting ${machine} Daily Production Sheet`} sub="Live capture — each row saves immediately" />
+    <JobCardShell type={`slitting${machine}`} formLabel={`Slitting ${machine}`} session={session} lists={lists} users={users}>
+      {(props)=><SlittingFormInner {...props} lists={lists} users={users} session={session} machine={machine} />}
+    </JobCardShell>
   </div>;
 }
 
 // ── Slitting QC Form ──────────────────────────────────────────────────────────
-function SlittingQCForm({ onSave, users=[], lists={}, machine=1 }) {
-  const checkLabels = (lists.slitting_qc_checks||[]).map(String).filter(Boolean);
-  const [hdr,setHdr]       = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
-  const [checks,setChecks] = useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
-  const [overall,setOverall]= useState("");
-  const [remarks,setRemarks]= useState("");
-  const [saved,setSaved]    = useState(false);
-  const operatorNames = (lists.operator||[]).length>0
-    ? (lists.operator||[]).map(String).filter(Boolean)
-    : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const sc = (i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
-  React.useEffect(()=>{
-    setChecks(checkLabels.map(label=>({label,result:"",comment:""})));
-  },[checkLabels.join("|")]);
-  const passC=checks.filter(c=>c.result==="Pass").length;
-  const failC=checks.filter(c=>c.result==="Fail").length;
-  const naC  =checks.filter(c=>c.result==="N/A").length;
-  if (saved) return <Done label={`Slitting ${machine} QC`} reset={()=>setSaved(false)} />;
-  const save=async()=>{
-    if (!validate({
-      shift:    {value:hdr.shift,    label:"Shift"},
-      jobNo:    {value:hdr.jobNo,    label:"Job No."},
-      customer: {value:hdr.customer, label:"Customer"},
-      operator: {value:hdr.operator, label:"Operator"},
-      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
-    })) return;
-    await onSave({type:`slitting${machine}qc`,title:`Slitting ${machine} QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks,machine}});
-    setSaved(true);
-  };
+function SlittingQCForm({ session, users=[], lists={}, machine=1 }) {
   return <div>
-    <PH title={`Slitting ${machine} QC Form`} sub="Complete all check items then set the overall result" />
-    {checkLabels.length===0 && (
-      <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
-        ⚠ No check items configured yet. Go to <strong>Lists / Settings → Slitting QC Checks</strong> to add them.
-      </div>
-    )}
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    <SC title="Run Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
-      </Grid>
-    </SC>
-    {checks.length>0 && (
-      <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
-        <THead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","150px","2fr"]} />
-        {checks.map((c,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
-            <div style={{fontSize:12,color:C.text}}>{c.label}</div>
-            <div style={{display:"flex",gap:4}}>
-              {["Pass","Fail","N/A"].map(opt=>(
-                <button key={opt} onClick={()=>sc(i,"result",opt)} style={{
-                  flex:1,padding:"5px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
-                  background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
-                  color:c.result===opt?"#fff":C.muted,
-                  outline:c.result===opt?"none":`1px solid ${C.border}`,transition:"all 0.1s",
-                }}>{opt}</button>
-              ))}
-            </div>
-            <input style={{...S.input,padding:"5px 8px"}} value={c.comment} placeholder="Add comment…" onChange={e=>sc(i,"comment",e.target.value)} />
-          </div>
-        ))}
-      </SC>
-    )}
-    <SC title="Overall Assessment">
-      <div style={{display:"flex",gap:12,marginBottom:16}}>
-        {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
-          <button key={opt} onClick={()=>setOverall(opt)} style={{
-            flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:"0.04em",
-            background:overall===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
-            color:overall===opt?"#fff":C.muted,
-            outline:overall===opt?"none":`1px solid ${C.border}`,transition:"all 0.12s",
-          }}>{opt}</button>
-        ))}
-      </div>
-      <label style={S.label}>Remarks</label>
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
-    </SC>
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Slitting {machine} QC</button>
+    <PH title={`Slitting ${machine} QC Form`} sub="Live capture — save each check item individually" />
+    <JobCardShell type={`slitting${machine}qc`} formLabel={`Slitting ${machine} QC`} session={session} lists={lists} users={users}>
+      {(props)=><QCFormInner {...props} lists={lists} users={users} session={session} checkListKey="slitting_qc_checks" qcLabel="Slitting" />}
+    </JobCardShell>
   </div>;
 }
-
 
 // ── Bag Making Daily Production Sheet ────────────────────────────────────────
 const eBagUnwind  = ()=>({batchNo:"",kg:"",metres:""});
@@ -2111,243 +1362,124 @@ const eBagBatch   = ()=>({batchCode:"",boxesProduced:""});
 const eBagOpener  = ()=>({openerName:"",amountOpened:"",boxNumber:""});
 const eBagOutput  = ()=>({palletCode:"",qty:""});
 
-function BagMakingForm({ onSave, users=[], lists={}, machine=1 }) {
-  const [hdr,setHdr]            = useState({date:todayStr(),time:"",shift:"",jobNo:"",customer:"",productName:"",pcsPerBox:"",bagMakingBatchCode:""});
-  const [unwindARows,setUnwindA]= useState([eBagUnwind()]);
-  const [unwindBRows,setUnwindB]= useState([eBagUnwind()]);
-  const [batchRows, setBatch]   = useState([eBagBatch(),eBagBatch(),eBagBatch()]);
-  const [openerRows,setOpener]  = useState([eBagOpener()]);
-  const [outputRows,setOutput]  = useState([eBagOutput()]);
-  const [sideTape,  setSideTape]= useState("");
-  const [waste,     setWaste]   = useState("");
-  const [bladeChange,setBladeChange]= useState("");
-  const [sign,      setSign]    = useState("");
-  const [remarks,   setRemarks] = useState("");
-  const [saved,     setSaved]   = useState(false);
+function BagMakingFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow, deleteRow, setErr, lists={}, users=[], session, machine }) {
+  const [hdr,setHdr]=useState({date:todayStr(),time:"",shift:"",customer:"",productName:"",bagMakingBatchCode:"",pcsPerBox:""});
+  const {errors:fErr,validate,clear:clrErr}=useFormValidation();
+  const operatorNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
+  const bagOpenerNames=(lists.bag_opener||[]).map(String).filter(Boolean);
+  const h=(k,v)=>{clrErr(k);setHdr(p=>({...p,[k]:v}));};
+  const [rows,setRows]=useState({unwindA:eBagUnwind(),unwindB:eBagUnwind(),batch:eBagBatch(),output:eBagOutput(),opener:eBagOpener(),remark:""});
+  const [misc,setMisc]=useState({sideTape:"",waste:"",bladeChange:"",sign:""});
+  const [savingRow,setSavingRow]=useState({});
+  const doSave=async(section,data,reset)=>{setSavingRow(p=>({...p,[section]:true}));const res=await saveRow(section,data);if(res)reset();setSavingRow(p=>({...p,[section]:false}));};
+  const sr=(k,v)=>setRows(p=>({...p,[k]:v}));
 
-  const operatorNames = (lists.operator||[]).length>0
-    ? (lists.operator||[]).map(String).filter(Boolean)
-    : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const bagOpenerNames = (lists.bag_opener||[]).map(String).filter(Boolean);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const as = (fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
-  const aa = (fn,e)=>fn(a=>[...a,e()]);
-  const ad = (fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
-
-  if (saved) return <Done label={`Bag Making ${machine} Production Sheet`} reset={()=>setSaved(false)} />;
-  const save = async()=>{
-    if (!validate({
-      shift:   {value:hdr.shift,   label:"Shift"},
-      jobNo:   {value:hdr.jobNo,   label:"Job Card No."},
-      customer:{value:hdr.customer,label:"Customer"},
-    })) return;
-    await onSave({
-      type:`bagmaking${machine}`,
-      title:`Bag Making ${machine} · ${hdr.jobNo||hdr.date} · ${hdr.date}`,
-      data:{header:hdr,unwindARows,unwindBRows,batchRows,openerRows,outputRows,sideTape,waste,bladeChange,sign,remarks}
-    });
-    setSaved(true);
-  };
+  if(phase==="header") return <div>
+    <SC title="Job Details"><Grid cols={4}>
+      <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
+      <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
+      <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+      <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
+      <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
+      <F label="Operator"><TS value={hdr.operator||""} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
+      <F label="Bag Making Batch Code"><TI value={hdr.bagMakingBatchCode} onChange={v=>h("bagMakingBatchCode",v)} /></F>
+      <F label="PCS Per Box"><TI type="number" value={hdr.pcsPerBox} onChange={v=>h("pcsPerBox",v)} /></F>
+    </Grid></SC>
+    <button style={{...S.btn("accent"),padding:"12px 32px"}} disabled={saving}
+      onClick={()=>{if(!validate({shift:{value:hdr.shift,label:"Shift"},customer:{value:hdr.customer,label:"Customer"},operator:{value:hdr.operator,label:"Operator"}}))return;startJobCard({...hdr,jobNo});}}>
+      {saving?"Creating…":"▶ Start Job Card"}
+    </button>
+  </div>;
 
   return <div>
-    <PH title={`Bag Making ${machine} (Cut) Daily Production Sheet`} sub="Bag making traceability — unwind stock, batch codes, output and bag opener details" />
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-
-    <SC title="Job Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator||""} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
-        <F label="Bag Making Batch Code"><TI value={hdr.bagMakingBatchCode} onChange={v=>h("bagMakingBatchCode",v)} /></F>
-        <F label="PCS Per Box"><TI type="number" value={hdr.pcsPerBox} onChange={v=>h("pcsPerBox",v)} /></F>
-      </Grid>
-    </SC>
-
-    <SC title="Input Stock Received from Warehouse — Unwind A">
-      <THead cols={["Batch No.","KG","Metres",""]} widths={["2fr","1fr","1fr","40px"]} />
-      {unwindARows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.batchNo} onChange={v=>as(setUnwindA,i,"batchNo",v)} placeholder="Batch No." />
-          <TI type="number" value={r.kg}     onChange={v=>as(setUnwindA,i,"kg",v)} />
-          <TI type="number" value={r.metres} onChange={v=>as(setUnwindA,i,"metres",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setUnwindA,i)}>✕</button>
+    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+      <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
+    ))}</div></SC>
+    {[
+      ["Unwind A","unwindA",{batchNo:"Batch No",kg:"KG",metres:"Metres"},eBagUnwind],
+      ["Unwind B","unwindB",{batchNo:"Batch No",kg:"KG",metres:"Metres"},eBagUnwind],
+      ["Batch Codes","batch",{batchCode:"Batch Code",boxesProduced:"Boxes Produced"},eBagBatch],
+      ["Output Stock","output",{palletCode:"Pallet Code",qty:"Qty (Boxes)"},eBagOutput],
+    ].map(([title,key,fields,empty])=>(
+      <SC key={title} title={title}>
+        <TxnList txns={txns} section={title} session={session} deleteRow={deleteRow} columns={Object.entries(fields).map(([k,l])=>({key:k,label:l}))} />
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {Object.entries(fields).map(([k,l])=>(
+            <div key={k} style={{flex:"1 0 110px"}}>
+              <div style={{fontSize:10,color:C.muted,marginBottom:2}}>{l}</div>
+              <TI value={rows[key][k]||""} onChange={v=>sr(key,{...rows[key],[k]:v})} />
+            </div>
+          ))}
+          <button style={{...S.btn("accent",{fontSize:11,padding:"7px 16px"}),flexShrink:0,whiteSpace:"nowrap",alignSelf:"flex-end"}}
+            disabled={savingRow[title]} onClick={()=>doSave(title,{...rows[key]},()=>sr(key,empty()))}>
+            {savingRow[title]?"…":"💾 Save Row"}
+          </button>
         </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setUnwindA,eBagUnwind)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Input Stock Received from Warehouse — Unwind B">
-      <THead cols={["Batch No.","KG","Metres",""]} widths={["2fr","1fr","1fr","40px"]} />
-      {unwindBRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.batchNo} onChange={v=>as(setUnwindB,i,"batchNo",v)} placeholder="Batch No." />
-          <TI type="number" value={r.kg}     onChange={v=>as(setUnwindB,i,"kg",v)} />
-          <TI type="number" value={r.metres} onChange={v=>as(setUnwindB,i,"metres",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setUnwindB,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setUnwindB,eBagUnwind)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Boxes Produced — Batch Codes">
-      <THead cols={["Bag Making Batch Code","Boxes Produced",""]} widths={["2fr","1.5fr","40px"]} />
-      {batchRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.batchCode}      onChange={v=>as(setBatch,i,"batchCode",v)} placeholder={`e.g. BR${539+i}`} />
-          <TI type="number" value={r.boxesProduced} onChange={v=>as(setBatch,i,"boxesProduced",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setBatch,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setBatch,eBagBatch)}>+ Add Row</button>
-    </SC>
-
-    <SC title="Output Stock to Warehouse — Loaded onto Pallet">
-      <THead cols={["Pallet Code","Qty (Boxes)",""]} widths={["2fr","1.5fr","40px"]} />
-      {outputRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TI value={r.palletCode} onChange={v=>as(setOutput,i,"palletCode",v)} placeholder="Pallet code" />
-          <TI type="number" value={r.qty} onChange={v=>as(setOutput,i,"qty",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setOutput,i)}>✕</button>
-        </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setOutput,eBagOutput)}>+ Add Row</button>
-    </SC>
-
+      </SC>
+    ))}
     <SC title="Slit / Waste / Blade Change">
-      <Grid cols={3}>
-        <F label="Side Tape"><TI value={sideTape} onChange={v=>setSideTape(v)} /></F>
-        <F label="Waste"><TI value={waste} onChange={v=>setWaste(v)} /></F>
-        <F label="Blade Change"><TI value={bladeChange} onChange={v=>setBladeChange(v)} /></F>
+      <TxnList txns={txns} section="Slit Details" session={session} deleteRow={deleteRow} columns={[{key:"sideTape",label:"Side Tape"},{key:"waste",label:"Waste"},{key:"bladeChange",label:"Blade Change"},{key:"sign",label:"Sign"}]} />
+      <Grid cols={4}>
+        <F label="Side Tape"><TI value={misc.sideTape} onChange={v=>setMisc(p=>({...p,sideTape:v}))} /></F>
+        <F label="Waste"><TI value={misc.waste} onChange={v=>setMisc(p=>({...p,waste:v}))} /></F>
+        <F label="Blade Change"><TI value={misc.bladeChange} onChange={v=>setMisc(p=>({...p,bladeChange:v}))} /></F>
+        <F label="Sign"><TI value={misc.sign} onChange={v=>setMisc(p=>({...p,sign:v}))} /></F>
       </Grid>
+      <button style={{...S.btn("accent",{fontSize:11,padding:"7px 16px"}),marginTop:8}} disabled={savingRow["Slit Details"]}
+        onClick={()=>doSave("Slit Details",{...misc},()=>setMisc({sideTape:"",waste:"",bladeChange:"",sign:""}))}>
+        {savingRow["Slit Details"]?"…":"💾 Save Slit Details"}
+      </button>
     </SC>
-
-    <SC title="Sign">
-      <TI value={sign} onChange={v=>setSign(v)} placeholder="Operator signature / initials" />
-    </SC>
-
     <SC title="Name of Bag Opener, Amount Opened and Box Number">
-      <THead cols={["Bag Opener Name","Amount Opened","Box Number",""]} widths={["2fr","1.5fr","1.5fr","40px"]} />
-      {openerRows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1.5fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-          <TS value={r.openerName}    onChange={v=>as(setOpener,i,"openerName",v)}    options={["", ...bagOpenerNames]} />
-          <TI value={r.amountOpened}  onChange={v=>as(setOpener,i,"amountOpened",v)} />
-          <TI value={r.boxNumber}     onChange={v=>as(setOpener,i,"boxNumber",v)} />
-          <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setOpener,i)}>✕</button>
+      <TxnList txns={txns} section="Bag Opener" session={session} deleteRow={deleteRow} columns={[{key:"openerName",label:"Name"},{key:"amountOpened",label:"Amount"},{key:"boxNumber",label:"Box No"}]} />
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{flex:"2 0 140px"}}>
+          <div style={{fontSize:10,color:C.muted,marginBottom:2}}>Bag Opener Name</div>
+          <TS value={rows.opener.openerName} onChange={v=>sr("opener",{...rows.opener,openerName:v})} options={["", ...bagOpenerNames]} />
         </div>
-      ))}
-      <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setOpener,eBagOpener)}>+ Add Row</button>
+        <div style={{flex:"1 0 100px"}}>
+          <div style={{fontSize:10,color:C.muted,marginBottom:2}}>Amount Opened</div>
+          <TI value={rows.opener.amountOpened} onChange={v=>sr("opener",{...rows.opener,amountOpened:v})} />
+        </div>
+        <div style={{flex:"1 0 100px"}}>
+          <div style={{fontSize:10,color:C.muted,marginBottom:2}}>Box Number</div>
+          <TI value={rows.opener.boxNumber} onChange={v=>sr("opener",{...rows.opener,boxNumber:v})} />
+        </div>
+        <button style={{...S.btn("accent",{fontSize:11,padding:"7px 16px"}),flexShrink:0,whiteSpace:"nowrap",alignSelf:"flex-end"}}
+          disabled={savingRow["Bag Opener"]} onClick={()=>doSave("Bag Opener",{...rows.opener},()=>sr("opener",eBagOpener()))}>
+          {savingRow["Bag Opener"]?"…":"💾 Save Row"}
+        </button>
+      </div>
     </SC>
-
     <SC title="Remarks">
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
+      <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+        <textarea style={{...S.input,minHeight:60,resize:"vertical",flex:1}} value={rows.remark} onChange={e=>sr("remark",e.target.value)} placeholder="Remark…"/>
+        <button style={{...S.btn("ghost",{fontSize:11,padding:"8px 14px"}),flexShrink:0}} disabled={!rows.remark.trim()||savingRow["Remark"]}
+          onClick={()=>doSave("Remark",{text:rows.remark},()=>sr("remark",""))}>
+          {savingRow["Remark"]?"…":"💾 Save Remark"}
+        </button>
+      </div>
+      <TxnList txns={txns} section="Remark" session={session} deleteRow={deleteRow} columns={[{key:"text",label:"Note"}]} />
     </SC>
+  </div>;
+}
 
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>
-      💾 Save Bag Making {machine} Sheet
-    </button>
+function BagMakingForm({ session, users=[], lists={}, machine=1 }) {
+  return <div>
+    <PH title={`Bag Making ${machine} (Cut) Daily Production Sheet`} sub="Live capture — each row saves immediately" />
+    <JobCardShell type={`bagmaking${machine}`} formLabel={`Bag Making ${machine}`} session={session} lists={lists} users={users}>
+      {(props)=><BagMakingFormInner {...props} lists={lists} users={users} session={session} machine={machine} />}
+    </JobCardShell>
   </div>;
 }
 
 // ── Bag Making QC Form ────────────────────────────────────────────────────────
-function BagMakingQCForm({ onSave, users=[], lists={}, machine=1 }) {
-  const checkLabels = (lists.bagmaking_qc_checks||[]).map(String).filter(Boolean);
-  const [hdr,setHdr]       = useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
-  const [checks,setChecks] = useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
-  const [overall,setOverall]= useState("");
-  const [remarks,setRemarks]= useState("");
-  const [saved,setSaved]    = useState(false);
-  const operatorNames = (lists.operator||[]).length>0
-    ? (lists.operator||[]).map(String).filter(Boolean)
-    : users.filter(u=>u.role==="operator").map(u=>u.name);
-  const qcNames = (lists.qc_officer||[]).map(String).filter(Boolean);
-  const {errors:fErr,validate,clear:clrErr} = useFormValidation();
-  const h  = (k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
-  const sc = (i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
-  React.useEffect(()=>{ setChecks(checkLabels.map(label=>({label,result:"",comment:""})));  },[checkLabels.join("|")]);
-  const passC=checks.filter(c=>c.result==="Pass").length;
-  const failC=checks.filter(c=>c.result==="Fail").length;
-  const naC  =checks.filter(c=>c.result==="N/A").length;
-  if (saved) return <Done label={`Bag Making ${machine} QC`} reset={()=>setSaved(false)} />;
-  const save=async()=>{
-    if (!validate({
-      shift:    {value:hdr.shift,    label:"Shift"},
-      jobNo:    {value:hdr.jobNo,    label:"Job No."},
-      customer: {value:hdr.customer, label:"Customer"},
-      operator: {value:hdr.operator, label:"Operator"},
-      inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
-    })) return;
-    await onSave({type:`bagmaking${machine}qc`,title:`Bag Making ${machine} QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks,machine}});
-    setSaved(true);
-  };
+function BagMakingQCForm({ session, users=[], lists={}, machine=1 }) {
   return <div>
-    <PH title={`Bag Making ${machine} QC Form`} sub="Complete all check items then set the overall result" />
-    {checkLabels.length===0 && (
-      <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"14px 18px",marginBottom:16,fontSize:13,color:C.warn}}>
-        ⚠ No check items configured yet. Go to <strong>Lists / Settings → Bag Making QC Checks</strong> to add them.
-      </div>
-    )}
-    {Object.keys(fErr).length>0 && (
-      <div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>
-        ⚠ Please complete all required fields before saving.
-      </div>
-    )}
-    <SC title="Run Details">
-      <Grid cols={4}>
-        <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-        <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-        <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
-        <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
-        <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
-      </Grid>
-    </SC>
-    {checks.length>0 && (
-      <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
-        <THead cols={["#","Check Item","Result","Comments"]} widths={["36px","2fr","150px","2fr"]} />
-        {checks.map((c,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"36px 2fr 150px 2fr",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"center"}}>
-            <div style={{fontSize:11,color:C.muted,textAlign:"center"}}>{i+1}</div>
-            <div style={{fontSize:12,color:C.text}}>{c.label}</div>
-            <div style={{display:"flex",gap:4}}>
-              {["Pass","Fail","N/A"].map(opt=>(
-                <button key={opt} onClick={()=>sc(i,"result",opt)} style={{
-                  flex:1,padding:"5px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:600,
-                  background:c.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):C.bg,
-                  color:c.result===opt?"#fff":C.muted,
-                  outline:c.result===opt?"none":`1px solid ${C.border}`,transition:"all 0.1s",
-                }}>{opt}</button>
-              ))}
-            </div>
-            <input style={{...S.input,padding:"5px 8px"}} value={c.comment} placeholder="Add comment…" onChange={e=>sc(i,"comment",e.target.value)} />
-          </div>
-        ))}
-      </SC>
-    )}
-    <SC title="Overall Assessment">
-      <div style={{display:"flex",gap:12,marginBottom:16}}>
-        {["APPROVED","CONDITIONAL","REJECTED"].map(opt=>(
-          <button key={opt} onClick={()=>setOverall(opt)} style={{
-            flex:1,padding:"12px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:"0.04em",
-            background:overall===opt?(opt==="APPROVED"?C.success:opt==="REJECTED"?C.danger:C.warn):C.bg,
-            color:overall===opt?"#fff":C.muted,
-            outline:overall===opt?"none":`1px solid ${C.border}`,transition:"all 0.12s",
-          }}>{opt}</button>
-        ))}
-      </div>
-      <label style={S.label}>Remarks</label>
-      <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} />
-    </SC>
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>💾 Save Bag Making {machine} QC</button>
+    <PH title={`Bag Making ${machine} QC Form`} sub="Live capture — save each check item individually" />
+    <JobCardShell type={`bagmaking${machine}qc`} formLabel={`Bag Making ${machine} QC`} session={session} lists={lists} users={users}>
+      {(props)=><QCFormInner {...props} lists={lists} users={users} session={session} checkListKey="bagmaking_qc_checks" qcLabel="Bag Making" />}
+    </JobCardShell>
   </div>;
 }
 
