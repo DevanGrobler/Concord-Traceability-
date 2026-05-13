@@ -311,9 +311,9 @@ function getTabs(user) {
   return ALL_TABS.filter(t => perms.includes(t.id));
 }
 
-function canEdit(user)   { return user?.role === "admin"; }
-function canDelete(user) { return user?.role === "admin"; }
-function isManager(user) { return user?.role === "manager"; }
+function canEdit(user)   { return (user&&user.role) === "admin"; }
+function canDelete(user) { return (user&&user.role) === "admin"; }
+function isManager(user) { return (user&&user.role) === "manager"; }
 
 function Main({ session, users, records, trashed, loginLog, appLists, onLogout, reload }) {
   const [tab, setTab]     = useState("dashboard");
@@ -585,7 +585,7 @@ function JobCardShell({ type, formLabel, session, lists, users, onComplete, chil
     const grouped = {};
     txns.forEach(t=>{ if(!grouped[t.section]) grouped[t.section]=[]; grouped[t.section].push(t.row_data); });
     await sb.from("records").insert({
-      type, title:\`\${formLabel} · \${jc.job_no} · \${jc.created_at?.split("T")[0]}\`,
+      type, title:\`\${formLabel} · \${jc.job_no} · \${jc.(created_at&&created_at.split)("T")[0]}\`,
       data:{header:headerData, transactions:grouped, completionNote:summaryNote, jobCardId:jc.id},
       created_by:session.name, created_at:new Date().toISOString()
     });
@@ -628,7 +628,7 @@ function JobCardShell({ type, formLabel, session, lists, users, onComplete, chil
         <div style={{fontSize:36,marginBottom:12}}>✅</div>
         <div style={{fontSize:18,fontWeight:700,color:C.success,marginBottom:8}}>Job Card Completed</div>
         <div style={{color:C.muted,fontSize:13,marginBottom:24}}>
-          Job No. <strong style={{color:C.text}}>{jc?.job_no}</strong> has been finalised and saved to All Records.
+          Job No. <strong style={{color:C.text}}>{(jc&&jc.job_no)}</strong> has been finalised and saved to All Records.
         </div>
         <button style={{...S.btn("accent"),padding:"10px 28px"}}
           onClick={()=>{setPhase("lookup");setJobNo("");setJc(null);setTxns([]);setHeaderData({});}}>
@@ -644,7 +644,7 @@ function JobCardShell({ type, formLabel, session, lists, users, onComplete, chil
     txns.forEach(t=>{ if(!grouped[t.section]) grouped[t.section]=[]; grouped[t.section].push(t); });
     return (
       <div>
-        <PH title={\`Complete Job Card — \${jc?.job_no}\`} sub="Review all transactions before finalising" />
+        <PH title={\`Complete Job Card — \${(jc&&jc.job_no)}\`} sub="Review all transactions before finalising" />
         <SC title="Job Card Header">
           <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
             {Object.entries(headerData||{}).map(([k,v])=>v?(
@@ -702,8 +702,8 @@ function JobCardShell({ type, formLabel, session, lists, users, onComplete, chil
         background:C.panel,borderRadius:8,border:\`1px solid \${C.border}\`}}>
         <div style={{flex:1}}>
           <div style={{fontSize:11,color:C.muted,fontWeight:700}}>OPEN JOB CARD</div>
-          <div style={{fontSize:15,fontWeight:700,color:C.accent}}>{jc?.job_no}</div>
-          <div style={{fontSize:11,color:C.muted}}>Started by {jc?.created_by} · {fmtTime(jc?.created_at)} · {txns.length} transaction{txns.length!==1?"s":""} saved</div>
+          <div style={{fontSize:15,fontWeight:700,color:C.accent}}>{(jc&&jc.job_no)}</div>
+          <div style={{fontSize:11,color:C.muted}}>Started by {(jc&&jc.created_by)} · {fmtTime((jc&&jc.created_at))} · {txns.length} transaction{txns.length!==1?"s":""} saved</div>
         </div>
         <button style={{...S.btn("accent"),padding:"8px 22px",fontSize:13}} onClick={requestComplete}>
           ✅ Complete Job Card
@@ -755,7 +755,7 @@ function TxnList({ txns, section, session, deleteRow, columns }) {
               <span style={{color:C.text,fontWeight:600}}>{String(t.row_data[col.key])}</span>
             </span>
           :null)}
-          {session?.role==="admin" && deleteRow && (
+          {(session&&session.role)==="admin" && deleteRow && (
             <button style={{...S.btn("danger",{padding:"1px 7px",fontSize:10}),marginLeft:"auto",flexShrink:0}}
               onClick={()=>deleteRow(t.id)}>✕</button>
           )}
@@ -818,7 +818,7 @@ function ProductionFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], 
   return <div>
     <SC title="Job Details" >
       <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
-        {Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+        {Object.entries((jc&&jc.header)||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
           <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
         ))}
       </div>
@@ -939,7 +939,7 @@ function QCFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow,
   return <div>
     <SC title="Run Details">
       <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
-        {Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+        {Object.entries((jc&&jc.header)||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
           <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
         ))}
       </div>
@@ -964,12 +964,12 @@ function QCFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], saveRow,
               {["Pass","Fail","N/A"].map(opt=>(
                 <button key={opt} onClick={()=>setCheckStates(p=>({...p,[label]:{...st,result:opt}}))} style={{
                   flex:1,padding:"4px 2px",border:"none",borderRadius:4,cursor:"pointer",fontSize:10,fontWeight:600,
-                  background:st.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):(saved?.result===opt?(opt==="Pass"?C.success+"44":C.danger+"44":C.muted+"44"):C.bg),
+                  background:st.result===opt?(opt==="Pass"?C.success:opt==="Fail"?C.danger:C.muted):((saved&&saved.result===opt)?(opt==="Pass"?C.success+"44":C.danger+"44":C.muted+"44"):C.bg),
                   color:st.result===opt?"#fff":C.muted,outline:st.result===opt?"none":\`1px solid \${C.border}\`,
                 }}>{opt}</button>
               ))}
             </div>
-            <input style={{...S.input,padding:"4px 8px",fontSize:12}} value={st.comment} placeholder={saved?.comment||"Comment…"} onChange={e=>setCheckStates(p=>({...p,[label]:{...st,comment:e.target.value}}))} />
+            <input style={{...S.input,padding:"4px 8px",fontSize:12}} value={st.comment} placeholder={(saved&&saved.comment)||"Comment…"} onChange={e=>setCheckStates(p=>({...p,[label]:{...st,comment:e.target.value}}))} />
             <button style={{...S.btn("accent",{fontSize:10,padding:"5px 10px"}),whiteSpace:"nowrap"}} disabled={!st.result||savingRow[label]}
               onClick={()=>doSave("QC Check",{label,result:st.result,comment:st.comment},()=>setCheckStates(p=>({...p,[label]:{result:"",comment:""}})))}>
               {savingRow[label]?"…":"💾 Save"}
@@ -1015,7 +1015,7 @@ function ViscosityFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], s
   const [savingRow,setSavingRow]=useState({});
   const doSave=async(section,data,reset)=>{setSavingRow(p=>({...p,[section]:true}));const res=await saveRow(section,data);if(res)reset();setSavingRow(p=>({...p,[section]:false}));};
 
-  const slots = getSlotsForShift(hdr.shift||jc?.header?.shift||"");
+  const slots = getSlotsForShift(hdr.shift||(jc&&jc.header&&jc.header.shift)||"");
 
   if(phase==="header") return <div>
     <SC title="Run Details">
@@ -1033,7 +1033,7 @@ function ViscosityFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], s
   return <div>
     <SC title="Run Details">
       <div style={{display:"flex",flexWrap:"wrap",gap:16}}>
-        {Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+        {Object.entries((jc&&jc.header)||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
           <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
         ))}
       </div>
@@ -1128,7 +1128,7 @@ function LaminationFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], 
   const sv=(s,fn)=>({...S.btn("accent",{fontSize:10,padding:"5px 12px"}),whiteSpace:"nowrap"});
   return <div>
     <SC title="Job Details">
-      <div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+      <div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries((jc&&jc.header)||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
         <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
       ))}</div>
     </SC>
@@ -1221,7 +1221,7 @@ function ExtruderFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], sa
   </div>;
 
   return <div>
-    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries((jc&&jc.header)||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
       <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
     ))}</div></SC>
     {[["Raw Material A — Outside Layer","RMA",rmaRow,setRma,eExtRMA,{brand:"Brand",batchNo:"Batch No",kg:"KG"}],
@@ -1308,7 +1308,7 @@ function SlittingFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], sa
   </div>;
 
   return <div>
-    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries((jc&&jc.header)||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
       <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
     ))}</div></SC>
     {[
@@ -1405,7 +1405,7 @@ function BagMakingFormInner({ phase, jobNo, startJobCard, saving, jc, txns=[], s
   </div>;
 
   return <div>
-    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries(jc?.header||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
+    <SC title="Job Details"><div style={{display:"flex",flexWrap:"wrap",gap:16}}>{Object.entries((jc&&jc.header)||{}).filter(([k,v])=>v&&k!=="jobNo").map(([k,v])=>(
       <div key={k}><div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.replace(/([A-Z])/g," $1")}</div><div style={{fontSize:13,color:C.text}}>{String(v)}</div></div>
     ))}</div></SC>
     {[
@@ -1518,13 +1518,13 @@ function Records({ records, session, onDelete, onSave, onReopen }) {
   const filtered = records.filter(r => {
     const matchType = filter==="all" || r.type===filter;
     const matchSearch = !search ||
-      r.title?.toLowerCase().includes(search.toLowerCase()) ||
-      r.created_by?.toLowerCase().includes(search.toLowerCase());
+      (r.title&&r.title.toLowerCase)().includes(search.toLowerCase()) ||
+      (r.created_by&&r.created_by.toLowerCase)().includes(search.toLowerCase());
     return matchType && matchSearch;
   });
 
   const toggle = id => setExpanded(p=>({...p,[id]:!p[id]}));
-  const typeColor = t => t?.includes("qc")?"#e67e22":C.accent;
+  const typeColor = t => (t&&t.includes)("qc")?"#e67e22":C.accent;
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}) : "—";
 
   const exportExcel = () => {
@@ -1534,8 +1534,8 @@ function Records({ records, session, onDelete, onSave, onReopen }) {
       allTypes.forEach(t => {
         const rows = records.filter(r=>r.type===t);
         const data = rows.map(r => {
-          const hdr = r.data?.header||{};
-          const txns = r.data?.transactions||{};
+          const hdr = (r.data&&r.data.header)||{};
+          const txns = (r.data&&r.data.transactions)||{};
           const flat = {...hdr};
           Object.entries(txns).forEach(([sec,arr])=>{
             (arr||[]).forEach((row,i)=>{
@@ -1574,9 +1574,9 @@ function Records({ records, session, onDelete, onSave, onReopen }) {
 
     {filtered.map(r => {
       const isOpen = expanded[r.id];
-      const hdr = r.data?.header||{};
-      const txns = r.data?.transactions||{};
-      const txnCount = Object.values(txns).reduce((s,a)=>s+(a?.length||0),0);
+      const hdr = (r.data&&r.data.header)||{};
+      const txns = (r.data&&r.data.transactions)||{};
+      const txnCount = Object.values(txns).reduce((s,a)=>s+((a&&a.length)||0),0);
       return (
         <div key={r.id} style={{...S.card,padding:0,overflow:"hidden",marginBottom:12}}>
           {/* Header row */}
@@ -1594,18 +1594,18 @@ function Records({ records, session, onDelete, onSave, onReopen }) {
               <div style={{fontSize:11,color:C.muted,marginTop:4}}>
                 {fmtDate(r.created_at)} · by {r.created_by}
                 {txnCount>0&&<span> · {txnCount} transaction{txnCount!==1?"s":""}</span>}
-                {r.data?.completionNote&&<span> · "{r.data.completionNote.substring(0,40)}{r.data.completionNote.length>40?"…":""}"</span>}
+                {(r.data&&r.data.completionNote)&&<span> · "{r.data.completionNote.substring(0,40)}{r.data.completionNote.length>40?"…":""}"</span>}
               </div>
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-              {r.data?.jobCardId && session?.role==="admin" && (
+              {(r.data&&r.data.jobCardId) && (session&&session.role)==="admin" && (
                 <button style={{fontSize:11,padding:"4px 10px",border:"none",borderRadius:4,cursor:"pointer",
                   background:C.warn+"22",color:C.warn,fontWeight:600}}
                   onClick={e=>{e.stopPropagation();onReopen&&onReopen(r.data.jobCardId,r.id);}}>
                   ↩ Reopen
                 </button>
               )}
-              {session?.role==="admin" && (
+              {(session&&session.role)==="admin" && (
                 <button style={{...S.btn("danger",{padding:"4px 10px",fontSize:11}),flexShrink:0}}
                   onClick={e=>{e.stopPropagation();onDelete(r.id);}}>✕ Delete</button>
               )}
@@ -1681,7 +1681,7 @@ function UserMgmt({ users, session, reload, flash }) {
   const [newPw,setNewPw]      = useState("");
   const [err,setErr]           = useState("");
 
-  const isAdmin = session?.role==="admin";
+  const isAdmin = (session&&session.role)==="admin";
   const canManage = u => isAdmin && u.id !== session.id && u.role !== "admin";
   const canResetPw = u => isAdmin && u.id !== session.id;
   const canDelete  = u => isAdmin && u.id !== session.id && u.role !== "admin";
@@ -1838,8 +1838,8 @@ function LoginLog({ loginLog }) {
 
   const filtered = loginLog.filter(e=>{
     const matchSearch = !search ||
-      e.name?.toLowerCase().includes(search.toLowerCase()) ||
-      e.username?.toLowerCase().includes(search.toLowerCase());
+      (e.name&&e.name.toLowerCase)().includes(search.toLowerCase()) ||
+      (e.username&&e.username.toLowerCase)().includes(search.toLowerCase());
     const matchRole = filterRole==="all" || e.role===filterRole;
     return matchSearch && matchRole;
   });
@@ -1911,9 +1911,9 @@ function TrashBin({ trashed, onRestore, onPermDelete }) {
   const [confirmId, setConfirmId] = useState(null);
 
   const filtered = trashed.filter(r=>
-    r.title?.toLowerCase().includes(search.toLowerCase()) ||
-    r.deleted_by?.toLowerCase().includes(search.toLowerCase()) ||
-    r.type?.toLowerCase().includes(search.toLowerCase())
+    (r.title&&r.title.toLowerCase)().includes(search.toLowerCase()) ||
+    (r.deleted_by&&r.deleted_by.toLowerCase)().includes(search.toLowerCase()) ||
+    (r.type&&r.type.toLowerCase)().includes(search.toLowerCase())
   );
 
   const typeColor = t=>t==="production"?C.accent:t==="viscosity"?C.blue:C.accent2;
