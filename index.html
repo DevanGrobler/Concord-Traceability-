@@ -144,6 +144,7 @@ const DEFAULT_LISTS = {
   ink_shade:            [],
   ink_supplier:         [],
   solvent:              [],
+  solvent_supplier:     [],
   width:                [],
   unit:                 ["kg","g","L","mL","m","mm","rolls","sheets"],
   operator:             [],
@@ -159,7 +160,7 @@ const DEFAULT_LISTS = {
 const LIST_LABELS = {
   substrate:"Substrate",customer:"Customer",product_name:"Product Name",
   ink_code:"Ink Codes",ink_shade:"Ink Shade",ink_supplier:"Ink Supplier",
-  solvent:"Solvent Types",width:"Width",unit:"Units",
+  solvent:"Solvent Types",solvent_supplier:"Solvent Supplier",width:"Width",unit:"Units",
   operator:"Operators",supervisor:"Supervisors",qc_officer:"QC Officers",
   printing_qc_checks:"Printing QC Checks",lamination_qc_checks:"Lamination QC Checks",extruder_qc_checks:"Extruder QC Checks",slitting_qc_checks:"Slitting QC Checks",bag_opener:"Bag Openers",bagmaking_qc_checks:"Bag Making QC Checks",
 };
@@ -528,7 +529,7 @@ function ErrMsg({ msg }) {
 // ── Production Form ───────────────────────────────────────────────────────────
 const eP=()=>({material:"",batchNo:"",qty:"",unit:""});
 const eI=()=>({inkCode:"",shade:"",supplier:"",qty:"",returned:""});
-const eS=()=>({solvent:"",qty:"",returned:""});
+const eS=()=>({solvent:"",supplier:"",batchNo:"",qty:"",returned:""});
 
 function ProductionForm({ onSave, users=[], lists={} }) {
   const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""});
@@ -603,10 +604,12 @@ function ProductionForm({ onSave, users=[], lists={} }) {
       <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setInks,eI)}>+ Add Row</button>
     </SC>
     <SC title="Solvent Input">
-      <THead cols={["Solvent","Qty Used (L)","Returned (L)",""]} widths={["2fr","1fr","1fr","40px"]} />
+      <THead cols={["Solvent","Supplier","Batch Code","Qty Used (L)","Returned (L)",""]} widths={["1.5fr","1.5fr","1.5fr","1fr","1fr","40px"]} />
       {solvents.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+        <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 1.5fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
           <TS value={r.solvent}  onChange={v=>as(setSolv,i,"solvent",v)} options={["",...(lists.solvent||[]).map(String).filter(Boolean)]} />
+          <TS value={r.supplier} onChange={v=>as(setSolv,i,"supplier",v)} options={["",...(lists.solvent_supplier||[]).map(String).filter(Boolean)]} />
+          <TI value={r.batchNo}  onChange={v=>as(setSolv,i,"batchNo",v)} placeholder="Batch Code" />
           <TI type="number" value={r.qty}      onChange={v=>as(setSolv,i,"qty",v)} />
           <TI type="number" value={r.returned} onChange={v=>as(setSolv,i,"returned",v)} />
           <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setSolv,i)}>✕</button>
@@ -1158,17 +1161,20 @@ function EditProd({ data, setH, setArr, addArr, delArr, setData }) {
         <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
       ))}
     </Grid>
-    {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"]],
-      ["rawOut","Raw Material Output",["material","batchNo","qty","unit"]]].map(([key,title,cols])=>(
+    {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],
+      ["rawOut","Raw Material Output",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],
+      ["inks","Ink Input",["inkCode","shade","supplier","qty","returned"],"1.2fr 1.2fr 1.2fr 1fr 1fr 36px",{inkCode:"",shade:"",supplier:"",qty:"",returned:""}],
+      ["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]
+    ].map(([key,title,cols,grid,emptyRow])=>(
       <div key={key} style={{marginTop:14}}>
         <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
         {(data[key]||[]).map((row,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 36px",gap:6,marginBottom:6,alignItems:"center"}}>
-            {cols.map(c=><TI key={c} value={row[c]||""} onChange={v=>setArr(key,i,c,v)} />)}
+          <div key={i} style={{display:"grid",gridTemplateColumns:grid,gap:6,marginBottom:6,alignItems:"center"}}>
+            {cols.map(c=><TI key={c} value={row[c]||""} onChange={v=>setArr(key,i,c,v)} placeholder={c} />)}
             <button style={S.btn("danger",{padding:"3px 6px",fontSize:11})} onClick={()=>delArr(key,i)}>✕</button>
           </div>
         ))}
-        <button style={S.btn("ghost",{fontSize:11,marginTop:4})} onClick={()=>addArr(key,{material:"",batchNo:"",qty:"",unit:""})}>+ Add Row</button>
+        <button style={S.btn("ghost",{fontSize:11,marginTop:4})} onClick={()=>addArr(key,emptyRow)}>+ Add Row</button>
       </div>
     ))}
     <div style={{marginTop:14}}>
@@ -1268,7 +1274,7 @@ function ProdD({ d }) {
     <DT title="Raw Material Input"  rows={d.rawIn}   cols={["material","batchNo","qty","unit"]} />
     <DT title="Raw Material Output" rows={d.rawOut}  cols={["material","batchNo","qty","unit"]} />
     <DT title="Ink Input"           rows={d.inks}    cols={["inkCode","shade","supplier","qty","returned"]} />
-    <DT title="Solvent Input"       rows={d.solvents} cols={["solvent","qty","returned"]} />
+    <DT title="Solvent Input"       rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned"]} />
     {d.remarks && <div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
   </div>;
 }
