@@ -1048,9 +1048,10 @@ function RecDetail({ r, createdBy }) {
       <span style={{color:C.accent,fontWeight:700}}>{createdBy}</span>
       <span style={{color:C.muted,marginLeft:12}}>on {new Date(r.created_at).toLocaleString()}</span>
     </div>
-    {r.type==="production" && <ProdD d={d} />}
-    {r.type==="viscosity"  && <ViscD d={d} />}
-    {r.type==="printingqc" && <QCD   d={d} />}
+    {r.type==="production" ? <ProdD d={d} /> :
+     r.type==="viscosity" ? <ViscD d={d} /> :
+     r.type.endsWith("qc") ? <QCD d={d} /> :
+     <GenericD d={d} />}
   </div>;
 }
 
@@ -1233,8 +1234,8 @@ function QCD({ d }) {
   const h=d.header||{};
   return <div>
     <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
-      {[["Date",h.date],["Shift",h.shift],["Job",h.jobNo],["Customer",h.customer],["Press",h.press],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
-        <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
+      {[["Date",h.date],["Shift",h.shift],["Machine",h.machine],["Job",h.jobNo],["Customer",h.customer],["Product",h.productName],["Press",h.press],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
+        v ? <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v}</div></div> : null
       ))}
     </div>
     <div style={{marginBottom:12}}>
@@ -1249,6 +1250,12 @@ function QCD({ d }) {
         <span style={{flex:2,color:C.muted}}>{c.comment}</span>
       </div>
     ))}
+  </div>;
+}
+
+function GenericD({ d }) {
+  return <div style={{background:C.bg,padding:12,borderRadius:6,border:`1px solid ${C.border}`}}>
+    <pre style={{margin:0,fontSize:11,color:C.muted,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{JSON.stringify(d, null, 2)}</pre>
   </div>;
 }
 
