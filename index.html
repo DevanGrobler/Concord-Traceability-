@@ -687,11 +687,11 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
         <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Reel No."><TI value={hdr.reelNo||""} onChange={v=>h("reelNo",v)} placeholder="e.g. 1, 2" /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
         <F label="Inspector / QC Officer"><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
-        <F label="Reel No."><TI value={hdr.reelNo||""} onChange={v=>h("reelNo",v)} placeholder="e.g. 1, 2" /></F>
       </Grid>
     </SC>
     <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
