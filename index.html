@@ -916,7 +916,7 @@
         const rows = [];
         lamRecs.forEach(r => {
           const h = r.data?.header || {};
-          rows.push(["Date", "Shift", "Job Card Number", "Customer & Product", "Product Name", "Operator", "Comments"]);
+          rows.push(["Date", "Shift", "Job Card Number", "Customer", "Product Name", "Operator", "Comments"]);
           rows.push([h.date, h.shift, h.jobNo, h.customerProduct, h.productName || "", h.operator, h.comments]);
           rows.push([]);
           if ((r.data?.filmRows || []).length) {
