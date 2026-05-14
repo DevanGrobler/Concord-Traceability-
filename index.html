@@ -133,7 +133,7 @@
     const dbUpsertList = async (list_name, items) => sb.from("lists").upsert({ list_name, items }, { onConflict: "list_name" });
     const DEFAULT_PRINTING_QC_CHECKS = [
       "Plate mounted correctly", "Doctor blade set", "Impression pressure set", "Register checked",
-      "Ink viscosity within spec", "Colour match approved", "Print density checked", "Trapping verified",
+      "Ink viscosity within spec", "Color match approved", "Print density checked", "Trapping verified",
       "Slitting width correct", "Tension set correctly", "Rewind tension correct", "Splice quality OK",
       "Defect-free print surface", "No blocking/smearing", "Correct substrate loaded", "Batch code printed correctly",
       "Expiry date correct", "Barcode verified", "Seal integrity OK", "Label placement correct",
@@ -920,7 +920,7 @@
           rows.push([h.date, h.shift, h.jobNo, h.customerProduct, h.productName || "", h.operator, h.comments]);
           rows.push([]);
           if ((r.data?.filmRows || []).length) {
-            rows.push(["-- Film Input --", "Adhesive Carrier Film", "Film Batch No", "Film KG", "Film Spec/Metry"]);
+            rows.push(["-- Film Input --", "Adhesive Carrier Film", "Film Batch No", "Meters", "Film KG"]);
             (r.data.filmRows || []).forEach(x => rows.push(["", x.adhesiveCarrierFilm, x.filmBatchNo, x.filmKg, x.filmSpec]));
           }
           if ((r.data?.adhesiveRows || []).length) {
@@ -928,11 +928,11 @@
             (r.data.adhesiveRows || []).forEach(x => rows.push(["", x.adhesiveCarrierKg, x.adhesiveName, x.adhesiveBatchNo]));
           }
           if ((r.data?.unwoundRows || []).length) {
-            rows.push(["-- Unwound Film --", "Unwound Film", "Batch No", "KG", "KG/Metry"]);
+            rows.push(["-- Unwound Film --", "Unwound Film", "Batch No",  "Meters", "KG"]);
             (r.data.unwoundRows || []).forEach(x => rows.push(["", x.unwoundFilm, x.unwoundBatchNo, x.unwoundKg, x.unwoundKgPerMetry]));
           }
           if ((r.data?.outputRows || []).length) {
-            rows.push(["-- Output Stock --", "Laminated Roll Name", "Metry/KG"]);
+            rows.push(["-- Output Stock --", "Laminated Roll Name", "Meters", "KG"]);
             (r.data.outputRows || []).forEach(x => rows.push(["", x.laminatedRollName, x.laminatedMetryKg]));
           }
           if ((r.data?.qcRows || []).length) {
