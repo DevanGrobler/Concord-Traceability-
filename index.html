@@ -648,7 +648,7 @@ function ViscosityForm({ onSave, users=[], lists={} }) {
 
 // ── Printing QC Form ──────────────────────────────────────────────────────────
 function PrintingQCForm({ onSave, users=[], lists={} }) {
-  const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",press:"8 Color Gravure",operator:"",inspector:""});
+  const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",press:"8 Color Gravure",operator:"",inspector:"",reelNo:""});
   const checkLabels = (lists.printing_qc_checks||DEFAULT_PRINTING_QC_CHECKS).map(String).filter(Boolean);
   const [checks,setChecks]=useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
   const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
@@ -690,7 +690,8 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
-        <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
+        <F label="Inspector / QC Officer"><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={["", ...qcNames]} /><ErrMsg msg={fErr.inspector} /></F>
+        <F label="Reel No."><TI value={hdr.reelNo||""} onChange={v=>h("reelNo",v)} placeholder="e.g. 1, 2" /></F>
       </Grid>
     </SC>
     <SC title={`QC Checks (${checks.length} items) · ${passC} Pass · ${failC} Fail · ${naC} N/A`}>
@@ -1168,7 +1169,7 @@ function EditQC({ data, setH, setArr, setData }) {
     <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>RUN DETAILS</div>
     <Grid cols={4}>
       {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["customer","Customer","text"],
-        ["press","Press","text"],["operator","Operator","text"],["inspector","Inspector","text"]].map(([k,label,type])=>(
+        ["press","Press","text"],["operator","Operator","text"],["inspector","Inspector","text"],["reelNo","Reel No.","text"]].map(([k,label,type])=>(
         <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
       ))}
     </Grid>
@@ -1256,7 +1257,7 @@ function QCD({ d }) {
   const h=d.header||{};
   return <div>
     <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
-      {[["Date",h.date],["Shift",h.shift],["Machine",h.machine],["Job",h.jobNo],["Customer",h.customer],["Product",h.productName],["Press",h.press],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
+      {[["Date",h.date],["Shift",h.shift],["Machine",h.machine],["Job",h.jobNo],["Customer",h.customer],["Product",h.productName],["Press",h.press],["Reel No.",h.reelNo],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
         v ? <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v}</div></div> : null
       ))}
     </div>
