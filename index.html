@@ -545,7 +545,7 @@ function ProductionForm({ onSave, users=[], lists={} }) {
   const save=async()=>{
     if (!validate({
       shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
+      jobNo:{value:hdr.jobNo,label:"Job Card Number"},
       customer:{value:hdr.customer,label:"Customer"},
       substrate:{value:hdr.substrate,label:"Substrate"},
       operator:{value:hdr.operator,label:"Operator"},
@@ -563,7 +563,7 @@ function ProductionForm({ onSave, users=[], lists={} }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={["",...(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.substrate} /></F>
@@ -645,7 +645,7 @@ function ViscosityForm({ onSave, users=[], lists={} }) {
   const save=async()=>{
     if (!validate({
       shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
+      jobNo:{value:hdr.jobNo,label:"Job Card Number"},
       operator:{value:hdr.operator,label:"Operator"},
     })) return;
     await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true);
@@ -661,7 +661,7 @@ function ViscosityForm({ onSave, users=[], lists={} }) {
       <Grid cols={5}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
       </Grid>
@@ -718,7 +718,7 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
   const save=async()=>{
     if (!validate({
       shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
+      jobNo:{value:hdr.jobNo,label:"Job Card Number"},
       customer:{value:hdr.customer,label:"Customer"},
       operator:{value:hdr.operator,label:"Operator"},
       inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
@@ -736,7 +736,7 @@ function PrintingQCForm({ onSave, users=[], lists={} }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[])]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
@@ -800,7 +800,7 @@ function exportToExcel(records) {
   // ── Sheet 2: Production
   const prodRecs = records.filter(r=>r.type==="production");
   if (prodRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Customer","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]];
+    const rows = [["Completed By","Date","Shift","Job Card Number","Customer","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]];
     prodRecs.forEach(r=>{
       const h=r.data?.header||{};
       rows.push([r.created_by, h.date,h.shift,h.jobNo,h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
@@ -832,7 +832,7 @@ function exportToExcel(records) {
   // ── Sheet 3: Viscosity QC
   const viscRecs = records.filter(r=>r.type==="viscosity");
   if (viscRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Press","Operator","Ink Name","Ink Type","Target","Unit","Slots..."]];
+    const rows = [["Completed By","Date","Shift","Job Card Number","Press","Operator","Ink Name","Ink Type","Target","Unit","Slots..."]];
     viscRecs.forEach(r=>{
       const h=r.data?.header||{};
       const rSlots=getSlotsForShift(h.shift);
@@ -852,7 +852,7 @@ function exportToExcel(records) {
   // ── Sheet 4: Printing QC
   const qcRecs = records.filter(r=>r.type==="printingqc");
   if (qcRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Customer","Press","Operator","Inspector","Overall Result","#","Check Item","Result","Comment"]];
+    const rows = [["Completed By","Date","Shift","Job Card Number","Customer","Press","Operator","Inspector","Overall Result","#","Check Item","Result","Comment"]];
     qcRecs.forEach(r=>{
       const h=r.data?.header||{};
       (r.data?.checks||[]).forEach((c,i)=>{
@@ -874,7 +874,7 @@ function exportToExcel(records) {
     const rows = [];
     lamRecs.forEach(r=>{
       const h=r.data?.header||{};
-      rows.push(["Date","Shift","Job Card No","Customer & Product","Product Name","Operator","Comments"]);
+      rows.push(["Date","Shift","Job Card Number","Customer & Product","Product Name","Operator","Comments"]);
       rows.push([h.date,h.shift,h.jobNo,h.customerProduct,h.productName||"",h.operator,h.comments]);
       rows.push([]);
       if ((r.data?.filmRows||[]).length) {
@@ -905,7 +905,7 @@ function exportToExcel(records) {
   // ── Sheet 6: Lamination QC
   const lamQcRecs = records.filter(r=>r.type==="laminationqc");
   if (lamQcRecs.length) {
-    const rows = [["Completed By","Date","Shift","Job No.","Customer","Operator","Inspector","#","Check Item","Result","Comment","Overall Result"]];
+    const rows = [["Completed By","Date","Shift","Job Card Number","Customer","Operator","Inspector","#","Check Item","Result","Comment","Overall Result"]];
     lamQcRecs.forEach(r=>{
       const h=r.data?.header||{};
       (r.data?.checks||[]).forEach((c,i)=>{
@@ -928,7 +928,7 @@ function exportToExcel(records) {
       const rows = [];
       extRecs.forEach(r=>{
         const h=r.data?.header||{};
-        rows.push(["Date","Shift","Job No","Customer","Product Name","Material Spec","Operator","Supervisor","Remarks"]);
+        rows.push(["Date","Shift","Job Card Number","Customer","Product Name","Material Spec","Operator","Supervisor","Remarks"]);
         rows.push([h.date,h.shift,h.jobNo,h.customer,h.productName,h.materialSpec,h.operator,h.supervisor,r.data?.remarks||""]);
         rows.push([]);
         if ((r.data?.rmaRows||[]).length) {
@@ -949,7 +949,7 @@ function exportToExcel(records) {
     }
     const extQcRecs = records.filter(r=>r.type===`extruder${m}qc`);
     if (extQcRecs.length) {
-      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
+      const rows = [["Completed By","Date","Shift","Job Card Number","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
       extQcRecs.forEach(r=>{
         const h=r.data?.header||{};
         (r.data?.checks||[]).forEach((c,i)=>{
@@ -969,7 +969,7 @@ function exportToExcel(records) {
       const rows = [];
       slitRecs.forEach(r=>{
         const h=r.data?.header||{};
-        rows.push(["Date","Time","Shift","Job No","Customer","Product Name"]);
+        rows.push(["Date","Time","Shift","Job Card Number","Customer","Product Name"]);
         rows.push([h.date,h.time,h.shift,h.jobNo,h.customer,h.productName]);
         rows.push([]);
         if ((r.data?.inputRows||[]).length){rows.push(["-- Input Stock --","Batch No","Metry","KG"]);(r.data.inputRows||[]).forEach(x=>rows.push(["",x.batchNo,x.metry,x.kg]));}
@@ -984,7 +984,7 @@ function exportToExcel(records) {
     }
     const slitQcRecs = records.filter(r=>r.type===`slitting${m}qc`);
     if (slitQcRecs.length) {
-      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
+      const rows = [["Completed By","Date","Shift","Job Card Number","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
       slitQcRecs.forEach(r=>{
         const h=r.data?.header||{};
         (r.data?.checks||[]).forEach((c,i)=>{
@@ -1004,7 +1004,7 @@ function exportToExcel(records) {
       const rows = [];
       bmRecs.forEach(r=>{
         const h=r.data?.header||{};
-        rows.push(["Date","Time","Shift","Job No","Customer","Product Name","Operator","Batch Code","PCS/Box"]);
+        rows.push(["Date","Time","Shift","Job Card Number","Customer","Product Name","Operator","Batch Code","PCS/Box"]);
         rows.push([h.date,h.time,h.shift,h.jobNo,h.customer,h.productName,h.operator,h.bagMakingBatchCode,h.pcsPerBox]);
         rows.push([]);
         if ((r.data?.unwindARows||[]).length){rows.push(["-- Unwind A --","Batch No","KG","Metres"]);(r.data.unwindARows||[]).forEach(x=>rows.push(["",x.batchNo,x.kg,x.metres]));}
@@ -1020,7 +1020,7 @@ function exportToExcel(records) {
     }
     const bmQcRecs = records.filter(r=>r.type===`bagmaking${m}qc`);
     if (bmQcRecs.length) {
-      const rows = [["Completed By","Date","Shift","Job No","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
+      const rows = [["Completed By","Date","Shift","Job Card Number","Customer","Product Name","Operator","Inspector","#","Check Item","Result","Comment","Overall"]];
       bmQcRecs.forEach(r=>{
         const h=r.data?.header||{};
         (r.data?.checks||[]).forEach((c,i)=>{
@@ -1155,7 +1155,7 @@ function EditProd({ data, setH, setArr, addArr, delArr, setData }) {
   return <div>
     <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>JOB DETAILS</div>
     <Grid cols={4}>
-      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["customer","Customer","text"],
+      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],
         ["substrate","Substrate","text"],["width","Width","number"],["length","Length","number"],["speed","Speed","number"],
         ["operator","Operator","text"],["supervisor","Supervisor","text"]].map(([k,label,type])=>(
         <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
@@ -1189,7 +1189,7 @@ function EditVisc({ data, setH, setArr, addArr, delArr }) {
   return <div>
     <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>RUN DETAILS</div>
     <Grid cols={5}>
-      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["press","Press","text"],["operator","Operator","text"]].map(([k,label,type])=>(
+      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["press","Press","text"],["operator","Operator","text"]].map(([k,label,type])=>(
         <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
       ))}
     </Grid>
@@ -1221,7 +1221,7 @@ function EditQC({ data, setH, setArr, setData }) {
   return <div>
     <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>RUN DETAILS</div>
     <Grid cols={4}>
-      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job No.","text"],["customer","Customer","text"],
+      {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],
         ["press","Press","text"],["operator","Operator","text"],["inspector","Inspector","text"],["reelNo","Reel No.","text"]].map(([k,label,type])=>(
         <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
       ))}
@@ -1265,7 +1265,7 @@ function ProdD({ d }) {
   const h=d.header||{};
   return <div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
-      {[["Date",h.date],["Shift",h.shift],["Job No.",h.jobNo],["Customer",h.customer],
+      {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Customer",h.customer],
         ["Substrate",h.substrate],["Width",h.width],["Length",h.length],["Speed",h.speed],
         ["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
         <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
@@ -1283,7 +1283,7 @@ function ViscD({ d }) {
   const h=d.header||{};
   return <div>
     <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
-      {[["Date",h.date],["Shift",h.shift],["Job",h.jobNo],["Press",h.press],["Operator",h.operator]].map(([k,v])=>(
+      {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Press",h.press],["Operator",h.operator]].map(([k,v])=>(
         <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
       ))}
     </div>
@@ -1310,7 +1310,7 @@ function QCD({ d }) {
   const h=d.header||{};
   return <div>
     <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
-      {[["Date",h.date],["Shift",h.shift],["Machine",h.machine],["Job",h.jobNo],["Customer",h.customer],["Product",h.productName],["Press",h.press],["Reel No.",h.reelNo],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
+      {[["Date",h.date],["Shift",h.shift],["Machine",h.machine],["Job Card Number",h.jobNo],["Customer",h.customer],["Product",h.productName],["Press",h.press],["Reel No.",h.reelNo],["Operator",h.operator],["Inspector",h.inspector]].map(([k,v])=>(
         v ? <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v}</div></div> : null
       ))}
     </div>
@@ -1555,7 +1555,7 @@ function LaminationForm({ onSave, users=[], lists={} }) {
   const save = async()=>{
     if (!validate({
       shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job Card No."},
+      jobNo:{value:hdr.jobNo,label:"Job Card Number"},
       customerProduct:{value:hdr.customerProduct,label:"Customer & Product"},
       operator:{value:hdr.operator,label:"Operator"},
     })) return;
@@ -1578,7 +1578,7 @@ function LaminationForm({ onSave, users=[], lists={} }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customerProduct} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
@@ -1683,7 +1683,7 @@ function LaminationQCForm({ onSave, users=[], lists={} }) {
   const save=async()=>{
     if (!validate({
       shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
+      jobNo:{value:hdr.jobNo,label:"Job Card Number"},
       customer:{value:hdr.customer,label:"Customer"},
       operator:{value:hdr.operator,label:"Operator"},
       inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
@@ -1705,7 +1705,7 @@ function LaminationQCForm({ onSave, users=[], lists={} }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
@@ -1777,7 +1777,7 @@ function ExtruderForm({ onSave, users=[], lists={}, machine=1 }) {
   const save = async()=>{
     if (!validate({
       shift:   {value:hdr.shift,   label:"Shift"},
-      jobNo:   {value:hdr.jobNo,   label:"Job No."},
+      jobNo:   {value:hdr.jobNo,   label:"Job Card Number"},
       customer:{value:hdr.customer,label:"Customer"},
       operator:{value:hdr.operator,label:"Operator"},
     })) return;
@@ -1800,7 +1800,7 @@ function ExtruderForm({ onSave, users=[], lists={}, machine=1 }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Material Spec"><TI value={hdr.materialSpec} onChange={v=>h("materialSpec",v)} /></F>
@@ -1883,7 +1883,7 @@ function ExtruderQCForm({ onSave, users=[], lists={}, machine=1 }) {
   const save=async()=>{
     if (!validate({
       shift:{value:hdr.shift,label:"Shift"},
-      jobNo:{value:hdr.jobNo,label:"Job No."},
+      jobNo:{value:hdr.jobNo,label:"Job Card Number"},
       customer:{value:hdr.customer,label:"Customer"},
       operator:{value:hdr.operator,label:"Operator"},
       inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
@@ -1908,7 +1908,7 @@ function ExtruderQCForm({ onSave, users=[], lists={}, machine=1 }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
@@ -1984,7 +1984,7 @@ function SlittingForm({ onSave, users=[], lists={}, machine=1 }) {
   const save = async()=>{
     if (!validate({
       shift:   {value:hdr.shift,   label:"Shift"},
-      jobNo:   {value:hdr.jobNo,   label:"Job No."},
+      jobNo:   {value:hdr.jobNo,   label:"Job Card Number"},
       customer:{value:hdr.customer,label:"Customer"},
     })) return;
     await onSave({
@@ -2007,7 +2007,7 @@ function SlittingForm({ onSave, users=[], lists={}, machine=1 }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
       </Grid>
@@ -2116,7 +2116,7 @@ function SlittingQCForm({ onSave, users=[], lists={}, machine=1 }) {
   const save=async()=>{
     if (!validate({
       shift:    {value:hdr.shift,    label:"Shift"},
-      jobNo:    {value:hdr.jobNo,    label:"Job No."},
+      jobNo:    {value:hdr.jobNo,    label:"Job Card Number"},
       customer: {value:hdr.customer, label:"Customer"},
       operator: {value:hdr.operator, label:"Operator"},
       inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
@@ -2140,7 +2140,7 @@ function SlittingQCForm({ onSave, users=[], lists={}, machine=1 }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
@@ -2222,7 +2222,7 @@ function BagMakingForm({ onSave, users=[], lists={}, machine=1 }) {
   const save = async()=>{
     if (!validate({
       shift:   {value:hdr.shift,   label:"Shift"},
-      jobNo:   {value:hdr.jobNo,   label:"Job Card No."},
+      jobNo:   {value:hdr.jobNo,   label:"Job Card Number"},
       customer:{value:hdr.customer,label:"Customer"},
     })) return;
     await onSave({
@@ -2246,7 +2246,7 @@ function BagMakingForm({ onSave, users=[], lists={}, machine=1 }) {
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Time"><input type="time" style={{...S.input}} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job Card No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator||""} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /></F>
@@ -2363,7 +2363,7 @@ function BagMakingQCForm({ onSave, users=[], lists={}, machine=1 }) {
   const save=async()=>{
     if (!validate({
       shift:    {value:hdr.shift,    label:"Shift"},
-      jobNo:    {value:hdr.jobNo,    label:"Job No."},
+      jobNo:    {value:hdr.jobNo,    label:"Job Card Number"},
       customer: {value:hdr.customer, label:"Customer"},
       operator: {value:hdr.operator, label:"Operator"},
       inspector:{value:hdr.inspector,label:"Inspector / QC Officer"},
@@ -2387,7 +2387,7 @@ function BagMakingQCForm({ onSave, users=[], lists={}, machine=1 }) {
       <Grid cols={4}>
         <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
         <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
-        <F label="Job No."><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
+        <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
         <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={["",...(lists.customer||[]).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customer} /></F>
         <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={["",...(lists.product_name||[]).map(String).filter(Boolean)]} /></F>
         <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
