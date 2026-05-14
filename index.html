@@ -193,6 +193,9 @@
       slitting_qc_checks: [],
       bag_opener: [],
       bagmaking_qc_checks: [],
+      adhesive_name: [],
+      adhesive_a_product_code: [],
+      adhesive_b_product_code: [],
     };
     const LIST_LABELS = {
       substrate: "Substrate", customer: "Customer",
@@ -203,6 +206,7 @@
       solvent: "Solvent Types", solvent_supplier: "Solvent Supplier", width: "Width", unit: "Units",
       operator: "Operators", supervisor: "Supervisors", qc_officer: "QC Officers",
       printing_qc_checks: "Printing QC Checks", lamination_qc_checks: "Lamination QC Checks", extruder_qc_checks: "Extruder QC Checks", slitting_qc_checks: "Slitting QC Checks", bag_opener: "Bag Openers", bagmaking_qc_checks: "Bag Making QC Checks",
+      adhesive_name: "Adhesive Names", adhesive_a_product_code: "Adhesive A Product Codes", adhesive_b_product_code: "Adhesive B Product Codes",
     };
 
     // ── Root App ──────────────────────────────────────────────────────────────────
@@ -920,20 +924,20 @@
           rows.push([h.date, h.shift, h.jobNo, h.customerProduct, h.productName || "", h.operator, h.comments]);
           rows.push([]);
           if ((r.data?.filmRows || []).length) {
-            rows.push(["-- Film Input --", "Adhesive Carrier Film", "Film Batch No", "Film KG", "Meters"]);
+            rows.push(["-- Film Input --", "Material", "Film batch no.", "KG", "Meters"]);
             (r.data.filmRows || []).forEach(x => rows.push(["", x.adhesiveCarrierFilm, x.filmBatchNo, x.filmKg, x.filmSpec]));
           }
           if ((r.data?.adhesiveRows || []).length) {
-            rows.push(["-- Adhesive Input --", "Adhesive Carrier KG", "Adhesive Name", "Adhesive Batch No"]);
-            (r.data.adhesiveRows || []).forEach(x => rows.push(["", x.adhesiveCarrierKg, x.adhesiveName, x.adhesiveBatchNo]));
+            rows.push(["-- Adhesive Input --", "Adhesive Carrier KG", "Adhesive Name", "Adhesive A Product Code", "Adhesive Batch A", "Adhesive B Product Code", "Adhesive Batch B"]);
+            (r.data.adhesiveRows || []).forEach(x => rows.push(["", x.adhesiveCarrierKg, x.adhesiveName, x.adhesiveAProductCode || "", x.adhesiveBatchA || "", x.adhesiveBProductCode || "", x.adhesiveBatchB || ""]));
           }
           if ((r.data?.unwoundRows || []).length) {
-            rows.push(["-- Unwound Film --", "Unwound Film", "Batch No", "KG", "Meters"]);
+            rows.push(["-- Unwound Film --", "Material", "Film batch no.", "KG", "Meters"]);
             (r.data.unwoundRows || []).forEach(x => rows.push(["", x.unwoundFilm, x.unwoundBatchNo, x.unwoundKg, x.unwoundKgPerMetry]));
           }
           if ((r.data?.outputRows || []).length) {
-            rows.push(["-- Output Stock --", "Laminated Roll Name", "Meters", "Film Batch NO", "KG"]);
-            (r.data.outputRows || []).forEach(x => rows.push(["", x.laminatedRollName, x.laminatedMetryKg, x.filmBatchNo || "", x.kg || ""]));
+            rows.push(["-- Output Stock --", "Material", "Film batch no.", "KG", "Meters"]);
+            (r.data.outputRows || []).forEach(x => rows.push(["", x.laminatedRollName, x.filmBatchNo || "", x.kg || "", x.laminatedMetryKg]));
           }
           if ((r.data?.qcRows || []).length) {
             rows.push(["-- QC --", "Adhesive Amount", "GSM", "Waste"]);
@@ -1568,7 +1572,7 @@
 
     // ── Lamination Daily Production Sheet ────────────────────────────────────────
     const eLamFilm = () => ({ adhesiveCarrierFilm: "", filmBatchNo: "", filmKg: "", filmSpec: "" });
-    const eLamAdhesive = () => ({ adhesiveCarrierKg: "", adhesiveName: "", adhesiveBatchNo: "" });
+    const eLamAdhesive = () => ({ adhesiveCarrierKg: "", adhesiveName: "", adhesiveAProductCode: "", adhesiveBatchA: "", adhesiveBProductCode: "", adhesiveBatchB: "" });
     const eLamUnwound = () => ({ unwoundFilm: "", unwoundBatchNo: "", unwoundKg: "", unwoundKgPerMetry: "" });
     const eLamOutput = () => ({ laminatedRollName: "", laminatedMetryKg: "", filmBatchNo: "", kg: "" });
 
@@ -1621,14 +1625,14 @@
             <F label="Date"><TI type="date" value={hdr.date} onChange={v => h("date", v)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v => h("shift", v)} options={["Day Shift", "Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v => h("jobNo", v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer & Product" col={2}><TS value={hdr.customerProduct} onChange={v => h("customerProduct", v)} options={["", ...(lists.customer || []).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customerProduct} /></F>
+            <F label="Customer" col={2}><TS value={hdr.customerProduct} onChange={v => h("customerProduct", v)} options={["", ...(lists.customer || []).map(String).filter(Boolean)]} /><ErrMsg msg={fErr.customerProduct} /></F>
             <F label="Product Name"><TS value={hdr.productName} onChange={v => h("productName", v)} options={["", ...(lists.product_name_lamination || []).map(String).filter(Boolean)]} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v => h("operator", v)} options={["", ...operatorNames]} /><ErrMsg msg={fErr.operator} /></F>
           </Grid>
         </SC>
 
         <SC title="Input Stock — Film (Received from Warehouse)">
-          <THead cols={["Adhesive Carrier Film", "Film Batch No", "Film KG", "Meters", ""]} widths={["2fr", "1.5fr", "1fr", "1.5fr", "40px"]} />
+          <THead cols={["Material", "Film batch no.", "KG", "Meters", ""]} widths={["2fr", "1.5fr", "1fr", "1.5fr", "40px"]} />
           {filmRows.map((r, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1.5fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
               <TI value={r.adhesiveCarrierFilm} onChange={v => as(setFilmRows, i, "adhesiveCarrierFilm", v)} />
@@ -1642,12 +1646,15 @@
         </SC>
 
         <SC title="Input Stock — Adhesive (Received from Warehouse)">
-          <THead cols={["Adhesive Carrier KG", "Adhesive Name", "Adhesive Batch No", ""]} widths={["1.5fr", "2fr", "1.5fr", "40px"]} />
+          <THead cols={["Adhesive Carrier KG", "Adhesive Name", "Adhesive A Product Code", "Adhesive Batch A", "Adhesive B Product Code", "Adhesive Batch B", ""]} widths={["1fr", "1.5fr", "1.5fr", "1fr", "1.5fr", "1fr", "40px"]} />
           {adhesiveRows.map((r, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 2fr 1.5fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr 1.5fr 1fr 1.5fr 1fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
               <TI type="number" value={r.adhesiveCarrierKg} onChange={v => as(setAdhesiveRows, i, "adhesiveCarrierKg", v)} />
-              <TI value={r.adhesiveName} onChange={v => as(setAdhesiveRows, i, "adhesiveName", v)} />
-              <TI value={r.adhesiveBatchNo} onChange={v => as(setAdhesiveRows, i, "adhesiveBatchNo", v)} />
+              <TS value={r.adhesiveName} onChange={v => as(setAdhesiveRows, i, "adhesiveName", v)} options={["", ...(lists.adhesive_name || []).map(String).filter(Boolean)]} />
+              <TS value={r.adhesiveAProductCode} onChange={v => as(setAdhesiveRows, i, "adhesiveAProductCode", v)} options={["", ...(lists.adhesive_a_product_code || []).map(String).filter(Boolean)]} />
+              <TI value={r.adhesiveBatchA} onChange={v => as(setAdhesiveRows, i, "adhesiveBatchA", v)} />
+              <TS value={r.adhesiveBProductCode} onChange={v => as(setAdhesiveRows, i, "adhesiveBProductCode", v)} options={["", ...(lists.adhesive_b_product_code || []).map(String).filter(Boolean)]} />
+              <TI value={r.adhesiveBatchB} onChange={v => as(setAdhesiveRows, i, "adhesiveBatchB", v)} />
               <button style={S.btn("danger", { padding: "4px 8px", fontSize: 12 })} onClick={() => ad(setAdhesiveRows, i)}>✕</button>
             </div>
           ))}
@@ -1655,9 +1662,9 @@
         </SC>
 
         <SC title="Input Stock — Unwound Film (Received from Warehouse)">
-          <THead cols={["Unwound Film", "Batch No", "KG", "Meters", ""]} widths={["2fr", "1.5fr", "1fr", "1fr", "40px"]} />
+          <THead cols={["Material", "Film batch no.", "KG", "Meters", ""]} widths={["2fr", "1.5fr", "1fr", "1.5fr", "40px"]} />
           {unwoundRows.map((r, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1.5fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
               <TI value={r.unwoundFilm} onChange={v => as(setUnwoundRows, i, "unwoundFilm", v)} />
               <TI value={r.unwoundBatchNo} onChange={v => as(setUnwoundRows, i, "unwoundBatchNo", v)} />
               <TI type="number" value={r.unwoundKg} onChange={v => as(setUnwoundRows, i, "unwoundKg", v)} />
@@ -1669,13 +1676,13 @@
         </SC>
 
         <SC title="Output Stock — Laminated Roll (Sent to Warehouse)">
-          <THead cols={["Laminated Roll Name", "Meters", "Film Batch NO", "KG", ""]} widths={["1.5fr", "1fr", "1.5fr", "1fr", "40px"]} />
+          <THead cols={["Material", "Film batch no.", "KG", "Meters", ""]} widths={["2fr", "1.5fr", "1fr", "1.5fr", "40px"]} />
           {outputRows.map((r, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1.5fr 1fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1.5fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
               <TI value={r.laminatedRollName} onChange={v => as(setOutputRows, i, "laminatedRollName", v)} />
-              <TI value={r.laminatedMetryKg} onChange={v => as(setOutputRows, i, "laminatedMetryKg", v)} />
               <TI value={r.filmBatchNo} onChange={v => as(setOutputRows, i, "filmBatchNo", v)} />
               <TI value={r.kg} onChange={v => as(setOutputRows, i, "kg", v)} />
+              <TI value={r.laminatedMetryKg} onChange={v => as(setOutputRows, i, "laminatedMetryKg", v)} />
               <button style={S.btn("danger", { padding: "4px 8px", fontSize: 12 })} onClick={() => ad(setOutputRows, i)}>✕</button>
             </div>
           ))}
