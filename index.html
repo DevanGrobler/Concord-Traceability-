@@ -989,23 +989,38 @@ function exportToExcel(records) {
 function Records({ records, session, onDelete, onSave }) {
   const [filter,setFilter]=useState("all"); const [search,setSearch]=useState("");
   const [exp,setExp]=useState(null); const [editing,setEditing]=useState(null);
+  const [selected,setSelected]=useState(new Set());
+  
   const filtered=records.filter(r=>(filter==="all"||r.type===filter)&&(search===""||r.title.toLowerCase().includes(search.toLowerCase())));
   const isAdmin = session.role==="admin";
+
+  const toggleSel = (e, id) => {
+    e.stopPropagation();
+    const next = new Set(selected);
+    if(next.has(id)) next.delete(id); else next.add(id);
+    setSelected(next);
+  };
+  const toExport = selected.size > 0 ? filtered.filter(r=>selected.has(r.id)) : filtered;
 
   return <div>
     <PH title="All Records" sub={`${records.length} records shared across all devices`} />
     <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap",alignItems:"center"}}>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
       {["all","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc"].map(f=>(
-        <button key={f} onClick={()=>setFilter(f)} style={S.btn(filter===f?"accent":"ghost",{padding:"5px 12px",fontSize:10})}>
+        <button key={f} onClick={()=>{setFilter(f);setSelected(new Set());}} style={S.btn(filter===f?"accent":"ghost",{padding:"5px 12px",fontSize:10})}>
           {{"all":"All","production":"Printing","viscosity":"Viscosity QC","printingqc":"Printing QC","lamination":"Lamination","laminationqc":"Lam QC","extruder1":"Extruder 1","extruder1qc":"Ext 1 QC","extruder2":"Extruder 2","extruder2qc":"Ext 2 QC","slitting1":"Slitting 1","slitting1qc":"Slit 1 QC","slitting2":"Slitting 2","slitting2qc":"Slit 2 QC","bagmaking1":"Bag 1","bagmaking1qc":"Bag 1 QC","bagmaking2":"Bag 2","bagmaking2qc":"Bag 2 QC","bagmaking3":"Bag 3","bagmaking3qc":"Bag 3 QC","bagmaking4":"Bag 4","bagmaking4qc":"Bag 4 QC"}[f]}
         </button>
       ))}
       </div>
       <input style={{...S.input,width:220,padding:"6px 12px"}} value={search} placeholder="Search…" onChange={e=>setSearch(e.target.value)} />
       <div style={{flex:1}} />
-      <button style={S.btn("accent",{padding:"6px 16px",fontSize:11,background:C.success})} onClick={()=>exportToExcel(filtered)}>
-        ⬇ Export to Excel ({filtered.length})
+      {selected.size > 0 && (
+        <button style={S.btn("ghost",{padding:"6px 16px",fontSize:11,marginRight:8})} onClick={()=>setSelected(new Set())}>
+          Clear Selection
+        </button>
+      )}
+      <button style={S.btn("accent",{padding:"6px 16px",fontSize:11,background:C.success})} onClick={()=>exportToExcel(toExport)}>
+        ⬇ Export to Excel ({toExport.length})
       </button>
     </div>
     {filtered.length===0 && <div style={{color:C.muted,fontSize:13}}>No records found.</div>}
@@ -1013,8 +1028,15 @@ function Records({ records, session, onDelete, onSave }) {
       const color=r.type==="production"?C.accent:r.type==="viscosity"?C.blue:r.type==="printingqc"?C.success:"#9b59b6";
       const icon=r.type==="production"?"▤":r.type==="viscosity"?"◉":"✓";
       const isExp=exp===r.id; const isEdit=editing===r.id;
-      return <div key={r.id} style={{...S.card,marginBottom:8}}>
+      return <div key={r.id} style={{...S.card,marginBottom:8,border:selected.has(r.id)?`1px solid ${C.success}`:`1px solid ${C.border}`}}>
         <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>{setExp(isExp?null:r.id);setEditing(null);}}>
+          <div onClick={e=>toggleSel(e, r.id)} style={{
+            width:18,height:18,border:`1px solid ${selected.has(r.id)?C.success:C.muted}`,borderRadius:4,
+            display:"flex",alignItems:"center",justifyContent:"center",background:selected.has(r.id)?C.success:C.bg,
+            color:"#fff",fontSize:12,flexShrink:0
+          }}>
+            {selected.has(r.id) && "✓"}
+          </div>
           <span style={{fontSize:18,color}}>{icon}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
