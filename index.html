@@ -111,7 +111,35 @@ const DEFAULT_PRINTING_QC_CHECKS = [
 const DEFAULT_LISTS = {
   substrate:            ["BOPP","BOPP MAT","PET","PET MAT"],
   customer:             [],
-  product_name:         [],
+  product_name:         [
+    "5 KG KEYSTONE POWER", "10 KG KEYSTONE POWER", "12.5 KG KEYSTONE POWER", "25 KG KEYSTONE POWER", "50 KG KEYSTONE POWER",
+    "12.5KG POWER FEEDING SCHEME", "25KG POWER FEEDING SCHEME", "1KG MAMA'S SUPER MAIZE MEAL", "2.5KG OBC SUPER MAIZE MEAL",
+    "20 KG RIMAX ADULT", "5KG NO NAME CHICKEN", "2KG GOLDI", "25KG SPEKKO RICE",
+    "BOT SW MAIZE ENGLISH 1KG", "BOT SW MAIZE ENGLISH 2.5KG", "BOT SW MAIZE PORTUGUESE 1 KG", "BOT SW MAIZE PORTUGUESE 2.5KG",
+    "BOTSELO SW SAMP 1 KG", "BOTSELO SW SAMP 2.5KG", "BOT SW RICE 1KG", "BOTSELO SW RICE 2.5KG",
+    "BOT SW MAIZE 5KG ENGLISH", "BOT SW MAIZE 10 KG ENGLISH", "BOT SW MAIZE 12.5KG ENGLISH", "BOT SW MAIZE 25KG ENGLISH",
+    "BOT SW MAIZE 5KG PORTUGUESE", "BOT SW MAIZE 10KG PORTUGUESE", "BOT SW MAIZE 12.5KG PORTUGUESE", "BOT SW MAIZE 25KG PORTUGUESE",
+    "BOT SW SAMP 5 KG", "BOT SW SAMP 10KG", "NATION'S PRIDE 5 KG", "NATION'S PRIDE 12.5KG",
+    "1 KG PICK N PAY", "2.5 KG PICK N PAY", "1 KG UBUNTU", "2.5 KG UBUNTU", "1 KG IMPILO", "2.5KG IMPILO",
+    "2.5KG PNP BRAAIPAP", "5 KG PICK N PAY", "10 KG PICK N PAY", "12.5KG PICK N PAY", "25KG PICK N PAY",
+    "5 KG IMPILO", "10 KG IMPILO", "12.5KG IMPILO", "25KG IMPILO", "5 KG UBUNTU", "10 KG UBUNTU", "12.5KG UBUNTU",
+    "10 KG SIYAKHULA", "25 KG SIYAKHULA",
+    "1 KG IWISA BANANA", "1 KG IWISA VANILLA", "1 KG IWISA CHOCOLATE", "1 KG IWISA ORIGINAL", "1 KG IWISA STRAWBERRY",
+    "1 KG IWISA POWER UP MG BANANA", "1 KG IWISA POWER UP MG ORIGINAL", "1 KG IWISA POWER UP MG STRAWBERRY",
+    "1 KG NYALA VANILLA", "1 KG NYALA BANANA", "1 KG NYALA ORIGINAL", "1 KG NYALA CHOCOLATE", "1 KG NYALA STRAWBERRY",
+    "1 KG NYALA MULTIGRAIN BANANA", "1 KG NYALA MULTIGRAIN ORIGINAL", "1 KG NYALA MULTIGRAIN STRAWBERRY",
+    "1 KG SUPER SUN CHOCOLATE", "1 KG SUPER SUN VANILLA", "1 KG SUPER SUN STRAWBERRY", "1 KG SUPER SUN BANANA",
+    "1 KG OBC BANANA", "1 KG OBC STRAWBERRY", "1 KG OBC VANILLA",
+    "1 KG TOP SCORE VANILLA", "1 KG TOP SCORE STRAWBERRY", "1 KG TOP SCORE CHOCOLATE", "1 KG TOP SCORE BANANA",
+    "500G SNOWFLAKE PANCAKE", "500G SNOWFLAKE FLAPJACK", "500G SNOWFLAKE CHOCOLATE", "500G SNOWFLAKE SCONE",
+    "500G SNOWFLAKE VANILLA", "500G SNOWFLAKE CAPPUCCINO", "500G SNOWFLAKE BRAN",
+    "1 KG SNOWFLAKE SCONE", "1 KG SNOWFLAKE VANILLA", "1 KG SNOWFLAKE QUEENCAKES", "1KG SNOWFLAKE BRAN",
+    "1 KG CUP CAKES", "1 KG CAPPUCCINO", "1 KG CHOCOLATE MUFFIN",
+    "PRIZE GOLD INSTANT ORIGINAL", "PRIZE GOLD INSTANT BANANA", "PRIZE GOLD INSTANT CHOCOLATE", "PRIZE GOLD INSTANT TOFFEE CARAMEL", "PRIZE GOLD INSTANT STRAWBERRY",
+    "GENERIC 1KG BAG GREEN", "GENERIC 1 KG BAG RED CHINA",
+    "CLEAR POUCH 200X300MM", "CLEAR POUCH 250X150MM", "CLEAR POUCH 200X135MM", "CLEAR POUCH 200X220MM", "CLEAR POUCH 105X180MM",
+    "PRIDE FIRE NAMIB 12G", "PRIDE FIRE YELLOW 12G", "PRIDE VALUE PACK CLEAR", "PRIDE VALUE PACK PRINTED"
+  ],
   ink_code:             [], // stored as [{code,description}]
   ink_shade:            [],
   ink_supplier:         [],
@@ -2701,9 +2729,19 @@ function ListsManager({ appLists, reload, flash }) {
       </div>
     </SC>
 
-    <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={saveList} disabled={saving}>
-      {saving?"Saving…":"💾 Save List"}
-    </button>
+    <div style={{display:"flex",gap:10,alignItems:"center"}}>
+      <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={saveList} disabled={saving}>
+        {saving?"Saving…":"💾 Save List"}
+      </button>
+      {activeList === "product_name" && (
+        <button style={S.btn("ghost",{padding:"12px 16px",fontSize:12})} onClick={()=>{
+          const newProds = DEFAULT_LISTS.product_name.filter(p => !items.find(i=>i.val === p));
+          setItems(prev=>[...prev, ...newProds.map(p=>({val:p}))]);
+        }}>
+          ➕ Load Default Products ({DEFAULT_LISTS.product_name.length})
+        </button>
+      )}
+    </div>
     <div style={{color:C.muted,fontSize:11,marginTop:8}}>Click any item above to edit it. Changes take effect for all users after saving.</div>
   </div>;
 }
