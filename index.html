@@ -1573,14 +1573,14 @@
     // ── Lamination Daily Production Sheet ────────────────────────────────────────
     const eLamFilm = () => ({ adhesiveCarrierFilm: "", filmBatchNo: "", filmKg: "", filmSpec: "" });
     const eLamAdhesive = () => ({ adhesiveCarrierKg: "", adhesiveName: "", adhesiveAProductCode: "", adhesiveBatchA: "", adhesiveBProductCode: "", adhesiveBatchB: "" });
-    const eLamUnwound = () => ({ unwoundFilm: "", unwoundBatchNo: "", unwoundKg: "", unwoundKgPerMetry: "" });
+
     const eLamOutput = () => ({ laminatedRollName: "", laminatedMetryKg: "", filmBatchNo: "", kg: "" });
 
     function LaminationForm({ onSave, users = [], lists = {} }) {
       const [hdr, setHdr] = useState({ date: todayStr(), shift: "", jobNo: "", customerProduct: "", productName: "", operator: "", comments: "" });
       const [filmRows, setFilmRows] = useState([eLamFilm()]);
       const [adhesiveRows, setAdhesiveRows] = useState([eLamAdhesive()]);
-      const [unwoundRows, setUnwoundRows] = useState([eLamUnwound()]);
+
       const [outputRows, setOutputRows] = useState([eLamOutput()]);
       const [qcRows, setQcRows] = useState([{ adhesiveAmount: "", gsm: "", waste: "" }]);
       const [remarks, setRemarks] = useState("");
@@ -1608,7 +1608,7 @@
         await onSave({
           type: "lamination",
           title: `Lamination · ${hdr.jobNo || (hdr.date)} · ${hdr.date}`,
-          data: { header: hdr, filmRows, adhesiveRows, unwoundRows, outputRows, qcRows, remarks }
+          data: { header: hdr, filmRows, adhesiveRows, outputRows, qcRows, remarks }
         });
         setSaved(true);
       };
@@ -1661,19 +1661,6 @@
           <button style={S.btn("ghost", { marginTop: 6, fontSize: 11 })} onClick={() => aa(setAdhesiveRows, eLamAdhesive)}>+ Add Row</button>
         </SC>
 
-        <SC title="Input Stock — Unwound Film (Received from Warehouse)">
-          <THead cols={["Material", "Film batch no.", "KG", "Meters", ""]} widths={["2fr", "1.5fr", "1fr", "1.5fr", "40px"]} />
-          {unwoundRows.map((r, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1.5fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
-              <TI value={r.unwoundFilm} onChange={v => as(setUnwoundRows, i, "unwoundFilm", v)} />
-              <TI value={r.unwoundBatchNo} onChange={v => as(setUnwoundRows, i, "unwoundBatchNo", v)} />
-              <TI type="number" value={r.unwoundKg} onChange={v => as(setUnwoundRows, i, "unwoundKg", v)} />
-              <TI type="number" value={r.unwoundKgPerMetry} onChange={v => as(setUnwoundRows, i, "unwoundKgPerMetry", v)} />
-              <button style={S.btn("danger", { padding: "4px 8px", fontSize: 12 })} onClick={() => ad(setUnwoundRows, i)}>✕</button>
-            </div>
-          ))}
-          <button style={S.btn("ghost", { marginTop: 6, fontSize: 11 })} onClick={() => aa(setUnwoundRows, eLamUnwound)}>+ Add Row</button>
-        </SC>
 
         <SC title="Output Stock — Laminated Roll (Sent to Warehouse)">
           <THead cols={["Material", "Film batch no.", "KG", "Meters", ""]} widths={["2fr", "1.5fr", "1fr", "1.5fr", "40px"]} />
