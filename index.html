@@ -366,6 +366,21 @@
           if (!lmap.ink_code || lmap.ink_code.length === 0 || typeof lmap.ink_code[0] === "string") {
             lmap.ink_code = baseInks;
             dbUpsertList("ink_code", JSON.stringify(baseInks));
+          } else {
+            // Fix any incorrectly saved combined ink codes from the DB
+            let needsUpdate = false;
+            lmap.ink_code = lmap.ink_code.map(ink => {
+              let c = typeof ink === "object" ? (ink.code || "") : String(ink);
+              let d = typeof ink === "object" ? (ink.description || "") : "";
+              if (!d && (c.includes(" - ") || c.includes(" — ") || c.includes("-"))) {
+                const parts = c.split(/ - | — |-/);
+                c = parts[0].trim();
+                d = parts.slice(1).join(" - ").trim();
+                needsUpdate = true;
+              }
+              return { code: c, description: d };
+            });
+            if (needsUpdate) dbUpsertList("ink_code", JSON.stringify(lmap.ink_code));
           }
           setAppLists(lmap);
           setStatus("ok");
