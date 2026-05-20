@@ -363,7 +363,10 @@
           // Build lists map from DB, falling back to defaults
           const lmap = { ...DEFAULT_LISTS };
           l.forEach(row => { try { lmap[row.list_name] = JSON.parse(row.items); } catch { } });
-          if (!lmap.ink_code || lmap.ink_code.length === 0) lmap.ink_code = baseInks;
+          if (!lmap.ink_code || lmap.ink_code.length === 0 || typeof lmap.ink_code[0] === "string") {
+            lmap.ink_code = baseInks;
+            dbUpsertList("ink_code", JSON.stringify(baseInks));
+          }
           setAppLists(lmap);
           setStatus("ok");
         } catch { setStatus("error"); }
