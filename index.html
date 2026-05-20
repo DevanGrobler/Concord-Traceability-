@@ -307,7 +307,6 @@
       product_name_slitting: baseProductNames,
       product_name_bagmaking: baseProductNames,
       ink_code: baseInks, // stored as [{code,description}]
-      ink_description: [],
       ink_supplier: [],
       solvent: [],
       solvent_supplier: [],
@@ -331,7 +330,7 @@
       product_name_printing: "Product Name (Printing)", product_name_lamination: "Product Name (Lamination)",
       product_name_extruders: "Product Name (Extruders)", product_name_slitting: "Product Name (Slitting)",
       product_name_bagmaking: "Product Name (Bag Making)",
-      ink_code: "Ink Codes", ink_description: "Ink Description", ink_supplier: "Ink Supplier",
+      ink_code: "Ink Codes", ink_supplier: "Ink Supplier",
       solvent: "Solvent Types", solvent_supplier: "Solvent Supplier", width: "Width", unit: "Units",
       operator: "Operators", supervisor: "Supervisors", qc_officer: "QC Officers",
       printing_qc_checks: "Printing QC Checks", lamination_qc_checks: "Lamination QC Checks", extruder_qc_checks: "Extruder QC Checks", slitting_qc_checks: "Slitting QC Checks", bag_opener: "Bag Openers", bagmaking_qc_checks: "Bag Making QC Checks",
@@ -722,7 +721,7 @@
 
     // ── Production Form ───────────────────────────────────────────────────────────
     const eP = () => ({ material: "", batchNo: "", qty: "", unit: "" });
-    const eI = () => ({ inkCode: "", description: "", supplier: "", qty: "", returned: "" });
+    const eI = () => ({ inkCode: "", supplier: "", qty: "", returned: "" });
     const eS = () => ({ solvent: "", supplier: "", batchNo: "", qty: "", returned: "" });
 
     function ProductionForm({ onSave, users = [], lists = {} }) {
@@ -784,17 +783,10 @@
           </SC>
         ))}
         <SC title="Ink Input">
-          <THead cols={["Ink Code", "Description", "Supplier", "Qty Used (kg)", "Returned (kg)", ""]} widths={["1.2fr", "1.2fr", "1.2fr", "1fr", "1fr", "40px"]} />
+          <THead cols={["Ink Code", "Supplier", "Qty Used (kg)", "Returned (kg)", ""]} widths={["2fr", "1.5fr", "1fr", "1fr", "40px"]} />
           {inks.map((r, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1.2fr 1fr 1fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
-              <select style={S.input} value={r.inkCode} onChange={e => {
-                const code = e.target.value;
-                setInks(prev => prev.map((row, x) => x === i ? { ...row, inkCode: code, description: ((lists.ink_code || []).find(ink => ink.code === code) || {}).description || "" } : row));
-              }}>
-                <option value="">— Select —</option>
-                {(lists.ink_code || []).map(x => <option key={x.code || x} value={x.code || x}>{x.code || x}</option>)}
-              </select>
-              <TI value={r.description} onChange={v => as(setInks, i, "description", v)} placeholder="Description" />
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
+              <TS value={r.inkCode} onChange={v => as(setInks, i, "inkCode", v)} options={["", ...(lists.ink_code || []).map(x => typeof x === "object" ? `${x.code} — ${x.description}` : x)]} />
               <TS value={r.supplier} onChange={v => as(setInks, i, "supplier", v)} options={["", ...(lists.ink_supplier || []).map(String).filter(Boolean)]} />
               <TI type="number" value={r.qty} onChange={v => as(setInks, i, "qty", v)} />
               <TI type="number" value={r.returned} onChange={v => as(setInks, i, "returned", v)} />
@@ -1016,8 +1008,13 @@
           }
           // Inks
           if (r.data?.inks?.length) {
-            rows.push([]); rows.push(["  INK INPUT", "Ink Code", "Description", "Supplier", "Qty Used (kg)", "Returned (kg)"]);
-            r.data.inks.forEach(x => rows.push(["", x.inkCode, x.description || x.shade || "", x.supplier, x.qty, x.returned]));
+            rows.push([]); rows.push(["  INK INPUT", "Ink Code", "Supplier", "Qty Used (kg)", "Returned (kg)"]);
+            r.data.inks.forEach(x => {
+              const code = x.inkCode || "";
+              const desc = x.description || x.shade || "";
+              const displayCode = desc && !code.includes(desc) ? `${code} — ${desc}` : code;
+              rows.push(["", displayCode, x.supplier, x.qty, x.returned]);
+            });
           }
           // Solvents
           if (r.data?.solvents?.length) {
@@ -1364,7 +1361,7 @@
         </Grid>
         {[["rawIn", "Raw Material Input", ["material", "batchNo", "qty", "unit"], "2fr 1.5fr 1fr 1fr 36px", { material: "", batchNo: "", qty: "", unit: "" }],
         ["rawOut", "Raw Material Output", ["material", "batchNo", "qty", "unit"], "2fr 1.5fr 1fr 1fr 36px", { material: "", batchNo: "", qty: "", unit: "" }],
-        ["inks", "Ink Input", ["inkCode", "description", "supplier", "qty", "returned"], "1.2fr 1.2fr 1.2fr 1fr 1fr 36px", { inkCode: "", description: "", supplier: "", qty: "", returned: "" }],
+        ["inks", "Ink Input", ["inkCode", "supplier", "qty", "returned"], "2fr 1.5fr 1fr 1fr 36px", { inkCode: "", supplier: "", qty: "", returned: "" }],
         ["solvents", "Solvent Input", ["solvent", "supplier", "batchNo", "qty", "returned"], "1.5fr 1.5fr 1.5fr 1fr 1fr 36px", { solvent: "", supplier: "", batchNo: "", qty: "", returned: "" }]
         ].map(([key, title, cols, grid, emptyRow]) => (
           <div key={key} style={{ marginTop: 14 }}>
@@ -1474,7 +1471,7 @@
         </div>
         <DT title="Raw Material Input" rows={d.rawIn} cols={["material", "batchNo", "qty", "unit"]} />
         <DT title="Raw Material Output" rows={d.rawOut} cols={["material", "batchNo", "qty", "unit"]} />
-        <DT title="Ink Input" rows={d.inks.map(i => ({...i, description: i.description || i.shade}))} cols={["inkCode", "description", "supplier", "qty", "returned"]} />
+        <DT title="Ink Input" rows={d.inks.map(i => ({...i, inkCode: (i.inkCode || "") + ((i.description || i.shade) && !(i.inkCode || "").includes(i.description || i.shade) ? ` — ${i.description || i.shade}` : "")}))} cols={["inkCode", "supplier", "qty", "returned"]} />
         <DT title="Solvent Input" rows={d.solvents} cols={["solvent", "supplier", "batchNo", "qty", "returned"]} />
         {d.remarks && <div style={{ marginTop: 10 }}><span style={{ color: C.muted }}>Remarks: </span>{d.remarks}</div>}
       </div>;
