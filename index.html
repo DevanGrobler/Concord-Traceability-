@@ -169,6 +169,135 @@
       "PRIDE FIRE NAMIB 12G", "PRIDE FIRE YELLOW 12G", "PRIDE VALUE PACK CLEAR", "PRIDE VALUE PACK PRINTED"
     ];
 
+    const baseInks = [
+      {"code": "NCB1/SCP", "description": "BLUE TONER"},
+      {"code": "NCBB/SCP", "description": "BLACK TONER"},
+      {"code": "NCG1/SCP", "description": "GREEN TONER"},
+      {"code": "NCO16/SCP", "description": "ORANGE TONER"},
+      {"code": "NCP1/SCP", "description": "PINK TONER"},
+      {"code": "NCR02/SCP", "description": "2B RED TONER"},
+      {"code": "NCR3/SCP", "description": "4B RED TONER"},
+      {"code": "NCV1/SCP", "description": "VOILET TONER"},
+      {"code": "NCY1/SCP", "description": "YELLOW TONER"},
+      {"code": "9HTG29183", "description": "POLYVERSE TECHNOLOGY VARNISH"},
+      {"code": "9HTG33835/SCP", "description": "TECHLAM TECHNOLOGY VARNISH"},
+      {"code": "9HTG34084", "description": "TEXAL MATT OP VARNISH"},
+      {"code": "9HTG34142", "description": "TEXAL H/G VARNISH"},
+      {"code": "9HTG40286", "description": "TEXAL ANTI-SCUFF VARNISH"},
+      {"code": "1HTG31524/SCP", "description": "TECHLAM WHITE"},
+      {"code": "2HTG31857", "description": "TECHLAM 123C IWISA YELLOW"},
+      {"code": "2HTG31888/SCP", "description": "TECHLAM 109C YELLOW"},
+      {"code": "2HTG32121/SCP", "description": "TECHLAM 114C YELLOW"},
+      {"code": "2HTG33465/SCP", "description": "TECHLAM PANTONE F/D YELLOW"},
+      {"code": "3HTG32255/SCP", "description": "TECHLAM 716C ORANGE"},
+      {"code": "3HTG32407/SCP", "description": "TECHLAM 144C ORANGE"},
+      {"code": "3HTG33999/SCP", "description": "TECHLAM NYALA F/D ORANGE"},
+      {"code": "3HTG35916", "description": "TECHLAM 172C KEYSTONE ORANGE"},
+      {"code": "4HTG32256/SCP", "description": "TECHLAM 485C F/D RED"},
+      {"code": "5HTG31856/SCP", "description": "TECHLAM 2915C BLUE"},
+      {"code": "5HTG31821/SCP", "description": "TECHLAM NYALA LT BLUE"},
+      {"code": "5HTG33441/SCP", "description": "TECHLAM F/D REFLEX BLUE"},
+      {"code": "5HTG33839/SCP", "description": "TECHLAM SNOWFLAKE BLUE"},
+      {"code": "5HTG41394", "description": "TECHLAM 072C F/D POWER UP BLUE"},
+      {"code": "6HTG31824/SCP", "description": "TECHLAM 355C GREEN KEYSTONE"},
+      {"code": "6HTG31856/SCP", "description": "TECHLAM 356C IWISA GREEN"},
+      {"code": "6HTG33440", "description": "TECHLAM 348C F/D GREEN"},
+      {"code": "6HTG35165", "description": "TECHLAM 355C GREEN"},
+      {"code": "6HTG35917", "description": "TECHLAM 375C KEYSTONE GREEN"},
+      {"code": "6HTG35919", "description": "TECHLAM PANTONE 360C KEYSTONE GREEN"},
+      {"code": "6HTG41386", "description": "TECHLAM 389C F/D POWER UP GREEN"},
+      {"code": "8HTG33435/SCP", "description": "TECHLAM SPOT BLACK"},
+      {"code": "9HTG31626/SCP", "description": "TECHLAM 7402C IWISA VANILLA"},
+      {"code": "9HTG42120", "description": "TITANIUM 871C GOLD"},
+      {"code": "1HTG27752/SCP", "description": "ALCOLAM WHITE"},
+      {"code": "3HTG31527/SCP", "description": "MICROTECHLAM MAGENTA"},
+      {"code": "5HTG31528/SCP", "description": "MICROTECHLAM CYAN"},
+      {"code": "8HTG40426", "description": "SURFACE PICK A PAY MAIZE BLACK"},
+      {"code": "1HTG33917/SCP", "description": "POLYVERSE WHITE"},
+      {"code": "3HTG31486/SCP", "description": "MICROTECH PRO MAGENTA"},
+      {"code": "9HTG31493/SCP", "description": "MICROTECH PRO MEDIUM"},
+      {"code": "5HTG31496/SCP", "description": "MICROTECH PRO CYAN"},
+      {"code": "1HTG31412/SCP", "description": "TEXAL WHITE"},
+      {"code": "2HTG33464/SCP", "description": "TEXAL PANTONE FD YELLOW C"},
+      {"code": "4HTG31414/SCP", "description": "TEXAL 485C RED"},
+      {"code": "4HTG35286", "description": "TEXAL KEYSTONE F/D 172C ORANGE"},
+      {"code": "4HTG41774", "description": "TEXAL F/D WHITE STAR RED"},
+      {"code": "5HTG32578/SCP", "description": "TEXAL 2935C BLUE"},
+      {"code": "5HTG33279/SCP", "description": "TEXAL REFLEX BLUE"},
+      {"code": "5HTG35249", "description": "TEXAL NATIONS PRIDE F/D BLUE"},
+      {"code": "5HTG41271/SC", "description": "TEXAL 288C KEYSTONE F/D BLUE"},
+      {"code": "6HTG31713/SCP", "description": "TEXAL 7741C GREEN"},
+      {"code": "6HTG35187", "description": "TEXAL F/D PNP LT GREEN"},
+      {"code": "6HTG35259", "description": "TEXAL KEYSTONE F/D 382C GREEN"},
+      {"code": "6HTG35274", "description": "TEXAL KEYSTONE F/D 355C GREEN"},
+      {"code": "6HTG35285", "description": "TEXAL KEYSTONE F/D 375C GREEN"},
+      {"code": "6HTG40969", "description": "TEXAL PNP F/D DARKER GREEN"},
+      {"code": "6HTG41979", "description": "TEXAL IWISA 389C F/D GREEN"},
+      {"code": "8HTG31413/SCP", "description": "TEXAL BLACK"},
+      {"code": "8HTG40436", "description": "TEXAL BLACK"},
+      {"code": "9HTG31415/SCP", "description": "TEXAL MEDIUM"},
+      {"code": "9HTG32478/SCP", "description": "URETHANE"},
+      {"code": "9HTG32477SCP", "description": "NC WAX PASTE"},
+      {"code": "1HTG27752/SCP PR", "description": "ALCOLAM WHITE PR"},
+      {"code": "1HTG31412/SCP PR", "description": "TEXAL WHITE PR"},
+      {"code": "1HTG31524/SCP PR", "description": "TECHLAM WHITE PR"},
+      {"code": "1HTG33917/SCP PR", "description": "POLYVERSE WHITE PR"},
+      {"code": "2HTG31411/SCP PR", "description": "TEXAL 109C YELLOW PR"},
+      {"code": "2HTG31627/SCP PR", "description": "TECHLAM 123C YELLOW PR"},
+      {"code": "2HTG31857/SCP PR", "description": "TECHLAM 123C IWISA YELLOW PR"},
+      {"code": "2HTG31888/SCP PR", "description": "TECHLAM 109C YELLOW PR"},
+      {"code": "2HTG33465/SCP PR", "description": "TECHLAM PANTONE FD YELLOW PR"},
+      {"code": "2HTG42118 PR", "description": "TEXAL YELLOW 1235C PR"},
+      {"code": "2HTG42118 PR", "description": "TEXAL 1235 YELLOW PR"},
+      {"code": "3HTG33999/SCP PR", "description": "TECHLAM NYALA FD ORANGE PR"},
+      {"code": "3HTG31527/SCP PR", "description": "MICROTECHLAM MAGENTA PR"},
+      {"code": "4HTG31787/SCP PR", "description": "TECHLAM 211C NYALA PINK PR"},
+      {"code": "4HTG32153/SCP PR", "description": "TECHLAM TOPSCORE RED PR"},
+      {"code": "4HTG32256/SCP PR", "description": "TECHLAM 485C FAST DRY RED PR"},
+      {"code": "4HTG32278/SCP PR", "description": "TECHLAM TOPSCORE PINK PR"},
+      {"code": "4HTG32406/SCP PR", "description": "TECHLAM 204 PINK PR"},
+      {"code": "4HTG35286 PR", "description": "TEXAL KEYSTONE 172C ORANGE PR"},
+      {"code": "5HTG31528/SCP PR", "description": "MICROTECHLAM CYAN PR"},
+      {"code": "5HTG31529/SCP PR", "description": "TECHLAM MR SWEETS PURPLE PR"},
+      {"code": "5HTG32567/SCP PR", "description": "TEXAL 281C BLUE PR"},
+      {"code": "5HTG32579/SCP PR", "description": "TECHLAM 2935C REVERSE BLUE PR"},
+      {"code": "5HTG33279/SCP PR", "description": "TEXAL SURFACE FD REFLEX BLUE PR"},
+      {"code": "5HTG33441/SCP PR", "description": "TECHLAM FD REFLEX BLUE PR"},
+      {"code": "5HTG33839/SCP PR", "description": "TECHLAM SNOWFLAKE BLUE PR"},
+      {"code": "5HTG35249 PR", "description": "TEXAL NATIONS PRIDE FD BLUE PR"},
+      {"code": "5HTG41271/SCP PR", "description": "TEXAL 288C KEYSTONE FD BLUE PR"},
+      {"code": "5HTG41394 PR", "description": "TECHLAM POWER UP 072C BLUE PR"},
+      {"code": "5HTG42117 PR", "description": "TECHLAM BLUE 2765C PR"},
+      {"code": "6HTG35187/SCP PR", "description": "TEXAL PNP LT GREEN PR"},
+      {"code": "6HTG31628/SCP PR", "description": "TECHLAM 389 IWISA GREEN PR"},
+      {"code": "6HTG31824/SCP", "description": "TECHLAM 355C GREEN PR"},
+      {"code": "6HTG31856/SCP PR", "description": "TECHLAM 356C IWISA GREEN PR"},
+      {"code": "6HTG32412/SCP PR", "description": "TECHLAM 7741C PMS GREEN PR"},
+      {"code": "6HTG33440/SCP PR", "description": "TECHLAM 348C FD GREEN PR"},
+      {"code": "6HTG35259 PR", "description": "TEXAL KEYSTONE 382C GREEN PR"},
+      {"code": "6HTG35274 PR", "description": "TEXAL KEYSTONE 355C GREEN PR"},
+      {"code": "6HTG35285 PR", "description": "TEXAL KEYSTONE 375C GREEN PR"},
+      {"code": "6HTG35919 PR", "description": "TECHLAM PANTONE 360 KEYSTONE GREEN PR"},
+      {"code": "6HTG40969", "description": "TEXAL PNP FD DARKER GREEN PR"},
+      {"code": "6HTG41386 PR", "description": "TECHLAM POWER UP 389 GREEN PR"},
+      {"code": "7HTG32560/SCP PR", "description": "TECHLAM 7510C INYALA BROWN PR"},
+      {"code": "7HTG42119 PR", "description": "TEXAL 135C BROWN PR"},
+      {"code": "8HTG31497/SCP PR", "description": "MICROTECH PROC BLACK PR"},
+      {"code": "8HTG31525/SCP PR", "description": "MICROTECHLAM BLACK PR"},
+      {"code": "8HTG33435/SCP PR", "description": "TECHLAM SPOT BLACK PR"},
+      {"code": "8HTG40426 PR", "description": "SURFACE PICK A PAY MAIZE BLACK PR"},
+      {"code": "8HTG40436 PR", "description": "TEXAL BLACK PR"},
+      {"code": "9HTG31626/SCP PR", "description": "TECHLAM 7402C IWISA VANILLA PR"},
+      {"code": "9HTG31630/SCP PR", "description": "TECHLAM 713C INYALA CREAM PR"},
+      {"code": "9HTG31657/SCP PR", "description": "TECHLAM 466C INYALA BEIGE PR"},
+      {"code": "9HTG32194/SCP PR", "description": "TECHLAM TOPSCORE VANILLA PR"},
+      {"code": "9HTG34084 PR", "description": "TEXAL MATT OP VARNISH 9HTG34084 PR"},
+      {"code": "9HTG34142 PR", "description": "TEXAL H/G VARNISH PR"},
+      {"code": "9HTG42120 PR", "description": "CONLAM TITANUIM GOLD 871C PR"},
+      {"code": "2HTG33840/SCP PR", "description": "SNOWFLAKE YELLOW PR"},
+      {"code": "4HTG31414/SCP PR", "description": "TEXAL RED 485C"}
+    ];
+
     const DEFAULT_LISTS = {
       substrate: ["BOPP", "BOPP MAT", "PET", "PET MAT"],
       customer: [],
@@ -177,8 +306,8 @@
       product_name_extruders: baseProductNames,
       product_name_slitting: baseProductNames,
       product_name_bagmaking: baseProductNames,
-      ink_code: [], // stored as [{code,description}]
-      ink_shade: [],
+      ink_code: baseInks, // stored as [{code,description}]
+      ink_description: [],
       ink_supplier: [],
       solvent: [],
       solvent_supplier: [],
@@ -202,7 +331,7 @@
       product_name_printing: "Product Name (Printing)", product_name_lamination: "Product Name (Lamination)",
       product_name_extruders: "Product Name (Extruders)", product_name_slitting: "Product Name (Slitting)",
       product_name_bagmaking: "Product Name (Bag Making)",
-      ink_code: "Ink Codes", ink_shade: "Ink Shade", ink_supplier: "Ink Supplier",
+      ink_code: "Ink Codes", ink_description: "Ink Description", ink_supplier: "Ink Supplier",
       solvent: "Solvent Types", solvent_supplier: "Solvent Supplier", width: "Width", unit: "Units",
       operator: "Operators", supervisor: "Supervisors", qc_officer: "QC Officers",
       printing_qc_checks: "Printing QC Checks", lamination_qc_checks: "Lamination QC Checks", extruder_qc_checks: "Extruder QC Checks", slitting_qc_checks: "Slitting QC Checks", bag_opener: "Bag Openers", bagmaking_qc_checks: "Bag Making QC Checks",
@@ -574,7 +703,7 @@
 
     // ── Production Form ───────────────────────────────────────────────────────────
     const eP = () => ({ material: "", batchNo: "", qty: "", unit: "" });
-    const eI = () => ({ inkCode: "", shade: "", supplier: "", qty: "", returned: "" });
+    const eI = () => ({ inkCode: "", description: "", supplier: "", qty: "", returned: "" });
     const eS = () => ({ solvent: "", supplier: "", batchNo: "", qty: "", returned: "" });
 
     function ProductionForm({ onSave, users = [], lists = {} }) {
@@ -636,11 +765,17 @@
           </SC>
         ))}
         <SC title="Ink Input">
-          <THead cols={["Ink Code", "Shade", "Supplier", "Qty Used (kg)", "Returned (kg)", ""]} widths={["1.2fr", "1.2fr", "1.2fr", "1fr", "1fr", "40px"]} />
+          <THead cols={["Ink Code", "Description", "Supplier", "Qty Used (kg)", "Returned (kg)", ""]} widths={["1.2fr", "1.2fr", "1.2fr", "1fr", "1fr", "40px"]} />
           {inks.map((r, i) => (
             <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1.2fr 1fr 1fr 40px", gap: 6, marginBottom: 6, alignItems: "center" }}>
-              <TS value={r.inkCode} onChange={v => as(setInks, i, "inkCode", v)} options={["", ...(lists.ink_code || []).map(x => typeof x === "object" ? `${x.code} — ${x.description}` : x)]} />
-              <TS value={r.shade} onChange={v => as(setInks, i, "shade", v)} options={["", ...(lists.ink_shade || []).map(String).filter(Boolean)]} />
+              <select style={S.input} value={r.inkCode} onChange={e => {
+                const code = e.target.value;
+                setInks(prev => prev.map((row, x) => x === i ? { ...row, inkCode: code, description: ((lists.ink_code || []).find(ink => ink.code === code) || {}).description || "" } : row));
+              }}>
+                <option value="">— Select —</option>
+                {(lists.ink_code || []).map(x => <option key={x.code || x} value={x.code || x}>{x.code || x}</option>)}
+              </select>
+              <TI value={r.description} onChange={v => as(setInks, i, "description", v)} placeholder="Description" />
               <TS value={r.supplier} onChange={v => as(setInks, i, "supplier", v)} options={["", ...(lists.ink_supplier || []).map(String).filter(Boolean)]} />
               <TI type="number" value={r.qty} onChange={v => as(setInks, i, "qty", v)} />
               <TI type="number" value={r.returned} onChange={v => as(setInks, i, "returned", v)} />
@@ -862,8 +997,8 @@
           }
           // Inks
           if (r.data?.inks?.length) {
-            rows.push([]); rows.push(["  INK INPUT", "Ink Code", "Shade", "Supplier", "Qty Used (kg)", "Returned (kg)"]);
-            r.data.inks.forEach(x => rows.push(["", x.inkCode, x.shade, x.supplier, x.qty, x.returned]));
+            rows.push([]); rows.push(["  INK INPUT", "Ink Code", "Description", "Supplier", "Qty Used (kg)", "Returned (kg)"]);
+            r.data.inks.forEach(x => rows.push(["", x.inkCode, x.description || x.shade || "", x.supplier, x.qty, x.returned]));
           }
           // Solvents
           if (r.data?.solvents?.length) {
@@ -1210,7 +1345,7 @@
         </Grid>
         {[["rawIn", "Raw Material Input", ["material", "batchNo", "qty", "unit"], "2fr 1.5fr 1fr 1fr 36px", { material: "", batchNo: "", qty: "", unit: "" }],
         ["rawOut", "Raw Material Output", ["material", "batchNo", "qty", "unit"], "2fr 1.5fr 1fr 1fr 36px", { material: "", batchNo: "", qty: "", unit: "" }],
-        ["inks", "Ink Input", ["inkCode", "shade", "supplier", "qty", "returned"], "1.2fr 1.2fr 1.2fr 1fr 1fr 36px", { inkCode: "", shade: "", supplier: "", qty: "", returned: "" }],
+        ["inks", "Ink Input", ["inkCode", "description", "supplier", "qty", "returned"], "1.2fr 1.2fr 1.2fr 1fr 1fr 36px", { inkCode: "", description: "", supplier: "", qty: "", returned: "" }],
         ["solvents", "Solvent Input", ["solvent", "supplier", "batchNo", "qty", "returned"], "1.5fr 1.5fr 1.5fr 1fr 1fr 36px", { solvent: "", supplier: "", batchNo: "", qty: "", returned: "" }]
         ].map(([key, title, cols, grid, emptyRow]) => (
           <div key={key} style={{ marginTop: 14 }}>
@@ -1320,7 +1455,7 @@
         </div>
         <DT title="Raw Material Input" rows={d.rawIn} cols={["material", "batchNo", "qty", "unit"]} />
         <DT title="Raw Material Output" rows={d.rawOut} cols={["material", "batchNo", "qty", "unit"]} />
-        <DT title="Ink Input" rows={d.inks} cols={["inkCode", "shade", "supplier", "qty", "returned"]} />
+        <DT title="Ink Input" rows={d.inks.map(i => ({...i, description: i.description || i.shade}))} cols={["inkCode", "description", "supplier", "qty", "returned"]} />
         <DT title="Solvent Input" rows={d.solvents} cols={["solvent", "supplier", "batchNo", "qty", "returned"]} />
         {d.remarks && <div style={{ marginTop: 10 }}><span style={{ color: C.muted }}>Remarks: </span>{d.remarks}</div>}
       </div>;
