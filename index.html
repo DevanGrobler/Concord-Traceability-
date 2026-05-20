@@ -647,17 +647,19 @@
           </SC>
         ))}
         <SC title="Ink Input">
-          <THead cols={["Ink Code","Description","Supplier","Qty Used (kg)","Returned (kg)",""]} widths={["1.2fr","1.2fr","1.2fr","1fr","1fr","40px"]} />
+          <THead cols={["Ink Code","Supplier","Qty Used (kg)","Returned (kg)",""]} widths={["2.5fr","1.5fr","1fr","1fr","40px"]} />
           {inks.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 1.2fr 1.2fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2.5fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
               <select style={S.input} value={r.inkCode} onChange={e=>{
                 const code=e.target.value;
                 setInks(prev=>prev.map((row,x)=>x===i?{...row,inkCode:code,description:((lists.ink_code||[]).find(ink=>ink.code===code)||{}).description||""}:row));
               }}>
                 <option value="">— Select —</option>
-                {(lists.ink_code||[]).map(x=><option key={x.code||x} value={x.code||x}>{x.code||x}</option>)}
+                {(lists.ink_code||[]).map(x=>{
+                  const code=x.code||x; const desc=(x.description||"").trim();
+                  return <option key={code} value={code}>{desc?`${code} — ${desc}`:code}</option>;
+                })}
               </select>
-              <TI value={r.description} onChange={v=>as(setInks,i,"description",v)} placeholder="Description" />
               <TS value={r.supplier} onChange={v=>as(setInks,i,"supplier",v)} options={(lists.ink_supplier||[]).map(String).filter(Boolean)} />
               <TI type="number" value={r.qty}      onChange={v=>as(setInks,i,"qty",v)} />
               <TI type="number" value={r.returned} onChange={v=>as(setInks,i,"returned",v)} />
@@ -1463,7 +1465,7 @@
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
-        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["inks","Ink Input",["inkCode","description","supplier","qty","returned"],"1.2fr 1.2fr 1.2fr 1fr 1fr 36px",{inkCode:"",description:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
+        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["inks","Ink Input",["inkCode","supplier","qty","returned"],"2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
           <div key={key} style={{marginTop:14}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
             {(data[key]||[]).map((row,i)=>(
@@ -1552,7 +1554,7 @@
         </div>
         <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} />
         <DT title="Raw Material Output" rows={d.rawOut} cols={["material","batchNo","qty","unit"]} />
-        <DT title="Ink Input"           rows={(d.inks||[]).map(i=>({...i,description:i.description||i.shade}))} cols={["inkCode","description","supplier","qty","returned"]} />
+        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","supplier","qty","returned"]} />
         <DT title="Solvent Input"       rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned"]} />
         {d.remarks&&<div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
       </div>;
@@ -1729,7 +1731,7 @@
       },[activeList,appLists]);
 
       const addItem=()=>{
-        if(isInkCode){ if(!newCode.trim()) return; setItems(prev=>[...prev,{code:newCode.trim(),description:newDesc.trim()}]); setNewCode(""); setNewDesc(""); }
+        if(isInkCode){ if(!newCode.trim()) return; setItems(prev=>[...prev,{code:newCode.trim(),description:""}]); setNewCode(""); }
         else { if(!newVal.trim()) return; setItems(prev=>[...prev,{val:newVal.trim()}]); setNewVal(""); }
       };
       const removeItem=i=>setItems(prev=>prev.filter((_,x)=>x!==i));
@@ -1754,11 +1756,10 @@
             <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,padding:"4px 8px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
               {isChecklist&&<span style={{color:C.muted,fontSize:11,minWidth:22,textAlign:"center",flexShrink:0}}>{i+1}.</span>}
               {isInkCode?(
-                <>
-                  <input style={{...S.input,maxWidth:120,padding:"4px 8px",fontSize:12,background:"transparent",color:C.accent,fontWeight:700,border:`1px solid transparent`}} value={item.code} onChange={e=>editItem(i,"code",e.target.value)} placeholder="Code" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
-                  <span style={{color:C.muted,fontSize:11,flexShrink:0}}>—</span>
-                  <input style={{...S.input,padding:"4px 8px",fontSize:12,background:"transparent",color:C.text,border:`1px solid transparent`,flex:1}} value={item.description} onChange={e=>editItem(i,"description",e.target.value)} placeholder="Description" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
-                </>
+                <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
+                  <input style={{...S.input,maxWidth:160,padding:"4px 8px",fontSize:12,background:"transparent",color:C.accent,fontWeight:700,border:`1px solid transparent`}} value={item.code} onChange={e=>editItem(i,"code",e.target.value)} placeholder="Code" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
+                  {item.description&&<span style={{fontSize:11,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>— {item.description}</span>}
+                </div>
               ):(
                 <input style={{...S.input,padding:"4px 8px",fontSize:12,background:"transparent",color:C.text,border:`1px solid transparent`,flex:1}} value={item.val||""} onChange={e=>editItem(i,"val",e.target.value)} placeholder="Edit item…" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
               )}
@@ -1773,8 +1774,7 @@
           ))}
           <div style={{display:"flex",gap:8,marginTop:14,alignItems:"flex-end",paddingTop:10,borderTop:`1px solid ${C.border}`}}>
             {isInkCode?(
-              <><F label="Code"><TI value={newCode} onChange={v=>setNewCode(v)} placeholder="e.g. INK-001" /></F>
-              <F label="Description"><TI value={newDesc} onChange={v=>setNewDesc(v)} placeholder="e.g. Cyan Solvent" /></F></>
+              <F label="Ink Code"><TI value={newCode} onChange={v=>setNewCode(v)} placeholder="e.g. 5HTG31856/SCP" onKeyDown={e=>e.key==="Enter"&&addItem()} /></F>
             ):(
               <F label={isChecklist?"New check item":"New item"}>
                 <TI value={newVal} onChange={v=>setNewVal(v)} placeholder={isChecklist?"e.g. Adhesive spread checked":`Add ${LIST_LABELS[activeList]} option…`} onKeyDown={e=>e.key==="Enter"&&addItem()} />
