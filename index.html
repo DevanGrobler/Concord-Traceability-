@@ -1415,6 +1415,12 @@
                 <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
                 <div style={{fontSize:11,color:C.muted,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
                   <span>📋 Completed by: <span style={{color:C.accent,fontWeight:700}}>{r.created_by}</span></span>
+                  {(r.data?.header?.customer||r.data?.header?.customerProduct)&&(
+                    <span>🏢 <span style={{color:C.text}}>{r.data.header.customer||r.data.header.customerProduct}</span></span>
+                  )}
+                  {r.data?.header?.productName&&(
+                    <span>📦 <span style={{color:C.text}}>{r.data.header.productName}</span></span>
+                  )}
                   <span>🕐 {new Date(r.created_at).toLocaleString()}</span>
                 </div>
               </div>
@@ -1554,7 +1560,7 @@
       const h=d.header||{};
       return <div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
-          {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Customer",h.customer],["Substrate",h.substrate],["Width",h.width],["Length",h.length],["Speed",h.speed],["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
+          {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Customer",h.customer],["Product Name",h.productName],["Substrate",h.substrate],["Width",h.width],["Length",h.length],["Speed",h.speed],["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
             <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
           ))}
         </div>
