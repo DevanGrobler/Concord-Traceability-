@@ -631,7 +631,7 @@
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
           </Grid>
         </SC>
-        {[["Raw Material Input",rawIn,setRawIn,eP],["Raw Material Output",rawOut,setRawOut,eP]].map(([title,rows,setter,empty])=>(
+        {[["Raw Material Input",rawIn,setRawIn,eP],["Raw Material Output (Printing Reels and Return BOPP)",rawOut,setRawOut,eP]].map(([title,rows,setter,empty])=>(
           <SC key={title} title={title}>
             <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
             {rows.map((r,i)=>(
@@ -1471,7 +1471,7 @@
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
-        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
+        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output (Printing Reels and Return BOPP)",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
           <div key={key} style={{marginTop:14}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
             {(data[key]||[]).map((row,i)=>(
@@ -1559,7 +1559,7 @@
           ))}
         </div>
         <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} />
-        <DT title="Raw Material Output" rows={d.rawOut} cols={["material","batchNo","qty","unit"]} />
+        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit"]} />
         <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned"]} />
         <DT title="Solvent Input"       rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned"]} />
         {d.remarks&&<div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
