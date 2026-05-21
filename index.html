@@ -595,7 +595,7 @@
 
     // ── Production Form ───────────────────────────────────────────────────────
     const eP  = () => ({material:"",batchNo:"",qty:"",unit:""});
-    const eI  = () => ({inkCode:"",description:"",supplier:"",qty:"",returned:""});
+    const eI  = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""});
     const eSv = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:""});
 
     function ProductionForm({onSave,onReset,users=[],lists={}}){
@@ -647,9 +647,9 @@
           </SC>
         ))}
         <SC title="Ink Input">
-          <THead cols={["Ink Code","Supplier","Qty Used (kg)","Returned (kg)",""]} widths={["2.5fr","1.5fr","1fr","1fr","40px"]} />
+          <THead cols={["Ink Code","Type","Batch No.","Supplier","Qty Used (kg)","Returned (kg)",""]} widths={["2.5fr","1fr","1.2fr","1.5fr","1fr","1fr","40px"]} />
           {inks.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2.5fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2.5fr 1fr 1.2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
               <select style={S.input} value={r.inkCode} onChange={e=>{
                 const code=e.target.value;
                 setInks(prev=>prev.map((row,x)=>x===i?{...row,inkCode:code,description:((lists.ink_code||[]).find(ink=>ink.code===code)||{}).description||""}:row));
@@ -660,6 +660,12 @@
                   return <option key={code} value={code}>{desc?`${code} — ${desc}`:code}</option>;
                 })}
               </select>
+              <select style={S.input} value={r.inkType||""} onChange={e=>as(setInks,i,"inkType",e.target.value)}>
+                <option value="">— Type —</option>
+                <option value="Fresh">Fresh</option>
+                <option value="Press Return">Press Return</option>
+              </select>
+              <TI value={r.batchNo||""} onChange={v=>as(setInks,i,"batchNo",v)} placeholder="Batch No." />
               <TS value={r.supplier} onChange={v=>as(setInks,i,"supplier",v)} options={(lists.ink_supplier||[]).map(String).filter(Boolean)} />
               <TI type="number" value={r.qty}      onChange={v=>as(setInks,i,"qty",v)} />
               <TI type="number" value={r.returned} onChange={v=>as(setInks,i,"returned",v)} />
@@ -1288,7 +1294,7 @@
           rows.push([r.created_by,h.date,h.shift,h.jobNo,h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
           if(r.data?.rawIn?.length){ rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]); r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit])); }
           if(r.data?.rawOut?.length){ rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit"]); r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit])); }
-          if(r.data?.inks?.length){ rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Supplier","Qty Used (kg)","Returned (kg)"]); r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.supplier,x.qty,x.returned])); }
+          if(r.data?.inks?.length){ rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty Used (kg)","Returned (kg)"]); r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned])); }
           if(r.data?.solvents?.length){ rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty Used (L)","Returned (L)"]); r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned])); }
           rows.push(["---"]);
         });
@@ -1465,7 +1471,7 @@
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
-        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["inks","Ink Input",["inkCode","supplier","qty","returned"],"2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
+        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
           <div key={key} style={{marginTop:14}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
             {(data[key]||[]).map((row,i)=>(
@@ -1554,7 +1560,7 @@
         </div>
         <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} />
         <DT title="Raw Material Output" rows={d.rawOut} cols={["material","batchNo","qty","unit"]} />
-        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","supplier","qty","returned"]} />
+        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned"]} />
         <DT title="Solvent Input"       rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned"]} />
         {d.remarks&&<div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
       </div>;
