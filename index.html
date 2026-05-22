@@ -629,7 +629,7 @@
 
     // ── Production Form ───────────────────────────────────────────────────────
     const eP    = () => ({material:"",batchNo:"",qty:"",unit:""});
-    const ePOut = () => ({material:"",batchNo:"",qty:"",unit:"",meters:""});
+    const ePOut = () => ({material:"",batchNo:"",qty:"",unit:"",meters:"",time:""});
     const eI  = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""});
     const eSv = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:""});
 
@@ -657,8 +657,11 @@
           setErrors(p=>({...p,continuationOf:"Job Card Numbers do not match — they must be identical to confirm this continuation."}));
           return;
         }
+        const now=new Date();
+        const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+        const finalRawOut=rawOut.map((row,xi)=>xi===rawOut.length-1&&!row.time?{...row,time:timeStr}:row);
         const normBopp=boppWaste.map(r=>({printingBopp:r.printingBopp===""?"0":r.printingBopp,printingComment:r.printingComment||"",rawBopp:r.rawBopp===""?"0":r.rawBopp,rawComment:r.rawComment||""}));
-        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut,boppWaste:normBopp,inks,solvents,remarks}}); setSaved(true);
+        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,boppWaste:normBopp,inks,solvents,remarks}}); setSaved(true);
       };
       return <div>
         <PH title="Daily Production Sheet Printing" sub="Record job details, materials, inks and solvents" />
@@ -710,18 +713,29 @@
           <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRawIn,eP)}>+ Add Row</button>
         </SC>
         <SC title="Raw Material Output (Printing Reels and Return BOPP)">
-          <THead cols={["Material","Batch No.","Qty","Unit","Meters",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","40px"]} />
+          <THead cols={["Material","Batch No.","Qty","Unit","Meters","Time",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","80px","40px"]} />
           {rawOut.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr 80px 40px",gap:6,marginBottom:6,alignItems:"center"}}>
               <TI value={r.material} onChange={v=>as(setRawOut,i,"material",v)} placeholder="Material" />
               <TI value={r.batchNo}  onChange={v=>as(setRawOut,i,"batchNo",v)} />
               <TI type="number" value={r.qty}    onChange={v=>as(setRawOut,i,"qty",v)} />
               <TS value={r.unit} onChange={v=>as(setRawOut,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
               <TI type="number" value={r.meters||""} onChange={v=>as(setRawOut,i,"meters",v)} placeholder="0" />
+              <div style={{fontSize:11,color:r.time?C.success:C.muted,fontWeight:r.time?600:400,padding:"6px 4px",textAlign:"center"}}>
+                {r.time||<span style={{fontSize:10,color:C.muted}}>— pending</span>}
+              </div>
               <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRawOut,i)}>✕</button>
             </div>
           ))}
-          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRawOut,ePOut)}>+ Add Row</button>
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>{
+            const now=new Date();
+            const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+            // Stamp time on the last row if it doesn't have one yet
+            setRawOut(a=>{
+              const updated=a.map((row,xi)=>xi===a.length-1&&!row.time?{...row,time:timeStr}:row);
+              return [...updated,ePOut()];
+            });
+          }}>+ Add Row</button>
         </SC>
         <SC title="BOPP Waste">
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6}}>
@@ -1397,11 +1411,11 @@
             rows.push(["","","TOTAL",totalQty||"",""]);
           }
           if(r.data?.rawOut?.length){
-            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters"]);
-            r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||""]));
+            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters","Time"]);
+            r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||"",x.time||""]));
             const totalQty=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalMeters=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.meters||0),0);
-            rows.push(["","","TOTAL",totalQty||"","",totalMeters||""]);
+            rows.push(["","","TOTAL",totalQty||"","",totalMeters||"",""]);
           }
           if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP Waste (kg)","Printing Comment","Raw BOPP Film Waste (kg)","Raw Comment"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","",tR||""]); } }
           if(r.data?.inks?.length){
@@ -1602,7 +1616,7 @@
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
-        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output (Printing Reels and Return BOPP)",["material","batchNo","qty","unit","meters"],"2fr 1.5fr 1fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:"",meters:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
+        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output (Printing Reels and Return BOPP)",["material","batchNo","qty","unit","meters","time"],"2fr 1.5fr 1fr 1fr 1fr 80px 36px",{material:"",batchNo:"",qty:"",unit:"",meters:"",time:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
           <div key={key} style={{marginTop:14}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
             {(data[key]||[]).map((row,i)=>(
@@ -1695,7 +1709,7 @@
           ))}
         </div>
         <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} sumCols={["qty"]} />
-        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters"]} sumCols={["qty","meters"]} />
+        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters","time"]} sumCols={["qty","meters"]} />
         {(()=>{
           const bw=d.boppWaste;
           if(!bw) return null;
