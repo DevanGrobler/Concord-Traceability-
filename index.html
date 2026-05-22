@@ -599,7 +599,7 @@
     const eSv = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:""});
 
     function ProductionForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""});
+      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:"",continuationOf:""});
       const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
       const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eSv()]);
       const [boppWaste,setBoppWaste]=useState([{printingBopp:"",rawBopp:""}]);
@@ -631,6 +631,10 @@
             <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
+            <F label="Continuation of Job No. (if applicable)" col={2}>
+              <TI value={hdr.continuationOf||""} onChange={v=>h("continuationOf",v)} placeholder="e.g. CPK-0001 — leave blank if this is a new job" />
+              <div style={{fontSize:10,color:C.muted,marginTop:4}}>Fill this in when continuing a job from a previous shift or day (e.g. after a weekend). Leave blank for a new job.</div>
+            </F>
           </Grid>
         </SC>
         {[["Raw Material Input",rawIn,setRawIn,eP],["Raw Material Output (Printing Reels and Return BOPP)",rawOut,setRawOut,eP]].map(([title,rows,setter,empty])=>(
@@ -1301,10 +1305,10 @@
 
       const prodRecs=records.filter(r=>r.type==="production");
       if(prodRecs.length){
-        const rows=[["Completed By","Date","Shift","Job Card Number","Customer","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]];
+        const rows=[["Completed By","Date","Shift","Job Card Number","Continuation Of","Customer","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
-          rows.push([r.created_by,h.date,h.shift,h.jobNo,h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
+          rows.push([r.created_by,h.date,h.shift,h.jobNo,h.continuationOf||"",h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
           if(r.data?.rawIn?.length){ rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]); r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit])); }
           if(r.data?.rawOut?.length){ rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit"]); r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit])); }
           if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP Waste (kg)","Raw BOPP Film Waste (kg)"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.rawBopp||"0"])); } }
@@ -1434,6 +1438,9 @@
                   )}
                   {r.data?.header?.productName&&(
                     <span>📦 <span style={{color:C.text}}>{r.data.header.productName}</span></span>
+                  )}
+                  {r.data?.header?.continuationOf&&(
+                    <span style={{color:C.warn,fontWeight:600}}>🔗 Cont. of {r.data.header.continuationOf}</span>
                   )}
                   <span>🕐 {new Date(r.created_at).toLocaleString()}</span>
                 </div>
@@ -1573,6 +1580,11 @@
     function ProdD({d}){
       const h=d.header||{};
       return <div>
+        {h.continuationOf&&(
+          <div style={{marginBottom:12,padding:"8px 14px",background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:6,fontSize:12,color:C.warn,fontWeight:600}}>
+            🔗 Continuation of Job No.: <span style={{color:C.text,fontWeight:700}}>{h.continuationOf}</span>
+          </div>
+        )}
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
           {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Customer",h.customer],["Product Name",h.productName],["Substrate",h.substrate],["Width",h.width],["Length",h.length],["Speed",h.speed],["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
             <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
