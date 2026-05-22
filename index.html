@@ -666,9 +666,16 @@
             <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
-            <F label="Continuation of Job No. (if applicable)" col={2}>
-              <TI value={hdr.continuationOf||""} onChange={v=>h("continuationOf",v)} placeholder="e.g. CPK-0001 — leave blank if this is a new job" />
-              <div style={{fontSize:10,color:C.muted,marginTop:4}}>Fill this in when continuing a job from a previous shift or day (e.g. after a weekend). Leave blank for a new job.</div>
+            <F label="Continuation of Previous Job No. (optional)" col={2}>
+              <TI value={hdr.continuationOf||""} onChange={v=>h("continuationOf",v)} placeholder="e.g. CPK-0042 — the previous job this continues from" />
+              <div style={{fontSize:10,color:C.muted,marginTop:4}}>
+                This is the <strong>previous</strong> job's number — not this sheet's number. Leave blank if this is a brand new job.
+              </div>
+              {hdr.continuationOf&&hdr.jobNo&&hdr.continuationOf.trim()===hdr.jobNo.trim()&&(
+                <div style={{fontSize:11,color:C.danger,fontWeight:600,marginTop:4}}>
+                  ⚠ This matches the Job Card Number above — these should be different. The Continuation field should reference a <em>previous</em> job number.
+                </div>
+              )}
             </F>
           </Grid>
         </SC>
