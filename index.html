@@ -640,13 +640,23 @@
       const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:""}]);
       const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
-      const {errors:fErr,validate,clear:clrErr}=useFormValidation();
+      const {errors:fErr,validate,clear:clrErr,setErrors}=useFormValidation();
       const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
       const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
       const aa=(fn,e)=>fn(a=>[...a,e()]); const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
+
+      // Continuation mismatch check
+      const isContinuation = hdr.continuationOf.trim() !== "";
+      const continuationMismatch = isContinuation && hdr.continuationOf.trim() !== hdr.jobNo.trim();
+      const continuationMatch   = isContinuation && hdr.continuationOf.trim() === hdr.jobNo.trim();
+
       if(saved) return <Done label="Production Sheet" reset={onReset} />;
       const save=async()=>{
         if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},customer:{value:hdr.customer,label:"Customer"},substrate:{value:hdr.substrate,label:"Substrate"},operator:{value:hdr.operator,label:"Operator"}})) return;
+        if(isContinuation && continuationMismatch){
+          setErrors(p=>({...p,continuationOf:"Job Card Numbers do not match — they must be identical to confirm this continuation."}));
+          return;
+        }
         const normBopp=boppWaste.map(r=>({printingBopp:r.printingBopp===""?"0":r.printingBopp,printingComment:r.printingComment||"",rawBopp:r.rawBopp===""?"0":r.rawBopp,rawComment:r.rawComment||""}));
         await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut,boppWaste:normBopp,inks,solvents,remarks}}); setSaved(true);
       };
@@ -666,16 +676,23 @@
             <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
-            <F label="Continuation of Previous Job No. (optional)" col={2}>
-              <TI value={hdr.continuationOf||""} onChange={v=>h("continuationOf",v)} placeholder="e.g. CPK-0042 — the previous job this continues from" />
-              <div style={{fontSize:10,color:C.muted,marginTop:4}}>
-                This is the <strong>previous</strong> job's number — not this sheet's number. Leave blank if this is a brand new job.
+            <F label="Continuation Sheet — Confirm Job Card Number" col={2}>
+              <div style={{position:"relative"}}>
+                <TI value={hdr.continuationOf||""} onChange={v=>{ clrErr("continuationOf"); h("continuationOf",v); }} placeholder="Leave blank for a new job — or retype the Job Card Number above to mark as continuation" />
+                {continuationMatch&&(
+                  <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:C.success,fontSize:16,pointerEvents:"none"}}>✔</div>
+                )}
               </div>
-              {hdr.continuationOf&&hdr.jobNo&&hdr.continuationOf.trim()===hdr.jobNo.trim()&&(
-                <div style={{fontSize:11,color:C.danger,fontWeight:600,marginTop:4}}>
-                  ⚠ This matches the Job Card Number above — these should be different. The Continuation field should reference a <em>previous</em> job number.
-                </div>
+              {!isContinuation&&(
+                <div style={{fontSize:10,color:C.muted,marginTop:4}}>Leave blank if this is a new job. To mark as a continuation, retype the Job Card Number exactly as entered above.</div>
               )}
+              {isContinuation&&continuationMismatch&&(
+                <div style={{fontSize:11,color:C.danger,fontWeight:600,marginTop:4}}>⚠ Does not match the Job Card Number above ({hdr.jobNo||"not entered yet"}) — must be identical.</div>
+              )}
+              {continuationMatch&&(
+                <div style={{fontSize:11,color:C.success,fontWeight:600,marginTop:4}}>✔ Confirmed — this sheet will be marked as a continuation of job {hdr.jobNo}.</div>
+              )}
+              <ErrMsg msg={fErr.continuationOf} />
             </F>
           </Grid>
         </SC>
