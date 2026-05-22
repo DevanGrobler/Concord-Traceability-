@@ -1390,11 +1390,34 @@
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
           rows.push([r.created_by,h.date,h.shift,h.jobNo,h.continuationOf||"",h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
-          if(r.data?.rawIn?.length){ rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]); r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit])); }
-          if(r.data?.rawOut?.length){ rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters"]); r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||""])); }
-          if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP Waste (kg)","Printing Comment","Raw BOPP Film Waste (kg)","Raw Comment"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||""])); } }
-          if(r.data?.inks?.length){ rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty Used (kg)","Returned (kg)"]); r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned])); }
-          if(r.data?.solvents?.length){ rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty Used (L)","Returned (L)"]); r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned])); }
+          if(r.data?.rawIn?.length){
+            rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]);
+            r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit]));
+            const totalQty=r.data.rawIn.reduce((a,x)=>a+parseFloat(x.qty||0),0);
+            rows.push(["","","TOTAL",totalQty||"",""]);
+          }
+          if(r.data?.rawOut?.length){
+            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters"]);
+            r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||""]));
+            const totalQty=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.qty||0),0);
+            const totalMeters=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.meters||0),0);
+            rows.push(["","","TOTAL",totalQty||"","",totalMeters||""]);
+          }
+          if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP Waste (kg)","Printing Comment","Raw BOPP Film Waste (kg)","Raw Comment"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","",tR||""]); } }
+          if(r.data?.inks?.length){
+            rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty Used (kg)","Returned (kg)"]);
+            r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned]));
+            const totalQty=r.data.inks.reduce((a,x)=>a+parseFloat(x.qty||0),0);
+            const totalRet=r.data.inks.reduce((a,x)=>a+parseFloat(x.returned||0),0);
+            rows.push(["","","","","","TOTAL",totalQty||"",totalRet||""]);
+          }
+          if(r.data?.solvents?.length){
+            rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty Used (L)","Returned (L)"]);
+            r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned]));
+            const totalQty=r.data.solvents.reduce((a,x)=>a+parseFloat(x.qty||0),0);
+            const totalRet=r.data.solvents.reduce((a,x)=>a+parseFloat(x.returned||0),0);
+            rows.push(["","","","TOTAL",totalQty||"",totalRet||""]);
+          }
           rows.push(["---"]);
         });
         XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),"Production");
@@ -1671,13 +1694,15 @@
             <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
           ))}
         </div>
-        <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} />
-        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters"]} />
+        <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} sumCols={["qty"]} />
+        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters"]} sumCols={["qty","meters"]} />
         {(()=>{
           const bw=d.boppWaste;
           if(!bw) return null;
           const rows=Array.isArray(bw)?bw:[bw];
           if(!rows.some(r=>r.printingBopp||r.rawBopp)) return null;
+          const sumPrinting=rows.reduce((a,r)=>a+parseFloat(r.printingBopp||0),0);
+          const sumRaw=rows.reduce((a,r)=>a+parseFloat(r.rawBopp||0),0);
           return <div style={{marginBottom:12}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>BOPP WASTE</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:4}}>
@@ -1696,10 +1721,16 @@
                 </div>
               </div>
             ))}
+            {rows.length>1&&(
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,padding:"5px 0",borderTop:`2px solid ${C.border}`,marginTop:2}}>
+                <div style={{color:C.accent,fontWeight:700,fontSize:11}}>Σ {sumPrinting%1===0?sumPrinting:sumPrinting.toFixed(3)} kg</div>
+                <div style={{color:C.accent,fontWeight:700,fontSize:11}}>Σ {sumRaw%1===0?sumRaw:sumRaw.toFixed(3)} kg</div>
+              </div>
+            )}
           </div>;
         })()}
-        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned"]} />
-        <DT title="Solvent Input"       rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned"]} />
+        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned"]} sumCols={["qty","returned"]} />
+        <DT title="Solvent Input" rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned"]} sumCols={["qty","returned"]} />
         {d.remarks&&<div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
       </div>;
     }
@@ -1757,14 +1788,31 @@
       </div>;
     }
 
-    function DT({title,rows,cols}){
+    function DT({title,rows,cols,sumCols=[]}){
       if(!rows?.length) return null;
+      const colLabels={material:"Material",batchNo:"Batch No.",qty:"Qty",unit:"Unit",meters:"Meters",inkLabel:"Ink Code",inkType:"Type",batchNo:"Batch No.",supplier:"Supplier",returned:"Returned",solvent:"Solvent"};
+      const totals={};
+      if(sumCols.length){
+        sumCols.forEach(col=>{
+          const sum=rows.reduce((acc,r)=>acc+parseFloat(r[col]||0),0);
+          totals[col]=sum%1===0?sum:parseFloat(sum.toFixed(3));
+        });
+      }
       return <div style={{marginBottom:12}}>
         <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{title.toUpperCase()}</div>
         <div style={{display:"flex",gap:4,marginBottom:4}}>{cols.map(c=><div key={c} style={{flex:1,fontSize:10,color:C.muted,textTransform:"capitalize"}}>{c.replace(/([A-Z])/g," $1")}</div>)}</div>
         {rows.map((r,i)=><div key={i} style={{display:"flex",gap:4,padding:"3px 0",borderTop:`1px solid ${C.border}`}}>
           {cols.map(c=><div key={c} style={{flex:1,color:C.text}}>{r[c]||"—"}</div>)}
         </div>)}
+        {sumCols.length>0&&(
+          <div style={{display:"flex",gap:4,padding:"5px 0",borderTop:`2px solid ${C.border}`,marginTop:2}}>
+            {cols.map(c=>(
+              <div key={c} style={{flex:1,color:sumCols.includes(c)?C.accent:C.muted,fontWeight:sumCols.includes(c)?700:400,fontSize:11}}>
+                {sumCols.includes(c)?`Σ ${totals[c]}`:""}
+              </div>
+            ))}
+          </div>
+        )}
       </div>;
     }
 
