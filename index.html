@@ -189,6 +189,7 @@
       substrate:["BOPP","BOPP MAT","PET","PET MAT"],
       customer:[],
       customer_products:[],
+      product_ink_codes:[],
       product_name_printing:baseProductNames,
       product_name_lamination:baseProductNames,
       product_name_extruders:baseProductNames,
@@ -239,6 +240,26 @@
       const entry=cp.find(x=>x.customer===customer);
       if(entry&&entry.products&&entry.products.length>0) return entry.products.filter(Boolean);
       return (lists[sheetKey]||[]).map(String).filter(Boolean);
+    }
+
+    // ── Product-specific ink helper ───────────────────────────────────────────
+    // Returns the ink list for a given product. If the product has a dedicated
+    // ink list in product_ink_codes, that is returned (as full ink objects so
+    // code+description still show correctly). Otherwise falls back to the full
+    // ink_code list so nothing breaks.
+    // NOTE: filtering is currently INACTIVE — set FILTER_INKS_BY_PRODUCT=true
+    // when you are ready to enforce product-specific ink selection.
+    const FILTER_INKS_BY_PRODUCT = false;
+    function getInksForProduct(product, lists){
+      const allInks = lists.ink_code || [];
+      if(!FILTER_INKS_BY_PRODUCT || !product) return allInks;
+      const pi = (lists.product_ink_codes || []);
+      const entry = pi.find(x => x.product === product);
+      if(entry && entry.inks && entry.inks.length > 0){
+        // Return only matching ink objects from the full list
+        return allInks.filter(ink => entry.inks.includes(ink.code||ink));
+      }
+      return allInks;
     }
 
     // ── App ──────────────────────────────────────────────────────────────────
@@ -708,7 +729,7 @@
                 setInks(prev=>prev.map((row,x)=>x===i?{...row,inkCode:code,description:((lists.ink_code||[]).find(ink=>ink.code===code)||{}).description||""}:row));
               }}>
                 <option value="">— Select —</option>
-                {(lists.ink_code||[]).map(x=>{
+                {getInksForProduct(hdr.productName,lists).map(x=>{
                   const code=x.code||x; const desc=(x.description||"").trim();
                   return <option key={code} value={code}>{desc?`${code} — ${desc}`:code}</option>;
                 })}
@@ -1822,6 +1843,7 @@
       const isInkCode=activeList==="ink_code";
       const isChecklist=["printing_qc_checks","lamination_qc_checks","extruder_qc_checks","slitting_qc_checks","bagmaking_qc_checks"].includes(activeList);
       const isCustomerProducts=activeList==="customer_products";
+      const isProductInkCodes=activeList==="product_ink_codes";
 
       // Customer Products state
       const [cpEntries,setCpEntries]=useState([]); // [{customer,products:[]}]
@@ -1829,10 +1851,21 @@
       const [cpNewProd,setCpNewProd]=useState("");
       const [cpNewCustomer,setCpNewCustomer]=useState("");
 
+      // Product Ink Codes state
+      const [piEntries,setPiEntries]=useState([]); // [{product, inks:[...codes]}]
+      const [piSelected,setPiSelected]=useState("");
+      const [piNewInk,setPiNewInk]=useState("");
+      const [piNewProduct,setPiNewProduct]=useState("");
+
       React.useEffect(()=>{
         if(isCustomerProducts){
           const raw=appLists.customer_products||[];
           setCpEntries(Array.isArray(raw)?raw:[]);
+          return;
+        }
+        if(isProductInkCodes){
+          const raw=appLists.product_ink_codes||[];
+          setPiEntries(Array.isArray(raw)?raw:[]);
           return;
         }
         const raw=appLists[activeList]||[];
@@ -1894,12 +1927,37 @@
 
       const allListKeys=Object.keys(LIST_LABELS);
 
+      // Product Ink Codes helpers
+      const piSave=async(entries)=>{
+        setSaving(true);
+        await dbUpsertList("product_ink_codes",JSON.stringify(entries));
+        await reload(); flash("Product ink codes saved!"); setSaving(false);
+      };
+      const piAddProduct=()=>{
+        const name=piNewProduct.trim();
+        if(!name) return;
+        if(piEntries.find(e=>e.product===name)){ flash("Product already exists in this list.","danger"); return; }
+        const next=[...piEntries,{product:name,inks:[]}];
+        setPiEntries(next); setPiNewProduct(""); setPiSelected(name);
+      };
+      const piRemoveProduct=(product)=>{ const next=piEntries.filter(e=>e.product!==product); setPiEntries(next); if(piSelected===product) setPiSelected(""); };
+      const piAddInk=(product)=>{
+        if(!piNewInk.trim()) return;
+        const next=piEntries.map(e=>e.product===product?{...e,inks:[...e.inks,piNewInk.trim()]}:e);
+        setPiEntries(next); setPiNewInk("");
+      };
+      const piRemoveInk=(product,ii)=>{
+        const next=piEntries.map(e=>e.product===product?{...e,inks:e.inks.filter((_,xi)=>xi!==ii)}:e);
+        setPiEntries(next);
+      };
+
       return <div>
         <PH title="Lists / Settings" sub="Manage dropdown options and QC check items" />
 
         {/* Tab strip */}
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
           <button onClick={()=>setActiveList("customer_products")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="customer_products"?C.blue:C.panel,color:activeList==="customer_products"?"#fff":C.muted,outline:activeList==="customer_products"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>🏢 Customer Products</button>
+          <button onClick={()=>setActiveList("product_ink_codes")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="product_ink_codes"?C.blue:C.panel,color:activeList==="product_ink_codes"?"#fff":C.muted,outline:activeList==="product_ink_codes"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>🎨 Product Ink Codes</button>
           {allListKeys.map(k=>(
             <button key={k} onClick={()=>setActiveList(k)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList===k?C.accent:C.panel,color:activeList===k?"#fff":C.muted,outline:activeList===k?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>{LIST_LABELS[k]}</button>
           ))}
@@ -1965,8 +2023,65 @@
           <div style={{color:C.muted,fontSize:11,marginTop:8}}>When a customer has products assigned here, their production sheets will only show those products.</div>
         </div>}
 
+        {/* ── Product Ink Codes editor ── */}
+        {isProductInkCodes&&<div>
+          <SC title="Product Ink Codes">
+            <div style={{fontSize:12,color:C.muted,marginBottom:16,padding:"10px 14px",background:C.bg,borderRadius:6,border:`1px solid ${C.warn}22`}}>
+              <span style={{color:C.warn,fontWeight:700}}>🎨 Future feature — </span>
+              assign specific ink codes to each product. Currently all inks are available on all products. Set <code style={{color:C.accent,background:C.bg,padding:"1px 4px",borderRadius:3}}>FILTER_INKS_BY_PRODUCT = true</code> in the code to activate filtering.
+            </div>
+
+            {/* Add new product entry */}
+            <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center"}}>
+              <select style={{...S.input,maxWidth:320}} value={piNewProduct} onChange={e=>setPiNewProduct(e.target.value)}>
+                <option value="">— Select a product to add —</option>
+                {baseProductNames.filter(p=>!piEntries.find(e=>e.product===p)).map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+              <button style={S.btn("accent",{padding:"8px 18px",fontSize:12})} onClick={piAddProduct}>+ Add Product</button>
+            </div>
+
+            {piEntries.length===0&&<div style={{color:C.muted,fontSize:12}}>No products configured yet — add one above.</div>}
+
+            {piEntries.map(entry=>{
+              const isOpen=piSelected===entry.product;
+              return <div key={entry.product} style={{marginBottom:10,border:`1px solid ${isOpen?C.accent:C.border}`,borderRadius:8,overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:isOpen?C.accent+"22":C.bg,cursor:"pointer"}} onClick={()=>setPiSelected(isOpen?"":entry.product)}>
+                  <div style={{fontSize:13,fontWeight:700,color:isOpen?C.accent:C.text,flex:1}}>📦 {entry.product}</div>
+                  <span style={{fontSize:11,color:C.muted}}>{entry.inks.length} ink{entry.inks.length!==1?"s":""}</span>
+                  <span style={{fontSize:12,color:C.muted}}>{isOpen?"▲":"▼"}</span>
+                  <button style={S.btn("danger",{padding:"3px 8px",fontSize:11})} onClick={e=>{ e.stopPropagation(); if(window.confirm(`Remove ${entry.product} from ink mappings?`)) piRemoveProduct(entry.product); }}>✕</button>
+                </div>
+                {isOpen&&<div style={{padding:"12px 14px",borderTop:`1px solid ${C.border}`}}>
+                  {entry.inks.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:10}}>No inks assigned yet — add from the dropdown below.</div>}
+                  {entry.inks.map((inkCode,ii)=>{
+                    const inkObj=(appLists.ink_code||[]).find(x=>(x.code||x)===inkCode)||{};
+                    const desc=(inkObj.description||"").trim();
+                    return <div key={ii} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,padding:"5px 8px",background:C.panel,borderRadius:6}}>
+                      <span style={{flex:1,fontSize:12,color:C.accent,fontWeight:700}}>{inkCode}{desc&&<span style={{color:C.muted,fontWeight:400}}> — {desc}</span>}</span>
+                      <button style={S.btn("danger",{padding:"2px 8px",fontSize:11})} onClick={()=>piRemoveInk(entry.product,ii)}>✕</button>
+                    </div>;
+                  })}
+                  {/* Add ink row */}
+                  <div style={{display:"flex",gap:8,marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+                    <select style={{...S.input,flex:1}} value={piNewInk} onChange={e=>setPiNewInk(e.target.value)}>
+                      <option value="">— Select ink code to add —</option>
+                      {(appLists.ink_code||[]).filter(x=>!entry.inks.includes(x.code||x)).map(x=>{
+                        const code=x.code||x; const desc=(x.description||"").trim();
+                        return <option key={code} value={code}>{desc?`${code} — ${desc}`:code}</option>;
+                      })}
+                    </select>
+                    <button style={S.btn("accent",{padding:"6px 14px",fontSize:12,flexShrink:0})} onClick={()=>piAddInk(entry.product)}>+ Add</button>
+                  </div>
+                </div>}
+              </div>;
+            })}
+          </SC>
+          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={()=>piSave(piEntries)} disabled={saving}>{saving?"Saving…":"💾 Save Product Ink Codes"}</button>
+          <div style={{color:C.muted,fontSize:11,marginTop:8}}>These mappings are saved but inactive until <code style={{color:C.accent}}>FILTER_INKS_BY_PRODUCT</code> is set to <code style={{color:C.accent}}>true</code>.</div>
+        </div>}
+
         {/* ── Regular list editor ── */}
-        {!isCustomerProducts&&<div>
+        {!isCustomerProducts&&!isProductInkCodes&&<div>
           <SC title={LIST_LABELS[activeList]}>
             {items.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:12}}>No items yet — add some below.</div>}
             {items.map((item,i)=>(
