@@ -188,6 +188,7 @@
     const DEFAULT_LISTS = {
       substrate:["BOPP","BOPP MAT","PET","PET MAT"],
       customer:[],
+      customer_products:[],
       product_name_printing:baseProductNames,
       product_name_lamination:baseProductNames,
       product_name_extruders:baseProductNames,
@@ -227,6 +228,18 @@
       adhesive_name:"Adhesive Names", adhesive_a_product_code:"Adhesive A Product Codes",
       adhesive_b_product_code:"Adhesive B Product Codes",
     };
+
+    // ── Customer-specific product helper ─────────────────────────────────────
+    // Returns the product list for a given customer. If the customer has a
+    // dedicated list in customer_products, that is returned. Otherwise falls
+    // back to the generic per-sheet product list so nothing breaks.
+    function getProductsForCustomer(customer, lists, sheetKey="product_name_printing"){
+      if(!customer) return (lists[sheetKey]||[]).map(String).filter(Boolean);
+      const cp=(lists.customer_products||[]);
+      const entry=cp.find(x=>x.customer===customer);
+      if(entry&&entry.products&&entry.products.length>0) return entry.products.filter(Boolean);
+      return (lists[sheetKey]||[]).map(String).filter(Boolean);
+    }
 
     // ── App ──────────────────────────────────────────────────────────────────
     function App() {
@@ -624,8 +637,8 @@
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists.product_name_printing||[]).map(String).filter(Boolean)} /></F>
+            <F label="Customer"><TS value={hdr.customer} onChange={v=>{ h("customer",v); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_printing")} /></F>
             <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.substrate} /></F>
             <F label="Width (mm)"><TS value={hdr.width} onChange={v=>h("width",v)} options={(lists.width||[]).map(String).filter(Boolean)} /></F>
             <F label="Length (m)"><TI type="number" value={hdr.length} onChange={v=>h("length",v)} /></F>
@@ -763,7 +776,7 @@
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists.product_name_printing||[]).map(String).filter(Boolean)} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer("",lists,"product_name_printing")} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
           </Grid>
         </SC>
@@ -822,8 +835,8 @@
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists.product_name_printing||[]).map(String).filter(Boolean)} /></F>
+            <F label="Customer"><TS value={hdr.customer} onChange={v=>{ clrErr("customer"); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_printing")} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Inspector / QC Officer"><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={qcNames} /><ErrMsg msg={fErr.inspector} /></F>
             <F label="Reel No."><TI value={hdr.reelNo||""} onChange={v=>h("reelNo",v)} placeholder="e.g. 1, 2" /></F>
@@ -897,8 +910,8 @@
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer" col={2}><TS value={hdr.customerProduct} onChange={v=>h("customerProduct",v)} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customerProduct} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists.product_name_lamination||[]).map(String).filter(Boolean)} /></F>
+            <F label="Customer" col={2}><TS value={hdr.customerProduct} onChange={v=>{ clrErr("customerProduct"); setHdr(p=>({...p,customerProduct:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customerProduct} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customerProduct,lists,"product_name_lamination")} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
           </Grid>
         </SC>
@@ -990,8 +1003,8 @@
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists[productListKey]||[]).map(String).filter(Boolean)} /></F>
+            <F label="Customer"><TS value={hdr.customer} onChange={v=>{ clrErr("customer"); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,productListKey)} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Inspector / QC Officer" col={2}><TS value={hdr.inspector} onChange={v=>h("inspector",v)} options={qcNames} /><ErrMsg msg={fErr.inspector} /></F>
           </Grid>
@@ -1065,8 +1078,8 @@
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists.product_name_extruders||[]).map(String).filter(Boolean)} /></F>
+            <F label="Customer"><TS value={hdr.customer} onChange={v=>{ clrErr("customer"); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_extruders")} /></F>
             <F label="Material Spec"><TI value={hdr.materialSpec} onChange={v=>h("materialSpec",v)} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
@@ -1136,8 +1149,8 @@
             <F label="Time"><input type="time" style={S.input} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists.product_name_slitting||[]).map(String).filter(Boolean)} /></F>
+            <F label="Customer"><TS value={hdr.customer} onChange={v=>{ clrErr("customer"); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_slitting")} /></F>
           </Grid>
         </SC>
         <SC title="Input Stock Received (from Warehouse)">
@@ -1243,8 +1256,8 @@
             <F label="Time"><input type="time" style={S.input} value={hdr.time} onChange={e=>h("time",e.target.value)} /></F>
             <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
-            <F label="Customer"><TS value={hdr.customer} onChange={v=>h("customer",v)} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
-            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={(lists.product_name_bagmaking||[]).map(String).filter(Boolean)} /></F>
+            <F label="Customer"><TS value={hdr.customer} onChange={v=>{ clrErr("customer"); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
+            <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_bagmaking")} /></F>
             <F label="Operator"><TS value={hdr.operator||""} onChange={v=>h("operator",v)} options={opNames} /></F>
             <F label="Bag Making Batch Code"><TI value={hdr.bagMakingBatchCode} onChange={v=>h("bagMakingBatchCode",v)} /></F>
             <F label="PCS Per Box"><TI type="number" value={hdr.pcsPerBox} onChange={v=>h("pcsPerBox",v)} /></F>
@@ -1804,16 +1817,28 @@
     function ListsManager({appLists,reload,flash}){
       const [activeList,setActiveList]=useState("substrate");
       const [items,setItems]=useState([]);
-      const [newVal,setNewVal]=useState(""); const [newCode,setNewCode]=useState(""); const [newDesc,setNewDesc]=useState("");
+      const [newVal,setNewVal]=useState(""); const [newCode,setNewCode]=useState("");
       const [saving,setSaving]=useState(false);
       const isInkCode=activeList==="ink_code";
       const isChecklist=["printing_qc_checks","lamination_qc_checks","extruder_qc_checks","slitting_qc_checks","bagmaking_qc_checks"].includes(activeList);
+      const isCustomerProducts=activeList==="customer_products";
+
+      // Customer Products state
+      const [cpEntries,setCpEntries]=useState([]); // [{customer,products:[]}]
+      const [cpSelected,setCpSelected]=useState(""); // which customer is expanded
+      const [cpNewProd,setCpNewProd]=useState("");
+      const [cpNewCustomer,setCpNewCustomer]=useState("");
 
       React.useEffect(()=>{
+        if(isCustomerProducts){
+          const raw=appLists.customer_products||[];
+          setCpEntries(Array.isArray(raw)?raw:[]);
+          return;
+        }
         const raw=appLists[activeList]||[];
         if(isInkCode){ setItems(raw.map(x=>typeof x==="object"?x:{code:String(x),description:""})); }
         else { setItems(raw.map(x=>typeof x==="object"?(x.val||x.code||String(x)):String(x)).map(v=>({val:v}))); }
-        setNewVal(""); setNewCode(""); setNewDesc("");
+        setNewVal(""); setNewCode("");
       },[activeList,appLists]);
 
       const addItem=()=>{
@@ -1829,51 +1854,158 @@
         await dbUpsertList(activeList,JSON.stringify(toSave)); await reload(); flash("List saved!"); setSaving(false);
       };
 
+      // Customer Products helpers
+      const cpSave=async(entries)=>{
+        setSaving(true);
+        await dbUpsertList("customer_products",JSON.stringify(entries));
+        await reload(); flash("Customer products saved!"); setSaving(false);
+      };
+      const cpAddCustomer=()=>{
+        const name=cpNewCustomer.trim();
+        if(!name) return;
+        if(cpEntries.find(e=>e.customer===name)){ flash("Customer already exists.","danger"); return; }
+        const next=[...cpEntries,{customer:name,products:[]}];
+        setCpEntries(next); setCpNewCustomer(""); setCpSelected(name);
+      };
+      const cpRemoveCustomer=(customer)=>{ const next=cpEntries.filter(e=>e.customer!==customer); setCpEntries(next); if(cpSelected===customer) setCpSelected(""); };
+      const cpAddProduct=(customer)=>{
+        if(!cpNewProd.trim()) return;
+        const next=cpEntries.map(e=>e.customer===customer?{...e,products:[...e.products,cpNewProd.trim()]}:e);
+        setCpEntries(next); setCpNewProd("");
+      };
+      const cpRemoveProduct=(customer,pi)=>{
+        const next=cpEntries.map(e=>e.customer===customer?{...e,products:e.products.filter((_,xi)=>xi!==pi)}:e);
+        setCpEntries(next);
+      };
+      const cpEditProduct=(customer,pi,val)=>{
+        const next=cpEntries.map(e=>e.customer===customer?{...e,products:e.products.map((p,xi)=>xi===pi?val:p)}:e);
+        setCpEntries(next);
+      };
+      const cpMoveProduct=(customer,pi,dir)=>{
+        const next=cpEntries.map(e=>{
+          if(e.customer!==customer) return e;
+          const prods=[...e.products]; const swap=pi+dir;
+          if(swap<0||swap>=prods.length) return e;
+          [prods[pi],prods[swap]]=[prods[swap],prods[pi]];
+          return {...e,products:prods};
+        });
+        setCpEntries(next);
+      };
+
+      const allListKeys=Object.keys(LIST_LABELS);
+
       return <div>
-        <PH title="Lists / Settings" sub="Manage dropdown options and QC check items — click any item to edit it inline" />
+        <PH title="Lists / Settings" sub="Manage dropdown options and QC check items" />
+
+        {/* Tab strip */}
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
-          {Object.keys(LIST_LABELS).map(k=>(
+          <button onClick={()=>setActiveList("customer_products")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="customer_products"?C.blue:C.panel,color:activeList==="customer_products"?"#fff":C.muted,outline:activeList==="customer_products"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>🏢 Customer Products</button>
+          {allListKeys.map(k=>(
             <button key={k} onClick={()=>setActiveList(k)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList===k?C.accent:C.panel,color:activeList===k?"#fff":C.muted,outline:activeList===k?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>{LIST_LABELS[k]}</button>
           ))}
         </div>
-        <SC title={LIST_LABELS[activeList]}>
-          {items.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:12}}>No items yet — add some below.</div>}
-          {items.map((item,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,padding:"4px 8px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
-              {isChecklist&&<span style={{color:C.muted,fontSize:11,minWidth:22,textAlign:"center",flexShrink:0}}>{i+1}.</span>}
-              {isInkCode?(
-                <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
-                  <input style={{...S.input,maxWidth:160,padding:"4px 8px",fontSize:12,background:"transparent",color:C.accent,fontWeight:700,border:`1px solid transparent`}} value={item.code} onChange={e=>editItem(i,"code",e.target.value)} placeholder="Code" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
-                  {item.description&&<span style={{fontSize:11,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>— {item.description}</span>}
-                </div>
-              ):(
-                <input style={{...S.input,padding:"4px 8px",fontSize:12,background:"transparent",color:C.text,border:`1px solid transparent`,flex:1}} value={item.val||""} onChange={e=>editItem(i,"val",e.target.value)} placeholder="Edit item…" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
-              )}
-              {isChecklist&&(
-                <div style={{display:"flex",gap:3,flexShrink:0}}>
-                  <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===0?0.25:1})} onClick={()=>moveItem(i,-1)} disabled={i===0}>↑</button>
-                  <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===items.length-1?0.25:1})} onClick={()=>moveItem(i,1)} disabled={i===items.length-1}>↓</button>
-                </div>
-              )}
-              <button style={S.btn("danger",{padding:"2px 8px",fontSize:11,flexShrink:0})} onClick={()=>removeItem(i)}>✕</button>
+
+        {/* ── Customer Products editor ── */}
+        {isCustomerProducts&&<div>
+          <SC title="Customer Products">
+            <div style={{fontSize:12,color:C.muted,marginBottom:16,padding:"10px 14px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+              Add each customer and assign their specific products. On production sheets, when a customer is selected, only their products appear in the dropdown.
             </div>
-          ))}
-          <div style={{display:"flex",gap:8,marginTop:14,alignItems:"flex-end",paddingTop:10,borderTop:`1px solid ${C.border}`}}>
-            {isInkCode?(
-              <F label="Ink Code"><TI value={newCode} onChange={v=>setNewCode(v)} placeholder="e.g. 5HTG31856/SCP" onKeyDown={e=>e.key==="Enter"&&addItem()} /></F>
-            ):(
-              <F label={isChecklist?"New check item":"New item"}>
-                <TI value={newVal} onChange={v=>setNewVal(v)} placeholder={isChecklist?"e.g. Adhesive spread checked":`Add ${LIST_LABELS[activeList]} option…`} onKeyDown={e=>e.key==="Enter"&&addItem()} />
-              </F>
-            )}
-            <button style={{...S.btn("accent"),padding:"8px 18px",fontSize:12,flexShrink:0}} onClick={addItem}>+ Add</button>
+
+            {/* Add new customer */}
+            <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"center"}}>
+              <input style={{...S.input,maxWidth:280}} value={cpNewCustomer} onChange={e=>setCpNewCustomer(e.target.value)} placeholder="New customer name…" onKeyDown={e=>e.key==="Enter"&&cpAddCustomer()} />
+              <button style={S.btn("accent",{padding:"8px 18px",fontSize:12})} onClick={cpAddCustomer}>+ Add Customer</button>
+            </div>
+
+            {cpEntries.length===0&&<div style={{color:C.muted,fontSize:12}}>No customers yet — add one above.</div>}
+
+            {cpEntries.map(entry=>{
+              const isOpen=cpSelected===entry.customer;
+              return <div key={entry.customer} style={{marginBottom:10,border:`1px solid ${isOpen?C.blue:C.border}`,borderRadius:8,overflow:"hidden"}}>
+                {/* Customer header */}
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:isOpen?C.blue+"22":C.bg,cursor:"pointer"}} onClick={()=>setCpSelected(isOpen?"":entry.customer)}>
+                  <div style={{fontSize:13,fontWeight:700,color:isOpen?C.blue:C.text,flex:1}}>🏢 {entry.customer}</div>
+                  <span style={{fontSize:11,color:C.muted}}>{entry.products.length} product{entry.products.length!==1?"s":""}</span>
+                  <span style={{fontSize:12,color:C.muted}}>{isOpen?"▲":"▼"}</span>
+                  <button style={S.btn("danger",{padding:"3px 8px",fontSize:11})} onClick={e=>{ e.stopPropagation(); if(window.confirm(`Remove ${entry.customer} and all their products?`)) cpRemoveCustomer(entry.customer); }}>✕</button>
+                </div>
+
+                {/* Product list */}
+                {isOpen&&<div style={{padding:"12px 14px",borderTop:`1px solid ${C.border}`}}>
+                  {entry.products.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:10}}>No products yet — add some below.</div>}
+                  {entry.products.map((prod,pi)=>(
+                    <div key={pi} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                      <span style={{color:C.muted,fontSize:11,minWidth:22,textAlign:"center",flexShrink:0}}>{pi+1}.</span>
+                      <input style={{...S.input,flex:1,padding:"4px 8px",fontSize:12,background:"transparent",border:`1px solid transparent`}} value={prod} onChange={e=>cpEditProduct(entry.customer,pi,e.target.value)} onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
+                      <div style={{display:"flex",gap:3,flexShrink:0}}>
+                        <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:pi===0?0.25:1})} onClick={()=>cpMoveProduct(entry.customer,pi,-1)} disabled={pi===0}>↑</button>
+                        <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:pi===entry.products.length-1?0.25:1})} onClick={()=>cpMoveProduct(entry.customer,pi,1)} disabled={pi===entry.products.length-1}>↓</button>
+                      </div>
+                      <button style={S.btn("danger",{padding:"2px 8px",fontSize:11,flexShrink:0})} onClick={()=>cpRemoveProduct(entry.customer,pi)}>✕</button>
+                    </div>
+                  ))}
+                  {/* Add product row */}
+                  <div style={{display:"flex",gap:8,marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+                    <input style={{...S.input,flex:1,padding:"6px 10px",fontSize:12}} value={cpNewProd} onChange={e=>setCpNewProd(e.target.value)} placeholder="Add product…" onKeyDown={e=>e.key==="Enter"&&cpAddProduct(entry.customer)} />
+                    <button style={S.btn("accent",{padding:"6px 14px",fontSize:12,flexShrink:0})} onClick={()=>cpAddProduct(entry.customer)}>+ Add</button>
+                  </div>
+                  {/* Load from global list */}
+                  <button style={{...S.btn("ghost",{padding:"5px 12px",fontSize:11,marginTop:8}),color:C.muted}} onClick={()=>{
+                    const existing=new Set(entry.products);
+                    const toAdd=baseProductNames.filter(p=>!existing.has(p));
+                    const next=cpEntries.map(e=>e.customer===entry.customer?{...e,products:[...e.products,...toAdd]}:e);
+                    setCpEntries(next);
+                  }}>➕ Load all default products ({baseProductNames.length})</button>
+                </div>}
+              </div>;
+            })}
+          </SC>
+          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={()=>cpSave(cpEntries)} disabled={saving}>{saving?"Saving…":"💾 Save Customer Products"}</button>
+          <div style={{color:C.muted,fontSize:11,marginTop:8}}>When a customer has products assigned here, their production sheets will only show those products.</div>
+        </div>}
+
+        {/* ── Regular list editor ── */}
+        {!isCustomerProducts&&<div>
+          <SC title={LIST_LABELS[activeList]}>
+            {items.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:12}}>No items yet — add some below.</div>}
+            {items.map((item,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,padding:"4px 8px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+                {isChecklist&&<span style={{color:C.muted,fontSize:11,minWidth:22,textAlign:"center",flexShrink:0}}>{i+1}.</span>}
+                {isInkCode?(
+                  <div style={{flex:1,display:"flex",alignItems:"center",gap:8}}>
+                    <input style={{...S.input,maxWidth:160,padding:"4px 8px",fontSize:12,background:"transparent",color:C.accent,fontWeight:700,border:`1px solid transparent`}} value={item.code} onChange={e=>editItem(i,"code",e.target.value)} placeholder="Code" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
+                    {item.description&&<span style={{fontSize:11,color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>— {item.description}</span>}
+                  </div>
+                ):(
+                  <input style={{...S.input,padding:"4px 8px",fontSize:12,background:"transparent",color:C.text,border:`1px solid transparent`,flex:1}} value={item.val||""} onChange={e=>editItem(i,"val",e.target.value)} placeholder="Edit item…" onFocus={e=>e.target.style.border=`1px solid ${C.border}`} onBlur={e=>e.target.style.border="1px solid transparent"} />
+                )}
+                {isChecklist&&(
+                  <div style={{display:"flex",gap:3,flexShrink:0}}>
+                    <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===0?0.25:1})} onClick={()=>moveItem(i,-1)} disabled={i===0}>↑</button>
+                    <button style={S.btn("ghost",{padding:"2px 7px",fontSize:11,opacity:i===items.length-1?0.25:1})} onClick={()=>moveItem(i,1)} disabled={i===items.length-1}>↓</button>
+                  </div>
+                )}
+                <button style={S.btn("danger",{padding:"2px 8px",fontSize:11,flexShrink:0})} onClick={()=>removeItem(i)}>✕</button>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:8,marginTop:14,alignItems:"flex-end",paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+              {isInkCode?(
+                <F label="Ink Code"><TI value={newCode} onChange={v=>setNewCode(v)} placeholder="e.g. 5HTG31856/SCP" onKeyDown={e=>e.key==="Enter"&&addItem()} /></F>
+              ):(
+                <F label={isChecklist?"New check item":"New item"}>
+                  <TI value={newVal} onChange={v=>setNewVal(v)} placeholder={isChecklist?"e.g. Adhesive spread checked":`Add ${LIST_LABELS[activeList]} option…`} onKeyDown={e=>e.key==="Enter"&&addItem()} />
+                </F>
+              )}
+              <button style={{...S.btn("accent"),padding:"8px 18px",fontSize:12,flexShrink:0}} onClick={addItem}>+ Add</button>
+            </div>
+          </SC>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={saveList} disabled={saving}>{saving?"Saving…":"💾 Save List"}</button>
+            {activeList.startsWith("product_name")&&<button style={S.btn("ghost",{padding:"12px 16px",fontSize:12})} onClick={()=>{ const newProds=DEFAULT_LISTS[activeList].filter(p=>!items.find(i=>i.val===p)); setItems(prev=>[...prev,...newProds.map(p=>({val:p}))]); }}>➕ Load Default Products ({DEFAULT_LISTS[activeList].length})</button>}
           </div>
-        </SC>
-        <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={saveList} disabled={saving}>{saving?"Saving…":"💾 Save List"}</button>
-          {activeList.startsWith("product_name")&&<button style={S.btn("ghost",{padding:"12px 16px",fontSize:12})} onClick={()=>{ const newProds=DEFAULT_LISTS[activeList].filter(p=>!items.find(i=>i.val===p)); setItems(prev=>[...prev,...newProds.map(p=>({val:p}))]); }}>➕ Load Default Products ({DEFAULT_LISTS[activeList].length})</button>}
-        </div>
-        <div style={{color:C.muted,fontSize:11,marginTop:8}}>Click any item above to edit it. Changes take effect for all users after saving.</div>
+          <div style={{color:C.muted,fontSize:11,marginTop:8}}>Click any item above to edit it. Changes take effect for all users after saving.</div>
+        </div>}
       </div>;
     }
 
