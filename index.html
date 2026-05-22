@@ -594,13 +594,14 @@
     }
 
     // ── Production Form ───────────────────────────────────────────────────────
-    const eP  = () => ({material:"",batchNo:"",qty:"",unit:""});
+    const eP    = () => ({material:"",batchNo:"",qty:"",unit:""});
+    const ePOut = () => ({material:"",batchNo:"",qty:"",unit:"",meters:""});
     const eI  = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""});
     const eSv = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:""});
 
     function ProductionForm({onSave,onReset,users=[],lists={}}){
       const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:"",continuationOf:""});
-      const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([eP()]);
+      const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([ePOut()]);
       const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eSv()]);
       const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:""}]);
       const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
@@ -637,21 +638,33 @@
             </F>
           </Grid>
         </SC>
-        {[["Raw Material Input",rawIn,setRawIn,eP],["Raw Material Output (Printing Reels and Return BOPP)",rawOut,setRawOut,eP]].map(([title,rows,setter,empty])=>(
-          <SC key={title} title={title}>
-            <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
-            {rows.map((r,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-                <TI value={r.material} onChange={v=>as(setter,i,"material",v)} placeholder="Material" />
-                <TI value={r.batchNo}  onChange={v=>as(setter,i,"batchNo",v)} />
-                <TI type="number" value={r.qty} onChange={v=>as(setter,i,"qty",v)} />
-                <TS value={r.unit} onChange={v=>as(setter,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
-                <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setter,i)}>✕</button>
-              </div>
-            ))}
-            <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setter,empty)}>+ Add Row</button>
-          </SC>
-        ))}
+        <SC title="Raw Material Input">
+          <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
+          {rawIn.map((r,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+              <TI value={r.material} onChange={v=>as(setRawIn,i,"material",v)} placeholder="Material" />
+              <TI value={r.batchNo}  onChange={v=>as(setRawIn,i,"batchNo",v)} />
+              <TI type="number" value={r.qty}  onChange={v=>as(setRawIn,i,"qty",v)} />
+              <TS value={r.unit} onChange={v=>as(setRawIn,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
+              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRawIn,i)}>✕</button>
+            </div>
+          ))}
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRawIn,eP)}>+ Add Row</button>
+        </SC>
+        <SC title="Raw Material Output (Printing Reels and Return BOPP)">
+          <THead cols={["Material","Batch No.","Qty","Unit","Meters",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","40px"]} />
+          {rawOut.map((r,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+              <TI value={r.material} onChange={v=>as(setRawOut,i,"material",v)} placeholder="Material" />
+              <TI value={r.batchNo}  onChange={v=>as(setRawOut,i,"batchNo",v)} />
+              <TI type="number" value={r.qty}    onChange={v=>as(setRawOut,i,"qty",v)} />
+              <TS value={r.unit} onChange={v=>as(setRawOut,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
+              <TI type="number" value={r.meters||""} onChange={v=>as(setRawOut,i,"meters",v)} placeholder="0" />
+              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRawOut,i)}>✕</button>
+            </div>
+          ))}
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRawOut,ePOut)}>+ Add Row</button>
+        </SC>
         <SC title="BOPP Waste">
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.06em"}}>PRINTING BOPP WASTE (KG)</div>
@@ -1320,7 +1333,7 @@
           const h=r.data?.header||{};
           rows.push([r.created_by,h.date,h.shift,h.jobNo,h.continuationOf||"",h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
           if(r.data?.rawIn?.length){ rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]); r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit])); }
-          if(r.data?.rawOut?.length){ rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit"]); r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit])); }
+          if(r.data?.rawOut?.length){ rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters"]); r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||""])); }
           if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP Waste (kg)","Printing Comment","Raw BOPP Film Waste (kg)","Raw Comment"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||""])); } }
           if(r.data?.inks?.length){ rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty Used (kg)","Returned (kg)"]); r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned])); }
           if(r.data?.solvents?.length){ rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty Used (L)","Returned (L)"]); r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned])); }
@@ -1508,7 +1521,7 @@
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
-        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output (Printing Reels and Return BOPP)",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
+        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output (Printing Reels and Return BOPP)",["material","batchNo","qty","unit","meters"],"2fr 1.5fr 1fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:"",meters:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
           <div key={key} style={{marginTop:14}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
             {(data[key]||[]).map((row,i)=>(
@@ -1601,7 +1614,7 @@
           ))}
         </div>
         <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} />
-        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit"]} />
+        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters"]} />
         {(()=>{
           const bw=d.boppWaste;
           if(!bw) return null;
