@@ -659,18 +659,16 @@
             <div />
           </div>
           {boppWaste.map((r,i)=>(
-            <div key={i} style={{marginBottom:10,padding:"10px 12px",background:C.bg,borderRadius:8,border:`1px solid ${C.border}`}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"start"}}>
-                <div>
-                  <TI type="number" value={r.printingBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingBopp:v}:x))} placeholder="0" />
-                  <input style={{...S.input,marginTop:4,fontSize:12}} value={r.printingComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingComment:e.target.value}:x))} placeholder="Comment…" />
-                </div>
-                <div>
-                  <TI type="number" value={r.rawBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawBopp:v}:x))} placeholder="0" />
-                  <input style={{...S.input,marginTop:4,fontSize:12}} value={r.rawComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawComment:e.target.value}:x))} placeholder="Comment…" />
-                </div>
-                <button style={{...S.btn("danger",{padding:"4px 8px",fontSize:12}),marginTop:2}} onClick={()=>setBoppWaste(a=>a.filter((_,xi)=>xi!==i))}>✕</button>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+              <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:6}}>
+                <TI type="number" value={r.printingBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingBopp:v}:x))} placeholder="0" />
+                <input style={{...S.input,fontSize:12}} value={r.printingComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingComment:e.target.value}:x))} placeholder="Comment…" />
               </div>
+              <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:6}}>
+                <TI type="number" value={r.rawBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawBopp:v}:x))} placeholder="0" />
+                <input style={{...S.input,fontSize:12}} value={r.rawComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawComment:e.target.value}:x))} placeholder="Comment…" />
+              </div>
+              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>setBoppWaste(a=>a.filter((_,xi)=>xi!==i))}>✕</button>
             </div>
           ))}
           <button style={S.btn("ghost",{marginTop:2,fontSize:11})} onClick={()=>setBoppWaste(a=>[...a,{printingBopp:"",printingComment:"",rawBopp:"",rawComment:""}])}>+ Add Row</button>
