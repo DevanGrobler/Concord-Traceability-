@@ -635,7 +635,7 @@
 
     // ── PIN verification ──────────────────────────────────────────────────────
     async function verifyPin(username,pin){
-      const {data}=await sb.from("users").select("id,name,pin").eq("username",username).single();
+      const {data}=await sb.from("users").select("id,name,pin").ilike("username",username).single();
       if(!data||!data.pin) return {ok:false,msg:"User not found or no PIN set."};
       if(String(data.pin)!==String(pin)) return {ok:false,msg:"Incorrect PIN."};
       return {ok:true,name:data.name};
