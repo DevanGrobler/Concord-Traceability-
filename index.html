@@ -627,40 +627,74 @@
       return <div style={{color:C.danger,fontSize:10,marginTop:2,fontWeight:600}}>{msg}</div>;
     }
 
+    // ── Shift auto-detect ─────────────────────────────────────────────────────
+    function getShiftFromTime(){
+      const h=new Date().getHours();
+      return (h>=7&&h<19)?"Day Shift":"Night Shift";
+    }
+
+    // ── PIN verification ──────────────────────────────────────────────────────
+    async function verifyPin(username,pin){
+      const {data}=await sb.from("users").select("id,name,pin").eq("username",username).single();
+      if(!data||!data.pin) return {ok:false,msg:"User not found or no PIN set."};
+      if(String(data.pin)!==String(pin)) return {ok:false,msg:"Incorrect PIN."};
+      return {ok:true,name:data.name};
+    }
+
+    // ── PinPrompt — inline per-row sign-off widget ────────────────────────────
+    function PinPrompt({onConfirm,label="Sign off"}){
+      const [un,setUn]=useState(""); const [pin,setPin]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+      const go=async()=>{
+        if(!un.trim()||!pin.trim()){ setErr("Username and PIN required."); return; }
+        setBusy(true); setErr("");
+        const res=await verifyPin(un.trim(),pin.trim());
+        setBusy(false);
+        if(!res.ok){ setErr(res.msg); return; }
+        const now=new Date();
+        const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+        onConfirm({signedBy:res.name,signedAt:timeStr,signedShift:getShiftFromTime()});
+        setUn(""); setPin(""); setErr("");
+      };
+      return <div style={{display:"flex",gap:6,alignItems:"center",padding:"6px 8px",background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,flexWrap:"wrap",marginTop:4}}>
+        <span style={{fontSize:10,color:C.muted,fontWeight:600,flexShrink:0}}>✎ {label}</span>
+        <input style={{...S.input,width:120,padding:"4px 7px",fontSize:11}} value={un} onChange={e=>setUn(e.target.value)} placeholder="Username" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
+        <input type="password" style={{...S.input,width:80,padding:"4px 7px",fontSize:11}} value={pin} onChange={e=>setPin(e.target.value)} placeholder="PIN" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
+        <button style={S.btn("accent",{padding:"4px 12px",fontSize:11})} onClick={go} disabled={busy}>{busy?"…":"✔ Confirm"}</button>
+        {err&&<span style={{fontSize:11,color:C.danger,fontWeight:600}}>{err}</span>}
+      </div>;
+    }
+
+    // ── Signed badge ──────────────────────────────────────────────────────────
+    function SignedBadge({row}){
+      if(!row?.signedBy) return <div style={{fontSize:10,color:C.muted,fontStyle:"italic",padding:"2px 0"}}>— awaiting sign-off</div>;
+      return <div style={{fontSize:10,color:C.success,fontWeight:600,lineHeight:1.5}}>✔ {row.signedBy}<br/><span style={{color:C.muted,fontWeight:400}}>{row.signedShift} · {row.signedAt}</span></div>;
+    }
+
     // ── Production Form ───────────────────────────────────────────────────────
-    const eP    = () => ({material:"",batchNo:"",qty:"",unit:""});
-    const ePOut = () => ({material:"",batchNo:"",qty:"",unit:"",meters:"",time:""});
-    const eI  = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""});
-    const eSv = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:""});
+    const eP    = () => ({material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedShift:""});
+    const ePOut = () => ({material:"",batchNo:"",qty:"",unit:"",meters:"",time:"",signedBy:"",signedAt:"",signedShift:""});
+    const eI    = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:"",signedBy:"",signedAt:"",signedShift:""});
+    const eSv   = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:"",signedBy:"",signedAt:"",signedShift:""});
 
     function ProductionForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:"",continuationOf:""});
+      const [hdr,setHdr]=useState(()=>({date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""}));
       const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([ePOut()]);
       const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eSv()]);
-      const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:""}]);
+      const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedShift:""}]);
       const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
-      const {errors:fErr,validate,clear:clrErr,setErrors}=useFormValidation();
+      const {errors:fErr,validate,clear:clrErr}=useFormValidation();
       const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
       const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
-      const aa=(fn,e)=>fn(a=>[...a,e()]); const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
-
-      // Continuation mismatch check
-      const isContinuation = hdr.continuationOf.trim() !== "";
-      const continuationMismatch = isContinuation && hdr.continuationOf.trim() !== hdr.jobNo.trim();
-      const continuationMatch   = isContinuation && hdr.continuationOf.trim() === hdr.jobNo.trim();
-
+      const asSign=(fn,i,sig)=>fn(a=>a.map((r,x)=>x===i?{...r,...sig}:r));
+      const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
       if(saved) return <Done label="Production Sheet" reset={onReset} />;
       const save=async()=>{
         if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},customer:{value:hdr.customer,label:"Customer"},substrate:{value:hdr.substrate,label:"Substrate"},operator:{value:hdr.operator,label:"Operator"}})) return;
-        if(isContinuation && continuationMismatch){
-          setErrors(p=>({...p,continuationOf:"Job Card Numbers do not match — they must be identical to confirm this continuation."}));
-          return;
-        }
         const now=new Date();
         const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
         const finalRawOut=rawOut.map((row,xi)=>xi===rawOut.length-1&&!row.time?{...row,time:timeStr}:row);
-        const normBopp=boppWaste.map(r=>({printingBopp:r.printingBopp===""?"0":r.printingBopp,printingComment:r.printingComment||"",rawBopp:r.rawBopp===""?"0":r.rawBopp,rawComment:r.rawComment||""}));
+        const normBopp=boppWaste.map(r=>({...r,printingBopp:r.printingBopp===""?"0":r.printingBopp,rawBopp:r.rawBopp===""?"0":r.rawBopp}));
         await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,boppWaste:normBopp,inks,solvents,remarks}}); setSaved(true);
       };
       return <div>
@@ -669,7 +703,12 @@
         <SC title="Job Details">
           <Grid cols={4}>
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-            <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+            <F label="Shift">
+              <div style={{...S.input,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"default"}}>
+                <span>{hdr.shift}</span>
+                <span style={{fontSize:10,color:C.success}}>⏱ auto</span>
+              </div>
+            </F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} placeholder="CPK-0001" /><ErrMsg msg={fErr.jobNo} /></F>
             <F label="Customer"><TS value={hdr.customer} onChange={v=>{ h("customer",v); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
             <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_printing")} /></F>
@@ -679,58 +718,47 @@
             <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
-            <F label="Continuation Sheet — Confirm Job Card Number" col={2}>
-              <div style={{position:"relative"}}>
-                <TI value={hdr.continuationOf||""} onChange={v=>{ clrErr("continuationOf"); h("continuationOf",v); }} placeholder="Leave blank for a new job — or retype the Job Card Number above to mark as continuation" />
-                {continuationMatch&&(
-                  <div style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",color:C.success,fontSize:16,pointerEvents:"none"}}>✔</div>
-                )}
-              </div>
-              {!isContinuation&&(
-                <div style={{fontSize:10,color:C.muted,marginTop:4}}>Leave blank if this is a new job. To mark as a continuation, retype the Job Card Number exactly as entered above.</div>
-              )}
-              {isContinuation&&continuationMismatch&&(
-                <div style={{fontSize:11,color:C.danger,fontWeight:600,marginTop:4}}>⚠ Does not match the Job Card Number above ({hdr.jobNo||"not entered yet"}) — must be identical.</div>
-              )}
-              {continuationMatch&&(
-                <div style={{fontSize:11,color:C.success,fontWeight:600,marginTop:4}}>✔ Confirmed — this sheet will be marked as a continuation of job {hdr.jobNo}.</div>
-              )}
-              <ErrMsg msg={fErr.continuationOf} />
-            </F>
           </Grid>
         </SC>
         <SC title="Raw Material Input">
-          <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
+          <THead cols={["Material","Batch No.","Qty","Unit","Signed By",""]} widths={["2fr","1.5fr","1fr","1fr","1.8fr","40px"]} />
           {rawIn.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-              <TI value={r.material} onChange={v=>as(setRawIn,i,"material",v)} placeholder="Material" />
-              <TI value={r.batchNo}  onChange={v=>as(setRawIn,i,"batchNo",v)} />
-              <TI type="number" value={r.qty}  onChange={v=>as(setRawIn,i,"qty",v)} />
-              <TS value={r.unit} onChange={v=>as(setRawIn,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
-              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRawIn,i)}>✕</button>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <TI value={r.material} onChange={v=>as(setRawIn,i,"material",v)} placeholder="Material" />
+                <TI value={r.batchNo}  onChange={v=>as(setRawIn,i,"batchNo",v)} />
+                <TI type="number" value={r.qty}  onChange={v=>as(setRawIn,i,"qty",v)} />
+                <TS value={r.unit} onChange={v=>as(setRawIn,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
+                <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRawIn,i)}>✕</button>
+              </div>
+              {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off this entry" onConfirm={sig=>asSign(setRawIn,i,sig)} />}
             </div>
           ))}
-          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setRawIn,eP)}>+ Add Row</button>
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setRawIn(a=>[...a,eP()])}>+ Add Row</button>
         </SC>
         <SC title="Raw Material Output (Printing Reels and Return BOPP)">
-          <THead cols={["Material","Batch No.","Qty","Unit","Meters","Time",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","80px","40px"]} />
+          <THead cols={["Material","Batch No.","Qty","Unit","Meters","Time","Signed By",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","70px","1.8fr","40px"]} />
           {rawOut.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr 80px 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-              <TI value={r.material} onChange={v=>as(setRawOut,i,"material",v)} placeholder="Material" />
-              <TI value={r.batchNo}  onChange={v=>as(setRawOut,i,"batchNo",v)} />
-              <TI type="number" value={r.qty}    onChange={v=>as(setRawOut,i,"qty",v)} />
-              <TS value={r.unit} onChange={v=>as(setRawOut,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
-              <TI type="number" value={r.meters||""} onChange={v=>as(setRawOut,i,"meters",v)} placeholder="0" />
-              <div style={{fontSize:11,color:r.time?C.success:C.muted,fontWeight:r.time?600:400,padding:"6px 4px",textAlign:"center"}}>
-                {r.time||<span style={{fontSize:10,color:C.muted}}>— pending</span>}
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr 70px 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <TI value={r.material} onChange={v=>as(setRawOut,i,"material",v)} placeholder="Material" />
+                <TI value={r.batchNo}  onChange={v=>as(setRawOut,i,"batchNo",v)} />
+                <TI type="number" value={r.qty}    onChange={v=>as(setRawOut,i,"qty",v)} />
+                <TS value={r.unit} onChange={v=>as(setRawOut,i,"unit",v)} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
+                <TI type="number" value={r.meters||""} onChange={v=>as(setRawOut,i,"meters",v)} placeholder="0" />
+                <div style={{fontSize:11,color:r.time?C.success:C.muted,fontWeight:r.time?600:400,padding:"6px 4px",textAlign:"center"}}>{r.time||"—"}</div>
+                <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRawOut,i)}>✕</button>
               </div>
-              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setRawOut,i)}>✕</button>
+              {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off this entry" onConfirm={sig=>{
+                const now=new Date();
+                const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+                setRawOut(a=>a.map((x,xi)=>xi===i?{...x,...sig,time:x.time||timeStr}:x));
+              }} />}
             </div>
           ))}
           <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>{
             const now=new Date();
             const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
-            // Stamp time on the last row if it doesn't have one yet
             setRawOut(a=>{
               const updated=a.map((row,xi)=>xi===a.length-1&&!row.time?{...row,time:timeStr}:row);
               return [...updated,ePOut()];
@@ -738,67 +766,75 @@
           }}>+ Add Row</button>
         </SC>
         <SC title="BOPP Waste">
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.06em"}}>PRINTING BOPP WASTE (KG)</div>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.06em"}}>RAW BOPP FILM WASTE (KG)</div>
-            <div />
           </div>
           {boppWaste.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-              <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:6}}>
-                <TI type="number" value={r.printingBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingBopp:v}:x))} placeholder="0" />
-                <input style={{...S.input,fontSize:12}} value={r.printingComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingComment:e.target.value}:x))} placeholder="Comment…" />
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:6}}>
+                  <TI type="number" value={r.printingBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingBopp:v}:x))} placeholder="0" />
+                  <input style={{...S.input,fontSize:12}} value={r.printingComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingComment:e.target.value}:x))} placeholder="Comment…" />
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:6}}>
+                  <TI type="number" value={r.rawBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawBopp:v}:x))} placeholder="0" />
+                  <input style={{...S.input,fontSize:12}} value={r.rawComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawComment:e.target.value}:x))} placeholder="Comment…" />
+                </div>
+                <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>setBoppWaste(a=>a.filter((_,xi)=>xi!==i))}>✕</button>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:6}}>
-                <TI type="number" value={r.rawBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawBopp:v}:x))} placeholder="0" />
-                <input style={{...S.input,fontSize:12}} value={r.rawComment||""} onChange={e=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,rawComment:e.target.value}:x))} placeholder="Comment…" />
-              </div>
-              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>setBoppWaste(a=>a.filter((_,xi)=>xi!==i))}>✕</button>
+              {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off this entry" onConfirm={sig=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,...sig}:x))} />}
             </div>
           ))}
-          <button style={S.btn("ghost",{marginTop:2,fontSize:11})} onClick={()=>setBoppWaste(a=>[...a,{printingBopp:"",printingComment:"",rawBopp:"",rawComment:""}])}>+ Add Row</button>
+          <button style={S.btn("ghost",{marginTop:2,fontSize:11})} onClick={()=>setBoppWaste(a=>[...a,{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedShift:""}])}>+ Add Row</button>
         </SC>
         <SC title="Ink Input">
-          <THead cols={["Ink Code","Type","Batch No.","Supplier","Qty Used (kg)","Returned (kg)",""]} widths={["2.5fr","1fr","1.2fr","1.5fr","1fr","1fr","40px"]} />
+          <THead cols={["Ink Code","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)","Signed By",""]} widths={["2.5fr","1fr","1.2fr","1.5fr","1fr","1fr","1.8fr","40px"]} />
           {inks.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2.5fr 1fr 1.2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-              <select style={S.input} value={r.inkCode} onChange={e=>{
-                const code=e.target.value;
-                setInks(prev=>prev.map((row,x)=>x===i?{...row,inkCode:code,description:((lists.ink_code||[]).find(ink=>ink.code===code)||{}).description||""}:row));
-              }}>
-                <option value="">— Select —</option>
-                {getInksForProduct(hdr.productName,lists).map(x=>{
-                  const code=x.code||x; const desc=(x.description||"").trim();
-                  return <option key={code} value={code}>{desc?`${code} — ${desc}`:code}</option>;
-                })}
-              </select>
-              <select style={S.input} value={r.inkType||""} onChange={e=>as(setInks,i,"inkType",e.target.value)}>
-                <option value="">— Type —</option>
-                <option value="Fresh">Fresh</option>
-                <option value="Press Return">Press Return</option>
-              </select>
-              <TI value={r.batchNo||""} onChange={v=>as(setInks,i,"batchNo",v)} placeholder="Batch No." />
-              <TS value={r.supplier} onChange={v=>as(setInks,i,"supplier",v)} options={(lists.ink_supplier||[]).map(String).filter(Boolean)} />
-              <TI type="number" value={r.qty}      onChange={v=>as(setInks,i,"qty",v)} />
-              <TI type="number" value={r.returned} onChange={v=>as(setInks,i,"returned",v)} />
-              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setInks,i)}>✕</button>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"2.5fr 1fr 1.2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <select style={S.input} value={r.inkCode} onChange={e=>{
+                  const code=e.target.value;
+                  setInks(prev=>prev.map((row,x)=>x===i?{...row,inkCode:code,description:((lists.ink_code||[]).find(ink=>ink.code===code)||{}).description||""}:row));
+                }}>
+                  <option value="">— Select —</option>
+                  {getInksForProduct(hdr.productName,lists).map(x=>{
+                    const code=x.code||x; const desc=(x.description||"").trim();
+                    return <option key={code} value={code}>{desc?`${code} — ${desc}`:code}</option>;
+                  })}
+                </select>
+                <select style={S.input} value={r.inkType||""} onChange={e=>as(setInks,i,"inkType",e.target.value)}>
+                  <option value="">— Type —</option>
+                  <option value="Fresh">Fresh</option>
+                  <option value="Press Return">Press Return</option>
+                </select>
+                <TI value={r.batchNo||""} onChange={v=>as(setInks,i,"batchNo",v)} placeholder="Batch No." />
+                <TS value={r.supplier} onChange={v=>as(setInks,i,"supplier",v)} options={(lists.ink_supplier||[]).map(String).filter(Boolean)} />
+                <TI type="number" value={r.qty}      onChange={v=>as(setInks,i,"qty",v)} />
+                <TI type="number" value={r.returned} onChange={v=>as(setInks,i,"returned",v)} />
+                <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setInks,i)}>✕</button>
+              </div>
+              {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off this entry" onConfirm={sig=>asSign(setInks,i,sig)} />}
             </div>
           ))}
-          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setInks,eI)}>+ Add Row</button>
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setInks(a=>[...a,eI()])}>+ Add Row</button>
         </SC>
         <SC title="Solvent Input">
-          <THead cols={["Solvent","Supplier","Batch Code","Qty Used (L)","Returned (L)",""]} widths={["1.5fr","1.5fr","1.5fr","1fr","1fr","40px"]} />
+          <THead cols={["Solvent","Supplier","Batch Code","Qty (L)","Returned (L)","Signed By",""]} widths={["1.5fr","1.5fr","1.5fr","1fr","1fr","1.8fr","40px"]} />
           {solvents.map((r,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 1.5fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
-              <TS value={r.solvent}  onChange={v=>as(setSolv,i,"solvent",v)}   options={(lists.solvent||[]).map(String).filter(Boolean)} />
-              <TS value={r.supplier} onChange={v=>as(setSolv,i,"supplier",v)}  options={(lists.solvent_supplier||[]).map(String).filter(Boolean)} />
-              <TI value={r.batchNo}  onChange={v=>as(setSolv,i,"batchNo",v)}   placeholder="Batch Code" />
-              <TI type="number" value={r.qty}      onChange={v=>as(setSolv,i,"qty",v)} />
-              <TI type="number" value={r.returned} onChange={v=>as(setSolv,i,"returned",v)} />
-              <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setSolv,i)}>✕</button>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"1.5fr 1.5fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <TS value={r.solvent}  onChange={v=>as(setSolv,i,"solvent",v)}   options={(lists.solvent||[]).map(String).filter(Boolean)} />
+                <TS value={r.supplier} onChange={v=>as(setSolv,i,"supplier",v)}  options={(lists.solvent_supplier||[]).map(String).filter(Boolean)} />
+                <TI value={r.batchNo}  onChange={v=>as(setSolv,i,"batchNo",v)}   placeholder="Batch Code" />
+                <TI type="number" value={r.qty}      onChange={v=>as(setSolv,i,"qty",v)} />
+                <TI type="number" value={r.returned} onChange={v=>as(setSolv,i,"returned",v)} />
+                <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>ad(setSolv,i)}>✕</button>
+              </div>
+              {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off this entry" onConfirm={sig=>asSign(setSolv,i,sig)} />}
             </div>
           ))}
-          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>aa(setSolv,eSv)}>+ Add Row</button>
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setSolv(a=>[...a,eSv()])}>+ Add Row</button>
         </SC>
         <SC title="Remarks"><textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} /></SC>
         <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Production Sheet</button>
@@ -1405,32 +1441,32 @@
           const h=r.data?.header||{};
           rows.push([r.created_by,h.date,h.shift,h.jobNo,h.continuationOf||"",h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
           if(r.data?.rawIn?.length){
-            rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit"]);
-            r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit]));
+            rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit","Signed By","Shift","Time"]);
+            r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
             const totalQty=r.data.rawIn.reduce((a,x)=>a+parseFloat(x.qty||0),0);
-            rows.push(["","","TOTAL",totalQty||"",""]);
+            rows.push(["","","TOTAL",totalQty||"","","","",""]);
           }
           if(r.data?.rawOut?.length){
-            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters","Time"]);
-            r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||"",x.time||""]));
+            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters","Time","Signed By","Shift","Sign Time"]);
+            r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||"",x.time||"",x.signedBy||"",x.signedShift||"",x.signedAt||""]));
             const totalQty=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalMeters=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.meters||0),0);
-            rows.push(["","","TOTAL",totalQty||"","",totalMeters||"",""]);
+            rows.push(["","","TOTAL",totalQty||"","",totalMeters||"","","","",""]);
           }
-          if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP Waste (kg)","Printing Comment","Raw BOPP Film Waste (kg)","Raw Comment"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","",tR||""]); } }
+          if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP (kg)","Print Comment","Raw BOPP (kg)","Raw Comment","Signed By","Shift","Time"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||"",x.signedBy||"",x.signedShift||"",x.signedAt||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","","","",""]); } }
           if(r.data?.inks?.length){
-            rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty Used (kg)","Returned (kg)"]);
-            r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned]));
+            rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)","Signed By","Shift","Time"]);
+            r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
             const totalQty=r.data.inks.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalRet=r.data.inks.reduce((a,x)=>a+parseFloat(x.returned||0),0);
-            rows.push(["","","","","","TOTAL",totalQty||"",totalRet||""]);
+            rows.push(["","","","","","TOTAL",totalQty||"",totalRet||"","","",""]);
           }
           if(r.data?.solvents?.length){
-            rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty Used (L)","Returned (L)"]);
-            r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned]));
+            rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty (L)","Returned (L)","Signed By","Shift","Time"]);
+            r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
             const totalQty=r.data.solvents.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalRet=r.data.solvents.reduce((a,x)=>a+parseFloat(x.returned||0),0);
-            rows.push(["","","","TOTAL",totalQty||"",totalRet||""]);
+            rows.push(["","","","TOTAL",totalQty||"",totalRet||"","","",""]);
           }
           rows.push(["---"]);
         });
@@ -1708,8 +1744,8 @@
             <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
           ))}
         </div>
-        <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit"]} sumCols={["qty"]} />
-        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters","time"]} sumCols={["qty","meters"]} />
+        <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit","signedBy","signedShift","signedAt"]} sumCols={["qty"]} />
+        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters","time","signedBy","signedShift","signedAt"]} sumCols={["qty","meters"]} />
         {(()=>{
           const bw=d.boppWaste;
           if(!bw) return null;
@@ -1743,8 +1779,8 @@
             )}
           </div>;
         })()}
-        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned"]} sumCols={["qty","returned"]} />
-        <DT title="Solvent Input" rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned"]} sumCols={["qty","returned"]} />
+        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned","signedBy","signedShift","signedAt"]} sumCols={["qty","returned"]} />
+        <DT title="Solvent Input" rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned","signedBy","signedShift","signedAt"]} sumCols={["qty","returned"]} />
         {d.remarks&&<div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
       </div>;
     }
@@ -2213,6 +2249,7 @@
     // ── Change Password ───────────────────────────────────────────────────────
     function ChangePassword({session,flash}){
       const [current,setCurrent]=useState(""); const [newPw,setNewPw]=useState(""); const [confirm,setConfirm]=useState(""); const [err,setErr]=useState("");
+      const [pin,setPin]=useState(""); const [pinConfirm,setPinConfirm]=useState(""); const [pinErr,setPinErr]=useState("");
       const save=async()=>{
         setErr("");
         const {data}=await sb.from("users").select("password").eq("id",session.id).single();
@@ -2224,17 +2261,41 @@
         if(error){ setErr("Failed to update: "+error.message); return; }
         setCurrent(""); setNewPw(""); setConfirm(""); flash("Password changed successfully!");
       };
+      const savePin=async()=>{
+        setPinErr("");
+        if(!pin.trim()){ setPinErr("PIN cannot be empty."); return; }
+        if(!/^\d{4,6}$/.test(pin)){ setPinErr("PIN must be 4 to 6 digits."); return; }
+        if(pin!==pinConfirm){ setPinErr("PINs do not match."); return; }
+        const {error}=await sb.from("users").update({pin}).eq("id",session.id);
+        if(error){ setPinErr("Failed to update: "+error.message); return; }
+        setPin(""); setPinConfirm(""); flash("PIN updated successfully!");
+      };
       return <div>
-        <PH title="Change Password" sub={`Changing password for: ${session.name}`} />
-        <div style={{...S.card,maxWidth:420}}>
-          <label style={S.label}>Current Password</label>
-          <input type="password" style={{...S.input,marginBottom:14}} value={current} onChange={e=>setCurrent(e.target.value)} />
-          <label style={S.label}>New Password</label>
-          <input type="password" style={{...S.input,marginBottom:14}} value={newPw} onChange={e=>setNewPw(e.target.value)} />
-          <label style={S.label}>Confirm New Password</label>
-          <input type="password" style={{...S.input,marginBottom:16}} value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&save()} />
-          {err&&<div style={{color:C.danger,fontSize:12,marginBottom:12}}>{err}</div>}
-          <button style={{...S.btn("accent"),width:"100%",padding:10}} onClick={save}>Update Password</button>
+        <PH title="Change Password & PIN" sub={`Account settings for: ${session.name}`} />
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <div style={S.card}>
+            <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.1em",marginBottom:16}}>CHANGE PASSWORD</div>
+            <label style={S.label}>Current Password</label>
+            <input type="password" style={{...S.input,marginBottom:14}} value={current} onChange={e=>setCurrent(e.target.value)} />
+            <label style={S.label}>New Password</label>
+            <input type="password" style={{...S.input,marginBottom:14}} value={newPw} onChange={e=>setNewPw(e.target.value)} />
+            <label style={S.label}>Confirm New Password</label>
+            <input type="password" style={{...S.input,marginBottom:16}} value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&save()} />
+            {err&&<div style={{color:C.danger,fontSize:12,marginBottom:12}}>{err}</div>}
+            <button style={{...S.btn("accent"),width:"100%",padding:10}} onClick={save}>Update Password</button>
+          </div>
+          <div style={S.card}>
+            <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.1em",marginBottom:8}}>SET PRODUCTION PIN</div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:14,padding:"8px 10px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+              Your PIN is used to sign off individual entries on production sheets. Must be 4–6 digits.
+            </div>
+            <label style={S.label}>New PIN (4–6 digits)</label>
+            <input type="password" inputMode="numeric" pattern="[0-9]*" style={{...S.input,marginBottom:14,letterSpacing:"0.3em",fontSize:18}} value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="••••" />
+            <label style={S.label}>Confirm PIN</label>
+            <input type="password" inputMode="numeric" pattern="[0-9]*" style={{...S.input,marginBottom:16,letterSpacing:"0.3em",fontSize:18}} value={pinConfirm} onChange={e=>setPinConfirm(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="••••" onKeyDown={e=>e.key==="Enter"&&savePin()} />
+            {pinErr&&<div style={{color:C.danger,fontSize:12,marginBottom:12}}>{pinErr}</div>}
+            <button style={{...S.btn("accent"),width:"100%",padding:10}} onClick={savePin}>Update PIN</button>
+          </div>
         </div>
       </div>;
     }
