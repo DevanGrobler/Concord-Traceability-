@@ -679,6 +679,7 @@
     function ProductionForm({onSave,onReset,users=[],lists={}}){
       const [hdr,setHdr]=useState(()=>({date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""}));
       const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([ePOut()]);
+      const [returnBopp,setReturnBopp]=useState([{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedShift:""}]);
       const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eSv()]);
       const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedShift:""}]);
       const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
@@ -695,7 +696,7 @@
         const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
         const finalRawOut=rawOut.map((row,xi)=>xi===rawOut.length-1&&!row.time?{...row,time:timeStr}:row);
         const normBopp=boppWaste.map(r=>({...r,printingBopp:r.printingBopp===""?"0":r.printingBopp,rawBopp:r.rawBopp===""?"0":r.rawBopp}));
-        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,boppWaste:normBopp,inks,solvents,remarks}}); setSaved(true);
+        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,returnBopp,boppWaste:normBopp,inks,solvents,remarks}}); setSaved(true);
       };
       return <div>
         <PH title="Daily Production Sheet Printing" sub="Record job details, materials, inks and solvents" />
@@ -721,7 +722,7 @@
           </Grid>
         </SC>
         <SC title="Raw Material Input">
-          <THead cols={["Material","Batch No.","Qty","Unit","Signed By",""]} widths={["2fr","1.5fr","1fr","1fr","1.8fr","40px"]} />
+          <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
           {rawIn.map((r,i)=>(
             <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
@@ -736,8 +737,8 @@
           ))}
           <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setRawIn(a=>[...a,eP()])}>+ Add Row</button>
         </SC>
-        <SC title="Raw Material Output (Printing Reels and Return BOPP)">
-          <THead cols={["Material","Batch No.","Qty","Unit","Meters","Time","Signed By",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","70px","1.8fr","40px"]} />
+        <SC title="Raw Material Output (Printing Reels)">
+          <THead cols={["Material","Batch No.","Qty","Unit","Meters","Time",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","70px","40px"]} />
           {rawOut.map((r,i)=>(
             <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr 70px 40px",gap:6,marginBottom:6,alignItems:"center"}}>
@@ -765,6 +766,25 @@
             });
           }}>+ Add Row</button>
         </SC>
+        <SC title="Return Raw BOPP (When Job is Complete)">
+          <div style={{fontSize:11,color:C.muted,marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+            Complete this section when the job is finished and raw BOPP is being returned to the warehouse.
+          </div>
+          <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
+          {returnBopp.map((r,i)=>(
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
+                <TI value={r.material} onChange={v=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,material:v}:x))} placeholder="Material" />
+                <TI value={r.batchNo}  onChange={v=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,batchNo:v}:x))} />
+                <TI type="number" value={r.qty}  onChange={v=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,qty:v}:x))} />
+                <TS value={r.unit} onChange={v=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,unit:v}:x))} options={(lists.unit||["kg","g","L","mL","m","mm","rolls","sheets"]).map(String).filter(Boolean)} />
+                <button style={S.btn("danger",{padding:"4px 8px",fontSize:12})} onClick={()=>setReturnBopp(a=>a.filter((_,xi)=>xi!==i))}>✕</button>
+              </div>
+              {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off return" onConfirm={sig=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,...sig}:x))} />}
+            </div>
+          ))}
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setReturnBopp(a=>[...a,{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedShift:""}])}>+ Add Row</button>
+        </SC>
         <SC title="BOPP Waste">
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.06em"}}>PRINTING BOPP WASTE (KG)</div>
@@ -789,7 +809,7 @@
           <button style={S.btn("ghost",{marginTop:2,fontSize:11})} onClick={()=>setBoppWaste(a=>[...a,{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedShift:""}])}>+ Add Row</button>
         </SC>
         <SC title="Ink Input">
-          <THead cols={["Ink Code","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)","Signed By",""]} widths={["2.5fr","1fr","1.2fr","1.5fr","1fr","1fr","1.8fr","40px"]} />
+          <THead cols={["Ink Code","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)",""]} widths={["2.5fr","1fr","1.2fr","1.5fr","1fr","1fr","40px"]} />
           {inks.map((r,i)=>(
             <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"2.5fr 1fr 1.2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
@@ -820,7 +840,7 @@
           <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setInks(a=>[...a,eI()])}>+ Add Row</button>
         </SC>
         <SC title="Solvent Input">
-          <THead cols={["Solvent","Supplier","Batch Code","Qty (L)","Returned (L)","Signed By",""]} widths={["1.5fr","1.5fr","1.5fr","1fr","1fr","1.8fr","40px"]} />
+          <THead cols={["Solvent","Supplier","Batch Code","Qty (L)","Returned (L)",""]} widths={["1.5fr","1.5fr","1.5fr","1fr","1fr","40px"]} />
           {solvents.map((r,i)=>(
             <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"1.5fr 1.5fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
@@ -1447,11 +1467,17 @@
             rows.push(["","","TOTAL",totalQty||"","","","",""]);
           }
           if(r.data?.rawOut?.length){
-            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT","Material","Batch No.","Qty","Unit","Meters","Time","Signed By","Shift","Sign Time"]);
+            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT (PRINTING REELS)","Material","Batch No.","Qty","Unit","Meters","Time","Signed By","Shift","Sign Time"]);
             r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||"",x.time||"",x.signedBy||"",x.signedShift||"",x.signedAt||""]));
             const totalQty=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalMeters=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.meters||0),0);
             rows.push(["","","TOTAL",totalQty||"","",totalMeters||"","","","",""]);
+          }
+          if(r.data?.returnBopp?.length&&r.data.returnBopp.some(x=>x.material||x.qty)){
+            rows.push([]); rows.push(["  RETURN RAW BOPP (JOB COMPLETE)","Material","Batch No.","Qty","Unit","Signed By","Shift","Time"]);
+            r.data.returnBopp.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
+            const totalQty=r.data.returnBopp.reduce((a,x)=>a+parseFloat(x.qty||0),0);
+            rows.push(["","","TOTAL",totalQty||"","","","",""]);
           }
           if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP (kg)","Print Comment","Raw BOPP (kg)","Raw Comment","Signed By","Shift","Time"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||"",x.signedBy||"",x.signedShift||"",x.signedAt||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","","","",""]); } }
           if(r.data?.inks?.length){
@@ -1652,7 +1678,7 @@
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
-        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output (Printing Reels and Return BOPP)",["material","batchNo","qty","unit","meters","time"],"2fr 1.5fr 1fr 1fr 1fr 80px 36px",{material:"",batchNo:"",qty:"",unit:"",meters:"",time:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
+        {[["rawIn","Raw Material Input",["material","batchNo","qty","unit"],"2fr 1.5fr 1fr 1fr 36px",{material:"",batchNo:"",qty:"",unit:""}],["rawOut","Raw Material Output (Printing Reels)",["material","batchNo","qty","unit","meters","time"],"2fr 1.5fr 1fr 1fr 1fr 80px 36px",{material:"",batchNo:"",qty:"",unit:"",meters:"",time:""}],["inks","Ink Input",["inkCode","inkType","batchNo","supplier","qty","returned"],"2fr 1fr 1.2fr 1.5fr 1fr 1fr 36px",{inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:""}],["solvents","Solvent Input",["solvent","supplier","batchNo","qty","returned"],"1.5fr 1.5fr 1.5fr 1fr 1fr 36px",{solvent:"",supplier:"",batchNo:"",qty:"",returned:""}]].map(([key,title,cols,grid,emptyRow])=>(
           <div key={key} style={{marginTop:14}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:6}}>{title.toUpperCase()}</div>
             {(data[key]||[]).map((row,i)=>(
@@ -1745,7 +1771,8 @@
           ))}
         </div>
         <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit","signedBy","signedShift","signedAt"]} sumCols={["qty"]} />
-        <DT title="Raw Material Output (Printing Reels and Return BOPP)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters","time","signedBy","signedShift","signedAt"]} sumCols={["qty","meters"]} />
+        <DT title="Raw Material Output (Printing Reels)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters","time","signedBy","signedShift","signedAt"]} sumCols={["qty","meters"]} />
+        <DT title="Return Raw BOPP (When Job is Complete)" rows={d.returnBopp} cols={["material","batchNo","qty","unit","signedBy","signedShift","signedAt"]} sumCols={["qty"]} />
         {(()=>{
           const bw=d.boppWaste;
           if(!bw) return null;
