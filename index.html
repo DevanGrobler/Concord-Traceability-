@@ -2723,8 +2723,8 @@
             if(sheetMeters>=bestMeters){
               bestMeters=sheetMeters;
               const found=productSpeeds.find(s=>
-                s.customer?.toLowerCase()===h.customer?.toLowerCase()&&
-                s.product?.toLowerCase()===h.productName?.toLowerCase()
+                s.customer?.toLowerCase().trim()===h.customer?.toLowerCase().trim()&&
+                s.product?.toLowerCase().trim()===h.productName?.toLowerCase().trim()
               );
               if(found) bestEntry=found;
             }
@@ -2883,7 +2883,16 @@
                             </div>
                             <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:13,minWidth:44,textAlign:"right"}}>{g.efficiency}%</span>
                           </div>
-                          :<span style={{color:C.warn,fontSize:10}}>⚠ no speed data</span>
+                          :<div>
+                            <div style={{color:C.warn,fontSize:10,fontWeight:600}}>⚠ no speed data</div>
+                            <div style={{color:C.muted,fontSize:9,marginTop:2}}>
+                              {[...g.customers].map((c,ci)=>{
+                                const prod=[...g.products][ci]||[...g.products][0]||"";
+                                const inTable=productSpeeds.some(s=>s.customer?.toLowerCase()===c.toLowerCase()&&s.product?.toLowerCase()===prod.toLowerCase());
+                                return <div key={ci}>"{c}" / "{prod}" {inTable?"✔":"✕ not in table"}</div>;
+                              })}
+                            </div>
+                          </div>
                         }
                       </td>
                     </tr>
