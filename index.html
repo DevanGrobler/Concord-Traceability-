@@ -2750,11 +2750,14 @@
           };
         });
 
-      // Summary
+      // Summary — weighted average (total actual ÷ total target) is more meaningful than mean of %
       const withEff=shiftRows.filter(x=>x.efficiency!==null);
-      const avgEff=withEff.length?Math.round(withEff.reduce((a,x)=>a+x.efficiency,0)/withEff.length):null;
       const totalActual=shiftRows.reduce((a,x)=>a+x.actualMeters,0);
       const totalTarget=shiftRows.reduce((a,x)=>a+(x.targetMeters||0),0);
+      // Weighted avg: total actual meters vs total target meters
+      const avgEff = (totalTarget>0&&totalActual>0)
+        ? Math.min(Math.round((totalActual/totalTarget)*100),999)
+        : null;
 
       const TH2 = (label,right=false) => (
         <th style={{padding:"8px 10px",textAlign:right?"right":"left",color:C.muted,fontSize:10,fontWeight:700,letterSpacing:"0.06em",whiteSpace:"nowrap",borderBottom:`2px solid ${C.border}`,background:C.bg}}>{label}</th>
