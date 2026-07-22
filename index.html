@@ -2636,170 +2636,274 @@
 
     // ── Efficiency Report ─────────────────────────────────────────────────────
     function EfficiencyReport({records,appLists}){
-      const [dateFrom,setDateFrom]=useState(()=>{ const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().split("T")[0]; });
+      const [dateFrom,setDateFrom]=useState(()=>{ const d=new Date(); d.setDate(d.getDate()-30); return d.toISOString().split("T")[0]; });
       const [dateTo,setDateTo]=useState(todayStr());
       const [filterShift,setFilterShift]=useState("all");
+      const [filterOperator,setFilterOperator]=useState("all");
       const [filterCustomer,setFilterCustomer]=useState("all");
 
-      // Get settings
-      const productSpeeds = appLists.product_speeds || DEFAULT_PRODUCT_SPEEDS;
-      const shiftTimes    = appLists.shift_times    || DEFAULT_SHIFT_TIMES;
+      // Settings
+      const productSpeeds = Array.isArray(appLists.product_speeds)
+        ? appLists.product_speeds
+        : DEFAULT_PRODUCT_SPEEDS;
+      const shiftTimes = (appLists.shift_times&&typeof appLists.shift_times==="object"&&!Array.isArray(appLists.shift_times))
+        ? appLists.shift_times
+        : DEFAULT_SHIFT_TIMES;
 
-      // Calculate shift duration in minutes
-      const parseTime = t => { const [h,m]=(t||"00:00").split(":").map(Number); return h*60+m; };
-      const dayMins   = parseTime(shiftTimes.dayEnd)   - parseTime(shiftTimes.dayStart);
-      const nightMins = (parseTime(shiftTimes.nightEnd) + 1440 - parseTime(shiftTimes.nightStart)) % 1440;
+      // Shift duration in minutes
+      const parseTime = t => { const [h,m]=(t||"00:00").split(":").map(Number); return h*60+(m||0); };
+      const dayMins   = parseTime(shiftTimes.dayEnd||"19:00") - parseTime(shiftTimes.dayStart||"07:00");
+      const nightMins = (parseTime(shiftTimes.nightEnd||"07:00") + 1440 - parseTime(shiftTimes.nightStart||"19:00")) % 1440 || 720;
 
-      // Filter production records in date range
-      const prodRecs = records.filter(r=>{
-        if(r.type!=="production") return false;
+      // All production records
+      const allProd = records.filter(r=>r.type==="production");
+
+      // Build filter option lists from ALL records (not filtered)
+      const allOperators = [...new Set(allProd.map(r=>r.data?.header?.operator).filter(Boolean))].sort();
+      const allCustomers = [...new Set(allProd.map(r=>r.data?.header?.customer).filter(Boolean))].sort();
+
+      // Quick date presets
+      const setPreset = (days) => {
+        const d=new Date(); d.setDate(d.getDate()-days);
+        setDateFrom(d.toISOString().split("T")[0]);
+        setDateTo(todayStr());
+      };
+
+      // Filter records
+      const filtered = allProd.filter(r=>{
         const d=r.data?.header?.date||"";
         if(d<dateFrom||d>dateTo) return false;
         if(filterShift!=="all"&&r.data?.header?.shift!==filterShift) return false;
+        if(filterOperator!=="all"&&r.data?.header?.operator!==filterOperator) return false;
         if(filterCustomer!=="all"&&r.data?.header?.customer!==filterCustomer) return false;
         return true;
       });
 
-      // Build rows
-      const rows = prodRecs.map(r=>{
-        const h = r.data?.header||{};
-        const shift = h.shift||"";
-        const shiftMins = shift==="Night Shift"?nightMins:dayMins;
-
-        // Actual meters from rawOut
-        const actualMeters = (r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0);
-
-        // Look up speed & downtime for this customer+product
-        const speedEntry = productSpeeds.find(s=>
-          s.customer?.toLowerCase()===h.customer?.toLowerCase()&&
-          s.product?.toLowerCase()===h.productName?.toLowerCase()
-        );
-        const runSpeed  = speedEntry?.runSpeed  || null;
-        const downtime  = speedEntry?.downtime  || null;
-
-        // Target = runSpeed × shiftMins ÷ downtime
-        const targetMeters = (runSpeed&&downtime&&shiftMins)
-          ? Math.round((runSpeed * shiftMins) / downtime)
-          : null;
-
-        const efficiency = (targetMeters&&actualMeters)
-          ? Math.min(Math.round((actualMeters/targetMeters)*100),999)
-          : null;
-
-        return {r,h,shift,shiftMins,actualMeters,runSpeed,downtime,targetMeters,efficiency};
+      // ── GROUP BY date + shift ─────────────────────────────────────────────
+      // Each unique date+shift = one efficiency row
+      const groupMap = {};
+      filtered.forEach(r=>{
+        const h=r.data?.header||{};
+        const key=`${h.date||""}__${h.shift||""}`;
+        if(!groupMap[key]) groupMap[key]={
+          date:h.date||"",
+          shift:h.shift||"",
+          operators:new Set(),
+          customers:new Set(),
+          products:new Set(),
+          jobNos:new Set(),
+          sheets:[],
+          actualMeters:0,
+        };
+        const g=groupMap[key];
+        if(h.operator) g.operators.add(h.operator);
+        if(h.customer) g.customers.add(h.customer);
+        if(h.productName) g.products.add(h.productName);
+        if(h.jobNo) g.jobNos.add(h.jobNo);
+        g.sheets.push(r);
+        // Sum actual meters from rawOut across all sheets in this shift
+        (r.data?.rawOut||[]).forEach(x=>{ g.actualMeters+=parseFloat(x.meters||0); });
       });
 
-      // Summary stats
-      const rowsWithData = rows.filter(x=>x.efficiency!==null);
-      const avgEff = rowsWithData.length
-        ? Math.round(rowsWithData.reduce((a,x)=>a+x.efficiency,0)/rowsWithData.length)
-        : null;
-      const totalActual = rows.reduce((a,x)=>a+x.actualMeters,0);
-      const totalTarget = rows.reduce((a,x)=>a+(x.targetMeters||0),0);
-
+      // Build display rows — one per shift group
       const effColor = e => e>=90?C.success:e>=70?C.warn:C.danger;
-      const customers = [...new Set(prodRecs.map(r=>r.data?.header?.customer).filter(Boolean))];
+
+      const shiftRows = Object.values(groupMap)
+        .sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0)
+        .map(g=>{
+          const shiftMins = g.shift==="Night Shift"?nightMins:dayMins;
+
+          // For target: use the speed of the product that ran this shift
+          // If multiple products ran, use the one with the most meters
+          let bestEntry=null;
+          let bestMeters=0;
+          g.sheets.forEach(r=>{
+            const h=r.data?.header||{};
+            const sheetMeters=(r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0);
+            if(sheetMeters>=bestMeters){
+              bestMeters=sheetMeters;
+              const found=productSpeeds.find(s=>
+                s.customer?.toLowerCase()===h.customer?.toLowerCase()&&
+                s.product?.toLowerCase()===h.productName?.toLowerCase()
+              );
+              if(found) bestEntry=found;
+            }
+          });
+
+          const runSpeed = bestEntry?.runSpeed||null;
+          const downtime = bestEntry?.downtime||null;
+          // ONE target per shift — not summed across sheets
+          const targetMeters = (runSpeed&&downtime&&shiftMins)
+            ? Math.round((runSpeed*shiftMins)/downtime)
+            : null;
+
+          const efficiency = (targetMeters&&g.actualMeters>0)
+            ? Math.min(Math.round((g.actualMeters/targetMeters)*100),999)
+            : null;
+
+          return {...g,
+            shiftMins,runSpeed,downtime,targetMeters,efficiency,
+            operatorList:[...g.operators].join(", "),
+            customerList:[...g.customers].join(", "),
+            productList:[...g.products].join(", "),
+            jobList:[...g.jobNos].join(", "),
+          };
+        });
+
+      // Summary
+      const withEff=shiftRows.filter(x=>x.efficiency!==null);
+      const avgEff=withEff.length?Math.round(withEff.reduce((a,x)=>a+x.efficiency,0)/withEff.length):null;
+      const totalActual=shiftRows.reduce((a,x)=>a+x.actualMeters,0);
+      const totalTarget=shiftRows.reduce((a,x)=>a+(x.targetMeters||0),0);
+
+      const TH2 = (label,right=false) => (
+        <th style={{padding:"8px 10px",textAlign:right?"right":"left",color:C.muted,fontSize:10,fontWeight:700,letterSpacing:"0.06em",whiteSpace:"nowrap",borderBottom:`2px solid ${C.border}`,background:C.bg}}>{label}</th>
+      );
 
       return <div>
-        <PH title="Efficiency Report" sub="Printing press efficiency vs target speed per shift" />
+        <PH title="Efficiency Report" sub="One row per shift — actual meters vs target based on product speed" />
 
-        {/* Filters */}
-        <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"flex-end"}}>
-          <div>
-            <label style={S.label}>Date From</label>
-            <TI type="date" value={dateFrom} onChange={v=>setDateFrom(v)} />
+        {/* ── Filters ── */}
+        <div style={S.card}>
+          <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>FILTERS</div>
+
+          {/* Quick presets */}
+          <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+            <span style={{fontSize:11,color:C.muted,alignSelf:"center",marginRight:4}}>Quick:</span>
+            {[["Today",0],["Last 7 days",7],["Last 14 days",14],["Last 30 days",30],["Last 90 days",90]].map(([label,days])=>(
+              <button key={label} style={S.btn("ghost",{padding:"4px 12px",fontSize:11})} onClick={()=>days===0?(setDateFrom(todayStr()),setDateTo(todayStr())):setPreset(days)}>{label}</button>
+            ))}
           </div>
-          <div>
-            <label style={S.label}>Date To</label>
-            <TI type="date" value={dateTo} onChange={v=>setDateTo(v)} />
-          </div>
-          <div>
-            <label style={S.label}>Shift</label>
-            <select style={{...S.input,width:160}} value={filterShift} onChange={e=>setFilterShift(e.target.value)}>
-              <option value="all">All Shifts</option>
-              <option value="Day Shift">Day Shift</option>
-              <option value="Night Shift">Night Shift</option>
-            </select>
-          </div>
-          <div>
-            <label style={S.label}>Customer</label>
-            <select style={{...S.input,width:200}} value={filterCustomer} onChange={e=>setFilterCustomer(e.target.value)}>
-              <option value="all">All Customers</option>
-              {customers.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:10}}>
+            <F label="Date From"><TI type="date" value={dateFrom} onChange={v=>setDateFrom(v)} /></F>
+            <F label="Date To"><TI type="date" value={dateTo} onChange={v=>setDateTo(v)} /></F>
+            <F label="Shift">
+              <select style={S.input} value={filterShift} onChange={e=>setFilterShift(e.target.value)}>
+                <option value="all">All Shifts</option>
+                <option value="Day Shift">Day Shift</option>
+                <option value="Night Shift">Night Shift</option>
+              </select>
+            </F>
+            <F label="Operator">
+              <select style={S.input} value={filterOperator} onChange={e=>setFilterOperator(e.target.value)}>
+                <option value="all">All Operators</option>
+                {allOperators.map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+            </F>
+            <F label="Customer">
+              <select style={S.input} value={filterCustomer} onChange={e=>setFilterCustomer(e.target.value)}>
+                <option value="all">All Customers</option>
+                {allCustomers.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </F>
           </div>
         </div>
 
-        {/* Summary cards */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+        {/* ── Summary cards ── */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
           {[
-            {label:"SHIFTS ANALYSED",   value:rows.length,            color:C.blue,   suffix:""},
-            {label:"TOTAL ACTUAL METERS",value:totalActual.toLocaleString(), color:C.text,   suffix:" m"},
-            {label:"TOTAL TARGET METERS",value:totalTarget.toLocaleString(), color:C.muted,  suffix:" m"},
-            {label:"AVERAGE EFFICIENCY", value:avgEff!==null?avgEff+"%" :"—", color:avgEff!==null?effColor(avgEff):C.muted, suffix:""},
-          ].map(({label,value,color,suffix})=>(
-            <div key={label} style={{...S.card,textAlign:"center",padding:16}}>
+            {label:"SHIFTS",        value:shiftRows.length,              color:C.blue},
+            {label:"ACTUAL METERS", value:Math.round(totalActual).toLocaleString()+" m", color:C.text},
+            {label:"TARGET METERS", value:totalTarget?totalTarget.toLocaleString()+" m":"—", color:C.muted},
+            {label:"AVG EFFICIENCY",value:avgEff!==null?avgEff+"%":"—",  color:avgEff!==null?effColor(avgEff):C.muted},
+          ].map(({label,value,color})=>(
+            <div key={label} style={{...S.card,textAlign:"center",padding:16,marginBottom:0}}>
               <div style={{fontSize:10,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{label}</div>
-              <div style={{fontSize:28,fontWeight:800,color}}>{value}{suffix}</div>
+              <div style={{fontSize:26,fontWeight:800,color}}>{value}</div>
             </div>
           ))}
         </div>
 
-        {/* Per-shift table */}
-        {rows.length===0
-          ?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>No production records found for the selected period.</div>
+        {/* ── Efficiency bar summary (visual) ── */}
+        {avgEff!==null&&(
+          <div style={{...S.card,marginBottom:20,padding:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <div style={{fontSize:11,color:C.muted,fontWeight:600,flexShrink:0}}>OVERALL</div>
+              <div style={{flex:1,height:20,background:C.border,borderRadius:10,overflow:"hidden"}}>
+                <div style={{width:`${Math.min(avgEff,100)}%`,height:"100%",background:effColor(avgEff),borderRadius:10,transition:"width 0.5s",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8}}>
+                  {avgEff>=20&&<span style={{fontSize:11,fontWeight:700,color:"#fff"}}>{avgEff}%</span>}
+                </div>
+              </div>
+              {avgEff<20&&<span style={{fontSize:14,fontWeight:700,color:effColor(avgEff)}}>{avgEff}%</span>}
+              <div style={{fontSize:11,color:C.muted,flexShrink:0}}>
+                <span style={{color:C.success}}>■</span> ≥90% &nbsp;
+                <span style={{color:C.warn}}>■</span> ≥70% &nbsp;
+                <span style={{color:C.danger}}>■</span> &lt;70%
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Table ── */}
+        {shiftRows.length===0
+          ?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>No production records found for the selected filters.</div>
           :<div style={S.card}>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                 <thead>
-                  <tr style={{borderBottom:`2px solid ${C.border}`,background:C.bg}}>
-                    {["Date","Shift","Job No.","Customer","Product","Operator","Run Speed","Downtime","Target (m)","Actual (m)","Efficiency"].map(h=>(
-                      <th key={h} style={{padding:"8px 10px",textAlign:"left",color:C.muted,fontSize:10,fontWeight:700,letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>
-                    ))}
+                  <tr>
+                    {TH2("Date")}
+                    {TH2("Shift")}
+                    {TH2("Job(s)")}
+                    {TH2("Customer")}
+                    {TH2("Product(s)")}
+                    {TH2("Operator(s)")}
+                    {TH2("Speed",true)}
+                    {TH2("DT",true)}
+                    {TH2("Target (m)",true)}
+                    {TH2("Actual (m)",true)}
+                    {TH2("Efficiency")}
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map(({r,h,actualMeters,runSpeed,downtime,targetMeters,efficiency},i)=>(
-                    <tr key={r.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
-                      <td style={{padding:"8px 10px",color:C.text,whiteSpace:"nowrap"}}>{h.date||"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.muted,whiteSpace:"nowrap"}}>{h.shift||"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.accent,fontWeight:600}}>{h.jobNo||"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.text}}>{h.customer||"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.text}}>{h.productName||"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.muted}}>{h.operator||"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{runSpeed?`${runSpeed} m/min`:<span style={{color:C.warn}}>⚠ not set</span>}</td>
-                      <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{downtime||"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{targetMeters!=null?targetMeters.toLocaleString():"—"}</td>
-                      <td style={{padding:"8px 10px",color:C.text,fontWeight:600,textAlign:"right"}}>{actualMeters>0?actualMeters.toLocaleString():"—"}</td>
-                      <td style={{padding:"8px 10px",textAlign:"center"}}>
-                        {efficiency!==null
-                          ?<div style={{display:"inline-flex",alignItems:"center",gap:6}}>
-                            <div style={{width:60,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
-                              <div style={{width:`${Math.min(efficiency,100)}%`,height:"100%",background:effColor(efficiency),borderRadius:4,transition:"width 0.3s"}} />
+                  {shiftRows.map((g,i)=>(
+                    <tr key={g.date+g.shift} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
+                      <td style={{padding:"8px 10px",color:C.text,whiteSpace:"nowrap",fontWeight:600}}>{g.date}</td>
+                      <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
+                        <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,
+                          background:g.shift==="Night Shift"?C.blue+"33":C.accent+"33",
+                          color:g.shift==="Night Shift"?C.blue:C.accent,fontWeight:700}}>
+                          {g.shift==="Night Shift"?"🌙 Night":"☀ Day"}
+                        </span>
+                      </td>
+                      <td style={{padding:"8px 10px",color:C.accent,fontSize:11}}>{g.jobList||"—"}</td>
+                      <td style={{padding:"8px 10px",color:C.text,fontSize:11}}>{g.customerList||"—"}</td>
+                      <td style={{padding:"8px 10px",color:C.muted,fontSize:11,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={g.productList}>{g.productList||"—"}</td>
+                      <td style={{padding:"8px 10px",color:C.muted,fontSize:11}}>{g.operatorList||"—"}</td>
+                      <td style={{padding:"8px 10px",color:C.text,textAlign:"right",whiteSpace:"nowrap"}}>{g.runSpeed?`${g.runSpeed} m/min`:<span style={{color:C.warn,fontSize:10}}>⚠ not set</span>}</td>
+                      <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{g.downtime||"—"}</td>
+                      <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{g.targetMeters!=null?g.targetMeters.toLocaleString():"—"}</td>
+                      <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{g.actualMeters>0?Math.round(g.actualMeters).toLocaleString():"—"}</td>
+                      <td style={{padding:"8px 10px",minWidth:140}}>
+                        {g.efficiency!==null
+                          ?<div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{flex:1,height:10,background:C.border,borderRadius:5,overflow:"hidden"}}>
+                              <div style={{width:`${Math.min(g.efficiency,100)}%`,height:"100%",background:effColor(g.efficiency),borderRadius:5}} />
                             </div>
-                            <span style={{color:effColor(efficiency),fontWeight:700,fontSize:13,minWidth:40}}>{efficiency}%</span>
+                            <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:13,minWidth:44,textAlign:"right"}}>{g.efficiency}%</span>
                           </div>
-                          :<span style={{color:C.warn,fontSize:11}}>⚠ no data</span>
+                          :<span style={{color:C.warn,fontSize:10}}>⚠ no speed data</span>
                         }
                       </td>
                     </tr>
                   ))}
                 </tbody>
-                {rows.length>1&&<tfoot>
+                {shiftRows.length>1&&<tfoot>
                   <tr style={{borderTop:`2px solid ${C.border}`,background:C.bg}}>
                     <td colSpan={8} style={{padding:"8px 10px",color:C.muted,fontSize:11,fontWeight:700}}>TOTALS / AVERAGE</td>
-                    <td style={{padding:"8px 10px",color:C.muted,fontWeight:700,textAlign:"right"}}>{totalTarget.toLocaleString()} m</td>
-                    <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{totalActual.toLocaleString()} m</td>
-                    <td style={{padding:"8px 10px",textAlign:"center"}}>
+                    <td style={{padding:"8px 10px",color:C.muted,fontWeight:700,textAlign:"right"}}>{totalTarget?totalTarget.toLocaleString()+" m":"—"}</td>
+                    <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{Math.round(totalActual).toLocaleString()} m</td>
+                    <td style={{padding:"8px 10px"}}>
                       {avgEff!==null&&<span style={{color:effColor(avgEff),fontWeight:800,fontSize:14}}>{avgEff}%</span>}
                     </td>
                   </tr>
                 </tfoot>}
               </table>
             </div>
-            {rows.some(x=>x.efficiency===null&&x.actualMeters===0)&&(
+            {shiftRows.some(x=>x.efficiency===null)&&(
               <div style={{marginTop:12,fontSize:11,color:C.warn,padding:"8px 12px",background:C.warn+"11",borderRadius:6,border:`1px solid ${C.warn}33`}}>
-                ⚠ Rows showing "no data" have no meters recorded in the Raw Material Output section, or the product is not in the speed settings. Add meters to the production sheet or configure the product in Lists / Settings → Product Speeds.
+                ⚠ Rows showing "no speed data" — the customer + product combination is not configured in Lists / Settings → Product Speeds, or no meters were recorded in the Raw Material Output section.
               </div>
             )}
           </div>
