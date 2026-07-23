@@ -3121,7 +3121,8 @@
           ]);
           const detWs=makeSheet(dataRows,[16,18,8,22,30,22,12,10,12,12,12,12,10]);
           XLSX.utils.book_append_sheet(wb,detWs,"Per Job");
-        } else if(viewMode==="operator"){
+        }
+        if(viewMode==="operator"){
           const hdr=[
             cell("Date",hdrSt),cell("Shift",hdrSt),cell("Operator",hdrSt),
             cell("Job(s)",hdrSt),cell("Customer",hdrSt),cell("Product(s)",hdrSt),
