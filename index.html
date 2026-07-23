@@ -2788,6 +2788,47 @@
       const totalTarget=rows.reduce((a,x)=>a+(x.targetMeters||0),0);
       const avgEff=(totalTarget>0&&totalActual>0)?Math.min(Math.round((totalActual/totalTarget)*100),999):null;
 
+      // ── OEE — Available Meters calculation ───────────────────────────────────
+      // Machine max = 200 m/min, loading = 70% → effective = 140 m/min
+      // Downtime provision = 20% → available time = 80% of shift
+      // Available per shift = 140 × shiftMins × 0.80
+      const OEE_SPEED   = 140;  // m/min (200 × 70%)
+      const OEE_AVAIL   = 0.80; // 80% of shift time available
+
+      // Count working days in the FULL CALENDAR MONTH(S) covered by the date range
+      // Reference shift schedule for which days are working days
+      const workDays = new Set((shiftTimes.workDays||["Monday","Tuesday","Wednesday","Thursday","Friday"]).map(d=>d.toLowerCase()));
+      const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
+      // Determine the months spanned by the date range
+      const countWorkingDaysInMonth = (year, month) => {
+        let count = 0;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        for(let d = 1; d <= daysInMonth; d++){
+          const dayName = DAY_NAMES[new Date(year, month, d).getDay()];
+          if(workDays.has(dayName)) count++;
+        }
+        return count;
+      };
+
+      // Get unique year-months from the date range
+      const from = new Date(dateFrom);
+      const to   = new Date(dateTo);
+      let totalWorkingDays = 0;
+      let cur = new Date(from.getFullYear(), from.getMonth(), 1);
+      while(cur <= to){
+        totalWorkingDays += countWorkingDaysInMonth(cur.getFullYear(), cur.getMonth());
+        cur.setMonth(cur.getMonth() + 1);
+      }
+
+      // Each working day = 2 shifts (day + night), each shift = dayMins or nightMins
+      // Use average shift mins for simplicity (both are 720 here)
+      const avgShiftMins = (dayMins + nightMins) / 2;
+      const totalAvailableMeters = Math.round(OEE_SPEED * avgShiftMins * OEE_AVAIL * totalWorkingDays * 2);
+      const oee = (totalAvailableMeters > 0 && totalActual > 0)
+        ? Math.min(Math.round((totalActual / totalAvailableMeters) * 100), 999)
+        : null;
+
       // ── Excel Export ──────────────────────────────────────────────────────────
       const exportEfficiency=()=>{
         const wb=XLSX.utils.book_new();
@@ -2862,7 +2903,11 @@
           [cell(viewMode==="job"?"Jobs Analysed":"Shifts Analysed",kSt), num(rows.length,{fc:COL.blue,bg:COL.panel,align:"left"})],
           [cell("Total Actual Meters",kSt), num(Math.round(totalActual),{fc:COL.white,bg:COL.panel,align:"left"})],
           [cell("Total Target Meters",kSt), num(totalTarget||0,{fc:COL.muted,bg:COL.panel,align:"left"})],
-          [cell("Overall Efficiency",{...kSt,bold:true}), pct(avgEff)],
+          [cell("Available Meters (OEE base)",kSt), num(totalAvailableMeters,{fc:COL.blue,bg:COL.panel,align:"left"})],
+          [cell("Working Days in Period",kSt), num(totalWorkingDays,{fc:COL.muted,bg:COL.panel,align:"left"})],
+          [cell("OEE Formula",{...kSt}), cell("140 m/min × 80% uptime × shifts",{...vSt,fc:COL.muted})],
+          [cell("Efficiency (vs Target)",{...kSt,bold:true}), pct(avgEff)],
+          [cell("OEE (vs Available)",{...kSt,bold:true}), pct(oee)],
         ];
 
         const sumWs=makeSheet(summaryRows,[30,28]);
@@ -2886,13 +2931,15 @@
             cell("Date",hdrSt),cell("Shift",hdrSt),cell("Job No(s)",hdrSt),
             cell("Customer",hdrSt),cell("Product(s)",hdrSt),cell("Operator(s)",hdrSt),
             cell("Run Speed",hdrRt),cell("Downtime",hdrRt),
-            cell("Target (m)",hdrRt),cell("Actual (m)",hdrRt),cell("Efficiency",{...hdrSt,align:"center"}),
+            cell("Target (m)",hdrRt),cell("Available (m)",hdrRt),cell("Actual (m)",hdrRt),cell("Efficiency",{...hdrSt,align:"center"}),cell("OEE",{...hdrSt,align:"center"}),
           ];
           const dataRows=[hdr];
           shiftRows.forEach((g,i)=>{
             const bg=i%2===0?rowEv.bg:rowOd.bg;
             const r={sz:11,fc:COL.white,bg};
             const rr={sz:11,fc:COL.white,bg,align:"right"};
+            const rowAvail=Math.round(OEE_SPEED*(g.shift==="Night Shift"?nightMins:dayMins)*OEE_AVAIL);
+            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
             dataRows.push([
               cell(g.date,{...r,bold:true,fc:COL.accent}),
               cell(g.shift==="Night Shift"?"🌙 Night":"☀ Day",{...r,fc:g.shift==="Night Shift"?COL.blue:COL.accent}),
@@ -2903,20 +2950,21 @@
               g.runSpeed?num(g.runSpeed,rr):cell("⚠ not set",{...r,fc:COL.warn,align:"right"}),
               g.downtime?num(g.downtime,rr):cell("—",{...r,align:"right"}),
               g.targetMeters!=null?num(g.targetMeters,rr):cell("—",{...r,align:"right"}),
+              num(rowAvail,{...rr,fc:COL.blue}),
               num(Math.round(g.actualMeters)||0,{...rr,bold:true}),
               pct(g.efficiency),
+              pct(rowOee),
             ]);
           });
-          // Blank row
-          dataRows.push(Array(11).fill(null));
-          // Totals
+          dataRows.push(Array(13).fill(null));
           dataRows.push([
             cell("TOTALS / OVERALL",totSt),null,null,null,null,null,null,null,
-            num(totalTarget||0,{...totRt}),
+            num(totalTarget||0,totRt),
+            num(totalAvailableMeters,{...totRt,fc:COL.blue}),
             num(Math.round(totalActual),{...totRt,fc:COL.white}),
-            pct(avgEff),
+            pct(avgEff),pct(oee),
           ]);
-          const detWs=makeSheet(dataRows,[12,12,18,22,30,22,12,10,12,12,12]);
+          const detWs=makeSheet(dataRows,[12,12,18,22,30,22,12,10,12,12,12,12,10]);
           XLSX.utils.book_append_sheet(wb,detWs,"Per Shift");
 
         } else {
@@ -2924,13 +2972,15 @@
             cell("Job No",hdrSt),cell("Date Range",hdrSt),cell("Shifts",hdrRt),
             cell("Customer",hdrSt),cell("Product(s)",hdrSt),cell("Operator(s)",hdrSt),
             cell("Run Speed",hdrRt),cell("Downtime",hdrRt),
-            cell("Target (m)",hdrRt),cell("Actual (m)",hdrRt),cell("Efficiency",{...hdrSt,align:"center"}),
+            cell("Target (m)",hdrRt),cell("Available (m)",hdrRt),cell("Actual (m)",hdrRt),cell("Efficiency",{...hdrSt,align:"center"}),cell("OEE",{...hdrSt,align:"center"}),
           ];
           const dataRows=[hdr];
           jobRows.forEach((g,i)=>{
             const bg=i%2===0?rowEv.bg:rowOd.bg;
             const r={sz:11,fc:COL.white,bg};
             const rr={sz:11,fc:COL.white,bg,align:"right"};
+            const rowAvail=Math.round(OEE_SPEED*g.totalShiftMins*OEE_AVAIL);
+            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
             dataRows.push([
               cell(g.jobNo,{...r,bold:true,fc:COL.accent}),
               cell(g.dateRange||"—",{...r,fc:COL.blue}),
@@ -2941,18 +2991,21 @@
               g.runSpeed?num(g.runSpeed,rr):cell("⚠ not set",{...r,fc:COL.warn,align:"right"}),
               g.downtime?num(g.downtime,rr):cell("—",{...r,align:"right"}),
               g.targetMeters!=null?num(g.targetMeters,rr):cell("—",{...r,align:"right"}),
+              num(rowAvail,{...rr,fc:COL.blue}),
               num(Math.round(g.actualMeters)||0,{...rr,bold:true}),
               pct(g.efficiency),
+              pct(rowOee),
             ]);
           });
-          dataRows.push(Array(11).fill(null));
+          dataRows.push(Array(13).fill(null));
           dataRows.push([
             cell("TOTALS / OVERALL",totSt),null,null,null,null,null,null,null,
             num(totalTarget||0,totRt),
+            num(totalAvailableMeters,{...totRt,fc:COL.blue}),
             num(Math.round(totalActual),{...totRt,fc:COL.white}),
-            pct(avgEff),
+            pct(avgEff),pct(oee),
           ]);
-          const detWs=makeSheet(dataRows,[16,18,8,22,30,22,12,10,12,12,12]);
+          const detWs=makeSheet(dataRows,[16,18,8,22,30,22,12,10,12,12,12,12,10]);
           XLSX.utils.book_append_sheet(wb,detWs,"Per Job");
         }
 
@@ -3015,35 +3068,49 @@
         </div>
 
         {/* ── Summary cards ── */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginBottom:16}}>
           {[
-            {label:viewMode==="job"?"JOBS":"SHIFTS", value:rows.length, color:C.blue},
-            {label:"ACTUAL METERS", value:Math.round(totalActual).toLocaleString()+" m", color:C.text},
-            {label:"TARGET METERS", value:totalTarget?totalTarget.toLocaleString()+" m":"—", color:C.muted},
-            {label:"OVERALL EFFICIENCY", value:avgEff!==null?avgEff+"%":"—", color:avgEff!==null?effColor(avgEff):C.muted},
-          ].map(({label,value,color})=>(
-            <div key={label} style={{...S.card,textAlign:"center",padding:16,marginBottom:0}}>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{label}</div>
-              <div style={{fontSize:26,fontWeight:800,color}}>{value}</div>
+            {label:viewMode==="job"?"JOBS":"SHIFTS",     value:rows.length,                              color:C.blue},
+            {label:"ACTUAL METERS",                       value:Math.round(totalActual).toLocaleString()+" m", color:C.text},
+            {label:"TARGET METERS",                       value:totalTarget?totalTarget.toLocaleString()+" m":"—", color:C.muted},
+            {label:"AVAILABLE METERS",                    value:totalAvailableMeters.toLocaleString()+" m",color:C.blue,  tip:`${totalWorkingDays} working days × 2 shifts × 140 m/min × 80% uptime`},
+            {label:"EFFICIENCY (vs Target)",              value:avgEff!==null?avgEff+"%":"—",            color:avgEff!==null?effColor(avgEff):C.muted},
+            {label:"OEE (vs Available)",                  value:oee!==null?oee+"%":"—",                  color:oee!==null?effColor(oee):C.muted,  tip:"Actual ÷ Available × 100"},
+          ].map(({label,value,color,tip})=>(
+            <div key={label} style={{...S.card,textAlign:"center",padding:14,marginBottom:0}} title={tip||""}>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{label}</div>
+              <div style={{fontSize:22,fontWeight:800,color}}>{value}</div>
             </div>
           ))}
         </div>
 
-        {/* ── Overall bar ── */}
-        {avgEff!==null&&(
+        {/* ── Overall bars ── */}
+        {(avgEff!==null||oee!==null)&&(
           <div style={{...S.card,marginBottom:16,padding:14}}>
-            <div style={{display:"flex",alignItems:"center",gap:14}}>
-              <div style={{fontSize:11,color:C.muted,fontWeight:600,flexShrink:0,width:80}}>OVERALL</div>
-              <div style={{flex:1,height:18,background:C.border,borderRadius:9,overflow:"hidden"}}>
-                <div style={{width:`${Math.min(avgEff,100)}%`,height:"100%",background:effColor(avgEff),borderRadius:9,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8,transition:"width 0.5s"}}>
-                  {avgEff>=15&&<span style={{fontSize:11,fontWeight:700,color:"#fff"}}>{avgEff}%</span>}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {avgEff!==null&&<div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:10,color:C.muted,fontWeight:600,flexShrink:0,width:120}}>EFFICIENCY (TARGET)</div>
+                <div style={{flex:1,height:16,background:C.border,borderRadius:8,overflow:"hidden"}}>
+                  <div style={{width:`${Math.min(avgEff,100)}%`,height:"100%",background:effColor(avgEff),borderRadius:8,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:6,transition:"width 0.5s"}}>
+                    {avgEff>=15&&<span style={{fontSize:10,fontWeight:700,color:"#fff"}}>{avgEff}%</span>}
+                  </div>
                 </div>
-              </div>
-              {avgEff<15&&<span style={{fontSize:14,fontWeight:800,color:effColor(avgEff)}}>{avgEff}%</span>}
-              <div style={{fontSize:10,color:C.muted,flexShrink:0}}>
+                {avgEff<15&&<span style={{fontSize:14,fontWeight:800,color:effColor(avgEff),minWidth:44}}>{avgEff}%</span>}
+              </div>}
+              {oee!==null&&<div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:10,color:C.muted,fontWeight:600,flexShrink:0,width:120}}>OEE (AVAILABLE)</div>
+                <div style={{flex:1,height:16,background:C.border,borderRadius:8,overflow:"hidden"}}>
+                  <div style={{width:`${Math.min(oee,100)}%`,height:"100%",background:effColor(oee),borderRadius:8,display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:6,transition:"width 0.5s"}}>
+                    {oee>=15&&<span style={{fontSize:10,fontWeight:700,color:"#fff"}}>{oee}%</span>}
+                  </div>
+                </div>
+                {oee<15&&<span style={{fontSize:14,fontWeight:800,color:effColor(oee),minWidth:44}}>{oee}%</span>}
+              </div>}
+              <div style={{fontSize:10,color:C.muted,paddingTop:4,borderTop:`1px solid ${C.border}`}}>
                 <span style={{color:C.success}}>■</span> ≥90% &nbsp;
                 <span style={{color:C.warn}}>■</span> ≥70% &nbsp;
-                <span style={{color:C.danger}}>■</span> &lt;70%
+                <span style={{color:C.danger}}>■</span> &lt;70% &nbsp;&nbsp;
+                OEE based on {totalWorkingDays} working days × 2 shifts × 140 m/min × 80% uptime = {totalAvailableMeters.toLocaleString()} m available
               </div>
             </div>
           </div>
@@ -3061,15 +3128,18 @@
                 <thead>
                   <tr>
                     {viewMode==="shift"?<>
-                      {TH2("Date")}{TH2("Shift")}{TH2("Job(s)")}{TH2("Customer")}{TH2("Product(s)")}{TH2("Operator(s)")}{TH2("Speed",true)}{TH2("DT",true)}{TH2("Target (m)",true)}{TH2("Actual (m)",true)}{TH2("Efficiency")}
+                      {TH2("Date")}{TH2("Shift")}{TH2("Job(s)")}{TH2("Customer")}{TH2("Product(s)")}{TH2("Operator(s)")}{TH2("Speed",true)}{TH2("DT",true)}{TH2("Target (m)",true)}{TH2("Available (m)",true)}{TH2("Actual (m)",true)}{TH2("Efficiency")}{TH2("OEE")}
                     </>:<>
-                      {TH2("Job No")}{TH2("Date Range")}{TH2("Shifts",true)}{TH2("Customer")}{TH2("Product(s)")}{TH2("Operator(s)")}{TH2("Speed",true)}{TH2("DT",true)}{TH2("Target (m)",true)}{TH2("Actual (m)",true)}{TH2("Efficiency")}
+                      {TH2("Job No")}{TH2("Date Range")}{TH2("Shifts",true)}{TH2("Customer")}{TH2("Product(s)")}{TH2("Operator(s)")}{TH2("Speed",true)}{TH2("DT",true)}{TH2("Target (m)",true)}{TH2("Available (m)",true)}{TH2("Actual (m)",true)}{TH2("Efficiency")}{TH2("OEE")}
                     </>}
                   </tr>
                 </thead>
                 <tbody>
                   {viewMode==="shift"
-                    ?shiftRows.map((g,i)=>(
+                    ?shiftRows.map((g,i)=>{
+                      const rowAvail=Math.round(OEE_SPEED*(g.shift==="Night Shift"?nightMins:dayMins)*OEE_AVAIL);
+                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+                      return (
                       <tr key={g.date+g.shift} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
                         <td style={{padding:"8px 10px",color:C.text,whiteSpace:"nowrap",fontWeight:600}}>{g.date}</td>
                         <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
@@ -3084,22 +3154,33 @@
                         <td style={{padding:"8px 10px",color:C.text,textAlign:"right",whiteSpace:"nowrap"}}>{g.runSpeed?`${g.runSpeed} m/min`:<span style={{color:C.warn,fontSize:10}}>⚠ not set</span>}</td>
                         <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{g.downtime||"—"}</td>
                         <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{g.targetMeters!=null?g.targetMeters.toLocaleString():"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.blue,textAlign:"right",fontWeight:600}}>{rowAvail.toLocaleString()}</td>
                         <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{g.actualMeters>0?Math.round(g.actualMeters).toLocaleString():"—"}</td>
-                        <td style={{padding:"8px 10px",minWidth:130}}>{g.efficiency!==null
-                          ?<div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{flex:1,height:10,background:C.border,borderRadius:5,overflow:"hidden"}}>
-                                <div style={{width:`${Math.min(g.efficiency,100)}%`,height:"100%",background:effColor(g.efficiency),borderRadius:5}} />
+                        <td style={{padding:"8px 10px",minWidth:110}}>{g.efficiency!==null
+                          ?<div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{flex:1,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                                <div style={{width:`${Math.min(g.efficiency,100)}%`,height:"100%",background:effColor(g.efficiency),borderRadius:4}} />
                               </div>
-                              <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:13,minWidth:44,textAlign:"right"}}>{g.efficiency}%</span>
+                              <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{g.efficiency}%</span>
                             </div>
-                          :<div>
-                              <div style={{color:C.warn,fontSize:10,fontWeight:600}}>⚠ no speed data</div>
-                              <div style={{color:C.muted,fontSize:9,marginTop:2}}>{[...g.customers].map((c,ci)=>{ const prod=[...g.products][ci]||[...g.products][0]||""; return <div key={ci}>"{c}" / "{prod}"</div>; })}</div>
+                          :<div><div style={{color:C.warn,fontSize:10,fontWeight:600}}>⚠ no speed data</div><div style={{color:C.muted,fontSize:9,marginTop:2}}>{[...g.customers].map((c,ci)=>{ const prod=[...g.products][ci]||[...g.products][0]||""; return <div key={ci}>"{c}" / "{prod}"</div>; })}</div></div>
+                        }</td>
+                        <td style={{padding:"8px 10px",minWidth:100}}>{rowOee!==null
+                          ?<div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{flex:1,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                                <div style={{width:`${Math.min(rowOee,100)}%`,height:"100%",background:effColor(rowOee),borderRadius:4}} />
+                              </div>
+                              <span style={{color:effColor(rowOee),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{rowOee}%</span>
                             </div>
+                          :<span style={{color:C.muted,fontSize:10}}>—</span>
                         }</td>
                       </tr>
-                    ))
-                    :jobRows.map((g,i)=>(
+                      );
+                    })
+                    :jobRows.map((g,i)=>{
+                      const rowAvail=Math.round(OEE_SPEED*g.totalShiftMins*OEE_AVAIL);
+                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+                      return (
                       <tr key={g.jobNo} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
                         <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,whiteSpace:"nowrap"}}>{g.jobNo}</td>
                         <td style={{padding:"8px 10px",color:C.text,fontSize:11,whiteSpace:"nowrap"}}>{g.dateRange||"—"}</td>
@@ -3110,26 +3191,39 @@
                         <td style={{padding:"8px 10px",color:C.text,textAlign:"right",whiteSpace:"nowrap"}}>{g.runSpeed?`${g.runSpeed} m/min`:<span style={{color:C.warn,fontSize:10}}>⚠ not set</span>}</td>
                         <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{g.downtime||"—"}</td>
                         <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{g.targetMeters!=null?g.targetMeters.toLocaleString():"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.blue,textAlign:"right",fontWeight:600}}>{rowAvail.toLocaleString()}</td>
                         <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{g.actualMeters>0?Math.round(g.actualMeters).toLocaleString():"—"}</td>
-                        <td style={{padding:"8px 10px",minWidth:130}}>{g.efficiency!==null
-                          ?<div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{flex:1,height:10,background:C.border,borderRadius:5,overflow:"hidden"}}>
-                                <div style={{width:`${Math.min(g.efficiency,100)}%`,height:"100%",background:effColor(g.efficiency),borderRadius:5}} />
+                        <td style={{padding:"8px 10px",minWidth:110}}>{g.efficiency!==null
+                          ?<div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{flex:1,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                                <div style={{width:`${Math.min(g.efficiency,100)}%`,height:"100%",background:effColor(g.efficiency),borderRadius:4}} />
                               </div>
-                              <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:13,minWidth:44,textAlign:"right"}}>{g.efficiency}%</span>
+                              <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{g.efficiency}%</span>
                             </div>
                           :<span style={{color:C.warn,fontSize:10}}>⚠ no speed data</span>
                         }</td>
+                        <td style={{padding:"8px 10px",minWidth:100}}>{rowOee!==null
+                          ?<div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{flex:1,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                                <div style={{width:`${Math.min(rowOee,100)}%`,height:"100%",background:effColor(rowOee),borderRadius:4}} />
+                              </div>
+                              <span style={{color:effColor(rowOee),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{rowOee}%</span>
+                            </div>
+                          :<span style={{color:C.muted,fontSize:10}}>—</span>
+                        }</td>
                       </tr>
-                    ))
+                      );
+                    })
                   }
                 </tbody>
                 {rows.length>1&&<tfoot>
                   <tr style={{borderTop:`2px solid ${C.border}`,background:C.bg}}>
                     <td colSpan={viewMode==="shift"?8:8} style={{padding:"8px 10px",color:C.muted,fontSize:11,fontWeight:700}}>TOTALS / OVERALL</td>
                     <td style={{padding:"8px 10px",color:C.muted,fontWeight:700,textAlign:"right"}}>{totalTarget?totalTarget.toLocaleString()+" m":"—"}</td>
+                    <td style={{padding:"8px 10px",color:C.blue,fontWeight:700,textAlign:"right"}}>{totalAvailableMeters.toLocaleString()} m</td>
                     <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{Math.round(totalActual).toLocaleString()} m</td>
-                    <td style={{padding:"8px 10px"}}>{avgEff!==null&&<span style={{color:effColor(avgEff),fontWeight:800,fontSize:14}}>{avgEff}%</span>}</td>
+                    <td style={{padding:"8px 10px"}}>{avgEff!==null&&<span style={{color:effColor(avgEff),fontWeight:800,fontSize:13}}>{avgEff}%</span>}</td>
+                    <td style={{padding:"8px 10px"}}>{oee!==null&&<span style={{color:effColor(oee),fontWeight:800,fontSize:13}}>{oee}%</span>}</td>
                   </tr>
                 </tfoot>}
               </table>
