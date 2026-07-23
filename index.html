@@ -2707,7 +2707,7 @@
       const [filterShift,setFilterShift]=useState("all");
       const [filterOperator,setFilterOperator]=useState("all");
       const [filterCustomer,setFilterCustomer]=useState("all");
-      const [viewMode,setViewMode]=useState("shift"); // "shift" | "job"
+      const [viewMode,setViewMode]=useState("shift"); // "shift" | "job" | "operator"
 
       // Settings
       const productSpeeds=Array.isArray(appLists.product_speeds)?appLists.product_speeds:DEFAULT_PRODUCT_SPEEDS;
@@ -2839,9 +2839,57 @@
         });
       };
 
-      const shiftRows=buildShiftRows(filtered);
+      // ── BUILD OPERATOR ROWS ──────────────────────────────────────────────────
+      // Groups entries by signedDate + signedShift + signedBy
+      // Each operator on each shift gets their own row with their own meters
+      const buildOperatorRows=(recs)=>{
+        const map={};
+        recs.forEach(r=>{
+          const h=r.data?.header||{};
+          (r.data?.rawOut||[]).forEach(x=>{
+            const meters=parseFloat(x.meters||0);
+            if(!meters) return; // skip entries with no meters
+            // Determine date and shift from sign-off data
+            const entryDate = x.signedDate || h.date || "";
+            const entryShift = x.signedShift || (()=>{
+              const hr=parseInt((x.signedAt||x.time||"12:00").split(":")[0]||12);
+              return (hr>=7&&hr<19)?"Day Shift":"Night Shift";
+            })();
+            const operator = x.signedBy || h.operator || "Unknown";
+            const key=`${entryDate}__${entryShift}__${operator}`;
+            if(!map[key]) map[key]={
+              date:entryDate, shift:entryShift, operator,
+              customers:new Set(), products:new Set(), jobNos:new Set(),
+              sheets:[], actualMeters:0,
+            };
+            const g=map[key];
+            if(h.customer) g.customers.add(h.customer);
+            if(h.productName) g.products.add(h.productName);
+            if(h.jobNo) g.jobNos.add(h.jobNo);
+            if(!g.sheets.includes(r)) g.sheets.push(r);
+            g.actualMeters+=meters;
+          });
+        });
+        return Object.values(map)
+          .sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:a.operator<b.operator?-1:1)
+          .map(g=>{
+            const shiftMins=g.shift==="Night Shift"?nightMins:dayMins;
+            const best=getBestSpeed(g.sheets);
+            const runSpeed=best?.runSpeed||null;
+            const downtime=best?.downtime||null;
+            const targetMeters=(runSpeed&&downtime&&shiftMins)?Math.round((runSpeed*shiftMins)/downtime):null;
+            const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
+            const rowAvail=Math.round(OEE_SPEED*shiftMins*OEE_AVAIL);
+            const oeeRow=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+            return {...g,shiftMins,runSpeed,downtime,targetMeters,efficiency,rowAvail,oeeRow,
+              customerList:[...g.customers].join(", "),
+              productList:[...g.products].join(", "),
+              jobList:[...g.jobNos].join(", ")};
+          });
+      };
       const jobRows=buildJobRows(filtered);
-      const rows=viewMode==="job"?jobRows:shiftRows;
+      const operatorRows=buildOperatorRows(filtered);
+      const rows=viewMode==="job"?jobRows:viewMode==="operator"?operatorRows:shiftRows;
 
       const totalActual=rows.reduce((a,x)=>a+x.actualMeters,0);
       const totalTarget=rows.reduce((a,x)=>a+(x.targetMeters||0),0);
@@ -2896,7 +2944,7 @@
       const exportEfficiency=()=>{
         const wb=XLSX.utils.book_new();
         const now=new Date().toLocaleString();
-        const mode=viewMode==="job"?"Per Job":"Per Shift";
+        const mode=viewMode==="job"?"Per Job":viewMode==="operator"?"Per Operator":"Per Shift";
 
         // ── Colour palette (hex, no #) ──
         const COL = {
@@ -3070,6 +3118,44 @@
           ]);
           const detWs=makeSheet(dataRows,[16,18,8,22,30,22,12,10,12,12,12,12,10]);
           XLSX.utils.book_append_sheet(wb,detWs,"Per Job");
+        } else if(viewMode==="operator"){
+          const hdr=[
+            cell("Date",hdrSt),cell("Shift",hdrSt),cell("Operator",hdrSt),
+            cell("Job(s)",hdrSt),cell("Customer",hdrSt),cell("Product(s)",hdrSt),
+            cell("Run Speed",hdrRt),cell("Downtime",hdrRt),
+            cell("Target (m)",hdrRt),cell("Available (m)",hdrRt),cell("Actual (m)",hdrRt),cell("Efficiency",{...hdrSt,align:"center"}),cell("OEE",{...hdrSt,align:"center"}),
+          ];
+          const dataRows=[hdr];
+          operatorRows.forEach((g,i)=>{
+            const bg=i%2===0?rowEv.bg:rowOd.bg;
+            const r={sz:11,fc:COL.white,bg};
+            const rr={sz:11,fc:COL.white,bg,align:"right"};
+            dataRows.push([
+              cell(g.date,{...r,bold:true,fc:COL.accent}),
+              cell(g.shift==="Night Shift"?"🌙 Night":"☀ Day",{...r,fc:g.shift==="Night Shift"?COL.blue:COL.accent}),
+              cell(g.operator,{...r,bold:true,fc:"3FB950"}),
+              cell(g.jobList||"—",{...r,fc:COL.accent}),
+              cell(g.customerList||"—",r),
+              cell(g.productList||"—",{...r,fc:COL.muted}),
+              g.runSpeed?num(g.runSpeed,rr):cell("⚠ not set",{...r,fc:COL.warn,align:"right"}),
+              g.downtime?num(g.downtime,rr):cell("—",{...r,align:"right"}),
+              g.targetMeters!=null?num(g.targetMeters,rr):cell("—",{...r,align:"right"}),
+              num(g.rowAvail||0,{...rr,fc:COL.blue}),
+              num(Math.round(g.actualMeters)||0,{...rr,bold:true}),
+              pct(g.efficiency),
+              pct(g.oeeRow),
+            ]);
+          });
+          dataRows.push(Array(13).fill(null));
+          dataRows.push([
+            cell("TOTALS / OVERALL",totSt),null,null,null,null,null,null,null,
+            num(totalTarget||0,totRt),
+            num(totalAvailableMeters,{...totRt,fc:COL.blue}),
+            num(Math.round(totalActual),{...totRt,fc:COL.white}),
+            pct(avgEff),pct(oee),
+          ]);
+          const detWs=makeSheet(dataRows,[12,12,18,16,22,30,12,10,12,12,12,12,10]);
+          XLSX.utils.book_append_sheet(wb,detWs,"Per Operator");
         }
 
         XLSX.writeFile(wb,`Efficiency-Report-${dateFrom}-to-${dateTo}-${mode.replace(" ","-")}.xlsx`);
@@ -3087,7 +3173,7 @@
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:10}}>
             <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em"}}>FILTERS</div>
             <div style={{display:"flex",gap:6}}>
-              {[["shift","Per Shift","☀"],["job","Per Job","📋"]].map(([mode,label,icon])=>(
+              {[["shift","Per Shift","☀"],["job","Per Job","📋"],["operator","Per Operator","👤"]].map(([mode,label,icon])=>(
                 <button key={mode} onClick={()=>setViewMode(mode)} style={{
                   padding:"6px 16px",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,
                   background:viewMode===mode?C.accent:C.panel,color:viewMode===mode?"#fff":C.muted,
@@ -3133,7 +3219,7 @@
         {/* ── Summary cards ── */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginBottom:16}}>
           {[
-            {label:viewMode==="job"?"JOBS":"SHIFTS",     value:rows.length,                              color:C.blue},
+            {label:viewMode==="job"?"JOBS":viewMode==="operator"?"OPERATOR SHIFTS":"SHIFTS",     value:rows.length,                              color:C.blue},
             {label:"ACTUAL METERS",                       value:Math.round(totalActual).toLocaleString()+" m", color:C.text},
             {label:"TARGET METERS",                       value:totalTarget?totalTarget.toLocaleString()+" m":"—", color:C.muted},
             {label:"AVAILABLE METERS",  value:totalAvailableMeters.toLocaleString()+" m", color:C.blue, sub:`${totalWorkingDays} days × 2 shifts × 140m/min × 80%`, tip:`${totalWorkingDays} working days × 2 shifts × 140 m/min × 80% uptime`},
@@ -3193,6 +3279,8 @@
                   <tr>
                     {viewMode==="shift"?<>
                       {TH2("Date")}{TH2("Shift")}{TH2("Job(s)")}{TH2("Customer")}{TH2("Product(s)")}{TH2("Operator(s)")}{TH2("Speed",true)}{TH2("DT",true)}{TH2("Target (m)",true)}{TH2("Available (m)",true)}{TH2("Actual (m)",true)}{TH2("Efficiency")}{TH2("OEE")}
+                    </>:viewMode==="operator"?<>
+                      {TH2("Date")}{TH2("Shift")}{TH2("Operator")}{TH2("Job(s)")}{TH2("Customer")}{TH2("Product(s)")}{TH2("Speed",true)}{TH2("DT",true)}{TH2("Target (m)",true)}{TH2("Available (m)",true)}{TH2("Actual (m)",true)}{TH2("Efficiency")}{TH2("OEE")}
                     </>:<>
                       {TH2("Job No")}{TH2("Date Range")}{TH2("Shifts",true)}{TH2("Customer")}{TH2("Product(s)")}{TH2("Operator(s)")}{TH2("Speed",true)}{TH2("DT",true)}{TH2("Target (m)",true)}{TH2("Available (m)",true)}{TH2("Actual (m)",true)}{TH2("Efficiency")}{TH2("OEE")}
                     </>}
@@ -3241,6 +3329,44 @@
                       </tr>
                       );
                     })
+                    :viewMode==="operator"
+                    ?operatorRows.map((g,i)=>(
+                      <tr key={g.date+g.shift+g.operator} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
+                        <td style={{padding:"8px 10px",color:C.text,whiteSpace:"nowrap",fontWeight:600}}>{g.date}</td>
+                        <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
+                          <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:g.shift==="Night Shift"?C.blue+"33":C.accent+"33",color:g.shift==="Night Shift"?C.blue:C.accent,fontWeight:700}}>
+                            {g.shift==="Night Shift"?"🌙 Night":"☀ Day"}
+                          </span>
+                        </td>
+                        <td style={{padding:"8px 10px",color:C.success,fontWeight:700,whiteSpace:"nowrap"}}>{g.operator}</td>
+                        <td style={{padding:"8px 10px",color:C.accent,fontSize:11}}>{g.jobList||"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.text,fontSize:11}}>{g.customerList||"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.muted,fontSize:11,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={g.productList}>{g.productList||"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.text,textAlign:"right",whiteSpace:"nowrap"}}>{g.runSpeed?`${g.runSpeed} m/min`:<span style={{color:C.warn,fontSize:10}}>⚠ not set</span>}</td>
+                        <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{g.downtime||"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{g.targetMeters!=null?g.targetMeters.toLocaleString():"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.blue,textAlign:"right",fontWeight:600}}>{(g.rowAvail||0).toLocaleString()}</td>
+                        <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{g.actualMeters>0?Math.round(g.actualMeters).toLocaleString():"—"}</td>
+                        <td style={{padding:"8px 10px",minWidth:110}}>{g.efficiency!==null
+                          ?<div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{flex:1,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                                <div style={{width:`${Math.min(g.efficiency,100)}%`,height:"100%",background:effColor(g.efficiency),borderRadius:4}} />
+                              </div>
+                              <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{g.efficiency}%</span>
+                            </div>
+                          :<span style={{color:C.warn,fontSize:10}}>⚠ no speed data</span>
+                        }</td>
+                        <td style={{padding:"8px 10px",minWidth:100}}>{g.oeeRow!==null
+                          ?<div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{flex:1,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                                <div style={{width:`${Math.min(g.oeeRow,100)}%`,height:"100%",background:effColor(g.oeeRow),borderRadius:4}} />
+                              </div>
+                              <span style={{color:effColor(g.oeeRow),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{g.oeeRow}%</span>
+                            </div>
+                          :<span style={{color:C.muted,fontSize:10}}>—</span>
+                        }</td>
+                      </tr>
+                    ))
                     :jobRows.map((g,i)=>{
                       const rowAvail=Math.round(OEE_SPEED*g.totalShiftMins*OEE_AVAIL);
                       const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
