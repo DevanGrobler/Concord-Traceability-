@@ -2774,38 +2774,166 @@
         const now=new Date().toLocaleString();
         const mode=viewMode==="job"?"Per Job":"Per Shift";
 
-        // Summary sheet
-        const summaryData=[
-          ["Concord Packaging — Efficiency Report"],
-          ["Generated:",now],
-          ["Period:",`${dateFrom} to ${dateTo}`],
-          ["View Mode:",mode],
-          ["Filters:",`Shift: ${filterShift} | Operator: ${filterOperator} | Customer: ${filterCustomer}`],
-          [],
-          ["Total Actual Meters:",Math.round(totalActual)],
-          ["Total Target Meters:",totalTarget||"—"],
-          ["Overall Efficiency:",avgEff!==null?avgEff+"%":"—"],
-        ];
-        XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summaryData),"Summary");
+        // ── Colour palette (hex, no #) ──
+        const COL = {
+          darkBg:   "0D1117", panel:    "161B22", border:   "30363D",
+          accent:   "F0A500", success:  "3FB950", danger:   "F85149",
+          warn:     "D29922", blue:     "58A6FF", muted:    "8B949E",
+          white:    "E6EDF3", black:    "000000",
+        };
 
-        // Detail sheet
+        const effBg = (e) => e==null?"FFFFFF":e>=90?"3FB950":e>=70?"D29922":"F85149";
+        const effFg = (e) => e==null?"8B949E":"FFFFFF";
+
+        // ── Style factories ──
+        const st = (opts={}) => ({
+          font:      {name:"Calibri",sz:opts.sz||11,bold:!!opts.bold,color:{rgb:opts.fc||COL.black}},
+          fill:      opts.bg?{patternType:"solid",fgColor:{rgb:opts.bg}}:{patternType:"none"},
+          alignment: {horizontal:opts.align||"left",vertical:"center",wrapText:!!opts.wrap},
+          border: {
+            top:    {style:"thin",color:{rgb:COL.border}},
+            bottom: {style:"thin",color:{rgb:COL.border}},
+            left:   {style:"thin",color:{rgb:COL.border}},
+            right:  {style:"thin",color:{rgb:COL.border}},
+          },
+        });
+
+        const cell=(v,opts={})=>({v,t:opts.t||"s",s:st(opts)});
+        const num =(v,opts={})=>({v:v||0,t:"n",s:st({...opts,align:opts.align||"right"})});
+        const pct =(v,opts={})=>({v:v!=null?v+"%":"—",t:"s",s:st({...opts,align:"center",bold:true,fc:effFg(v),bg:effBg(v)})});
+
+        // ── Helper: write a worksheet from a 2D array of cell objects ──
+        const makeSheet=(rows2d,colWidths)=>{
+          const ws={};
+          let maxR=0,maxC=0;
+          rows2d.forEach((row,r)=>{
+            row.forEach((c,col)=>{
+              if(!c) return;
+              const addr=XLSX.utils.encode_cell({r,c:col});
+              ws[addr]=c;
+              if(r>maxR) maxR=r;
+              if(col>maxC) maxC=col;
+            });
+          });
+          ws["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:maxR,c:maxC}});
+          if(colWidths) ws["!cols"]=colWidths.map(w=>({wch:w}));
+          return ws;
+        };
+
+        // ════════════════════════════════════════════════════════════
+        // SHEET 1 — SUMMARY
+        // ════════════════════════════════════════════════════════════
+        const titleSt  ={sz:16,bold:true,fc:COL.accent,bg:COL.darkBg};
+        const subSt    ={sz:11,fc:COL.muted,bg:COL.darkBg};
+        const kSt      ={sz:11,bold:true,fc:COL.muted,bg:COL.panel};
+        const vSt      ={sz:11,fc:COL.white,bg:COL.panel};
+
+        const summaryRows=[
+          [cell("CONCORD PACKAGING — EFFICIENCY REPORT",{...titleSt,align:"center"}),null,null],
+          [cell(`Generated: ${now}`,{...subSt}),null,null],
+          [null],
+          [cell("Period",kSt),   cell(`${dateFrom}  →  ${dateTo}`,vSt)],
+          [cell("View Mode",kSt),cell(mode,vSt)],
+          [cell("Shift Filter",kSt), cell(filterShift==="all"?"All Shifts":filterShift,vSt)],
+          [cell("Operator",kSt), cell(filterOperator==="all"?"All Operators":filterOperator,vSt)],
+          [cell("Customer",kSt), cell(filterCustomer==="all"?"All Customers":filterCustomer,vSt)],
+          [null],
+          [cell("RESULTS",{sz:12,bold:true,fc:COL.accent,bg:COL.darkBg}),null],
+          [cell(viewMode==="job"?"Jobs Analysed":"Shifts Analysed",kSt), num(rows.length,{fc:COL.blue,bg:COL.panel,align:"left"})],
+          [cell("Total Actual Meters",kSt), num(Math.round(totalActual),{fc:COL.white,bg:COL.panel,align:"left"})],
+          [cell("Total Target Meters",kSt), num(totalTarget||0,{fc:COL.muted,bg:COL.panel,align:"left"})],
+          [cell("Overall Efficiency",{...kSt,bold:true}), pct(avgEff)],
+        ];
+
+        const sumWs=makeSheet(summaryRows,[30,28]);
+        // Merge title row
+        sumWs["!merges"]=[{s:{r:0,c:0},e:{r:0,c:2}}];
+        XLSX.utils.book_append_sheet(wb,sumWs,"Summary");
+
+        // ════════════════════════════════════════════════════════════
+        // SHEET 2 — DETAIL (Per Shift or Per Job)
+        // ════════════════════════════════════════════════════════════
+        const hdrSt={sz:10,bold:true,fc:COL.white,bg:COL.darkBg,align:"center"};
+        const hdrRt={sz:10,bold:true,fc:COL.white,bg:COL.darkBg,align:"right"};
+        const rowEv={sz:11,fc:COL.white,bg:COL.panel};
+        const rowOd={sz:11,fc:COL.white,bg:"1C2128"};
+        const rowRt=(bg)=>({sz:11,fc:COL.white,bg,align:"right"});
+        const totSt={sz:11,bold:true,fc:COL.accent,bg:COL.darkBg};
+        const totRt={sz:11,bold:true,fc:COL.accent,bg:COL.darkBg,align:"right"};
+
         if(viewMode==="shift"){
-          const rows2=[["Date","Shift","Job No(s)","Customer","Product","Operator","Run Speed (m/min)","Downtime","Shift Mins","Target (m)","Actual (m)","Efficiency %"]];
-          shiftRows.forEach(g=>{
-            rows2.push([g.date,g.shift,g.jobList,g.customerList,g.productList,g.operatorList,g.runSpeed||"",g.downtime||"",g.shiftMins,g.targetMeters||"",Math.round(g.actualMeters)||"",g.efficiency!=null?g.efficiency+"%":""]);
+          const hdr=[
+            cell("Date",hdrSt),cell("Shift",hdrSt),cell("Job No(s)",hdrSt),
+            cell("Customer",hdrSt),cell("Product(s)",hdrSt),cell("Operator(s)",hdrSt),
+            cell("Run Speed",hdrRt),cell("Downtime",hdrRt),
+            cell("Target (m)",hdrRt),cell("Actual (m)",hdrRt),cell("Efficiency",{...hdrSt,align:"center"}),
+          ];
+          const dataRows=[hdr];
+          shiftRows.forEach((g,i)=>{
+            const bg=i%2===0?rowEv.bg:rowOd.bg;
+            const r={sz:11,fc:COL.white,bg};
+            const rr={sz:11,fc:COL.white,bg,align:"right"};
+            dataRows.push([
+              cell(g.date,{...r,bold:true,fc:COL.accent}),
+              cell(g.shift==="Night Shift"?"🌙 Night":"☀ Day",{...r,fc:g.shift==="Night Shift"?COL.blue:COL.accent}),
+              cell(g.jobList||"—",{...r,fc:COL.accent}),
+              cell(g.customerList||"—",r),
+              cell(g.productList||"—",{...r,fc:COL.muted}),
+              cell(g.operatorList||"—",{...r,fc:COL.muted}),
+              g.runSpeed?num(g.runSpeed,rr):cell("⚠ not set",{...r,fc:COL.warn,align:"right"}),
+              g.downtime?num(g.downtime,rr):cell("—",{...r,align:"right"}),
+              g.targetMeters!=null?num(g.targetMeters,rr):cell("—",{...r,align:"right"}),
+              num(Math.round(g.actualMeters)||0,{...rr,bold:true}),
+              pct(g.efficiency),
+            ]);
           });
+          // Blank row
+          dataRows.push(Array(11).fill(null));
           // Totals
-          rows2.push([]);
-          rows2.push(["","","","","","","","","TOTAL",totalTarget||"",Math.round(totalActual),avgEff!=null?avgEff+"%":""]);
-          XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows2),"Per Shift");
+          dataRows.push([
+            cell("TOTALS / OVERALL",totSt),null,null,null,null,null,null,null,
+            num(totalTarget||0,{...totRt}),
+            num(Math.round(totalActual),{...totRt,fc:COL.white}),
+            pct(avgEff),
+          ]);
+          const detWs=makeSheet(dataRows,[12,12,18,22,30,22,12,10,12,12,12]);
+          XLSX.utils.book_append_sheet(wb,detWs,"Per Shift");
+
         } else {
-          const rows2=[["Job No","Date Range","Dates","Shifts","Customers","Products","Operators","Run Speed (m/min)","Downtime","Total Shift Mins","Num Shifts","Target (m)","Actual (m)","Efficiency %"]];
-          jobRows.forEach(g=>{
-            rows2.push([g.jobNo,g.dateRange,g.dateList,[...g.shifts].join(", "),g.customerList,g.productList,g.operatorList,g.runSpeed||"",g.downtime||"",g.totalShiftMins,g.numShifts,g.targetMeters||"",Math.round(g.actualMeters)||"",g.efficiency!=null?g.efficiency+"%":""]);
+          const hdr=[
+            cell("Job No",hdrSt),cell("Date Range",hdrSt),cell("Shifts",hdrRt),
+            cell("Customer",hdrSt),cell("Product(s)",hdrSt),cell("Operator(s)",hdrSt),
+            cell("Run Speed",hdrRt),cell("Downtime",hdrRt),
+            cell("Target (m)",hdrRt),cell("Actual (m)",hdrRt),cell("Efficiency",{...hdrSt,align:"center"}),
+          ];
+          const dataRows=[hdr];
+          jobRows.forEach((g,i)=>{
+            const bg=i%2===0?rowEv.bg:rowOd.bg;
+            const r={sz:11,fc:COL.white,bg};
+            const rr={sz:11,fc:COL.white,bg,align:"right"};
+            dataRows.push([
+              cell(g.jobNo,{...r,bold:true,fc:COL.accent}),
+              cell(g.dateRange||"—",{...r,fc:COL.blue}),
+              num(g.numShifts,rr),
+              cell(g.customerList||"—",r),
+              cell(g.productList||"—",{...r,fc:COL.muted}),
+              cell(g.operatorList||"—",{...r,fc:COL.muted}),
+              g.runSpeed?num(g.runSpeed,rr):cell("⚠ not set",{...r,fc:COL.warn,align:"right"}),
+              g.downtime?num(g.downtime,rr):cell("—",{...r,align:"right"}),
+              g.targetMeters!=null?num(g.targetMeters,rr):cell("—",{...r,align:"right"}),
+              num(Math.round(g.actualMeters)||0,{...rr,bold:true}),
+              pct(g.efficiency),
+            ]);
           });
-          rows2.push([]);
-          rows2.push(["","","","","","","","","","","TOTAL",totalTarget||"",Math.round(totalActual),avgEff!=null?avgEff+"%":""]);
-          XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows2),"Per Job");
+          dataRows.push(Array(11).fill(null));
+          dataRows.push([
+            cell("TOTALS / OVERALL",totSt),null,null,null,null,null,null,null,
+            num(totalTarget||0,totRt),
+            num(Math.round(totalActual),{...totRt,fc:COL.white}),
+            pct(avgEff),
+          ]);
+          const detWs=makeSheet(dataRows,[16,18,8,22,30,22,12,10,12,12,12]);
+          XLSX.utils.book_append_sheet(wb,detWs,"Per Job");
         }
 
         XLSX.writeFile(wb,`Efficiency-Report-${dateFrom}-to-${dateTo}-${mode.replace(" ","-")}.xlsx`);
