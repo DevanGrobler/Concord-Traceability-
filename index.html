@@ -2795,6 +2795,7 @@
       const workDays = new Set(
         ((shiftTimes&&shiftTimes.workDays)||["Monday","Tuesday","Wednesday","Thursday","Friday"])
         .map(d=>String(d).toLowerCase())
+        .filter(d=>d!=="saturday"&&d!=="sunday") // always exclude weekends
       );
       const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
 
@@ -2802,7 +2803,8 @@
         let count = 0;
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         for(let d = 1; d <= daysInMonth; d++){
-          if(workDays.has(DAY_NAMES[new Date(year, month, d).getDay()])) count++;
+          const dayName = DAY_NAMES[new Date(year, month, d).getDay()];
+          if(dayName!=="saturday"&&dayName!=="sunday"&&workDays.has(dayName)) count++;
         }
         return count;
       };
