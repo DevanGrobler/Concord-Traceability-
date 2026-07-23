@@ -317,6 +317,7 @@
       product_ink_codes:[],
       product_speeds: DEFAULT_PRODUCT_SPEEDS,
       shift_times: DEFAULT_SHIFT_TIMES,
+      oee_params: {maxSpeed:200, loadingFactor:70, downtimeProvision:20},
       product_name_printing:baseProductNames,
       product_name_lamination:baseProductNames,
       product_name_extruders:baseProductNames,
@@ -2131,6 +2132,7 @@
       const isProductInkCodes=activeList==="product_ink_codes";
       const isProductSpeeds=activeList==="product_speeds";
       const isShiftTimes=activeList==="shift_times";
+      const isOeeParams=activeList==="oee_params";
 
       // Customer Products state
       const [cpEntries,setCpEntries]=useState([]); // [{customer,products:[]}]
@@ -2151,6 +2153,9 @@
       // Shift Times state
       const [stTimes,setStTimes]=useState({...DEFAULT_SHIFT_TIMES});
 
+      // OEE Parameters state
+      const [oeeParams,setOeeParams]=useState({maxSpeed:200,loadingFactor:70,downtimeProvision:20});
+
       React.useEffect(()=>{
         if(isCustomerProducts){
           const raw=appLists.customer_products||[];
@@ -2170,6 +2175,11 @@
         if(isShiftTimes){
           const raw=appLists.shift_times||DEFAULT_SHIFT_TIMES;
           setStTimes({...DEFAULT_SHIFT_TIMES,...(typeof raw==="object"&&!Array.isArray(raw)?raw:{})});
+          return;
+        }
+        if(isOeeParams){
+          const raw=appLists.oee_params||{maxSpeed:200,loadingFactor:70,downtimeProvision:20};
+          setOeeParams({maxSpeed:200,loadingFactor:70,downtimeProvision:20,...(typeof raw==="object"&&!Array.isArray(raw)?raw:{})});
           return;
         }
         const raw=appLists[activeList]||[];
@@ -2264,6 +2274,7 @@
           <button onClick={()=>setActiveList("product_ink_codes")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="product_ink_codes"?C.blue:C.panel,color:activeList==="product_ink_codes"?"#fff":C.muted,outline:activeList==="product_ink_codes"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>🎨 Product Ink Codes</button>
           <button onClick={()=>setActiveList("product_speeds")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="product_speeds"?C.blue:C.panel,color:activeList==="product_speeds"?"#fff":C.muted,outline:activeList==="product_speeds"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>📈 Product Speeds</button>
           <button onClick={()=>setActiveList("shift_times")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="shift_times"?C.blue:C.panel,color:activeList==="shift_times"?"#fff":C.muted,outline:activeList==="shift_times"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>🕐 Shift Times</button>
+          <button onClick={()=>setActiveList("oee_params")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="oee_params"?C.blue:C.panel,color:activeList==="oee_params"?"#fff":C.muted,outline:activeList==="oee_params"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>⚙ OEE Parameters</button>
           {allListKeys.map(k=>(
             <button key={k} onClick={()=>setActiveList(k)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList===k?C.accent:C.panel,color:activeList===k?"#fff":C.muted,outline:activeList===k?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>{LIST_LABELS[k]}</button>
           ))}
@@ -2462,8 +2473,56 @@
           <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{ setSaving(true); await dbUpsertList("shift_times",JSON.stringify(stTimes)); await reload(); flash("Shift times saved!"); setSaving(false); }} disabled={saving}>{saving?"Saving…":"💾 Save Shift Times"}</button>
         </div>}
 
+        {/* ── OEE Parameters editor ── */}
+        {isOeeParams&&<div>
+          <SC title="OEE Parameters">
+            <div style={{fontSize:12,color:C.muted,marginBottom:16,padding:"10px 14px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+              These values are used to calculate <strong style={{color:C.accent}}>Available Meters</strong> in the Efficiency Report.<br/>
+              <span style={{color:C.muted,fontSize:11}}>Formula: Max Speed × Loading Factor% × (100 − Downtime%) × Shift Minutes</span>
+            </div>
+            <Grid cols={3}>
+              <div style={S.card}>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>MACHINE MAX SPEED</div>
+                <F label="Max Speed (m/min)">
+                  <input type="number" style={S.input} value={oeeParams.maxSpeed} onChange={e=>setOeeParams(p=>({...p,maxSpeed:parseFloat(e.target.value)||200}))} />
+                </F>
+                <div style={{fontSize:11,color:C.muted,marginTop:8}}>The absolute maximum speed of your press.</div>
+              </div>
+              <div style={S.card}>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>LOADING FACTOR</div>
+                <F label="Loading Factor (%)">
+                  <input type="number" style={S.input} value={oeeParams.loadingFactor} min="1" max="100" onChange={e=>setOeeParams(p=>({...p,loadingFactor:parseFloat(e.target.value)||70}))} />
+                </F>
+                <div style={{fontSize:11,color:C.muted,marginTop:8}}>
+                  Effective speed = {oeeParams.maxSpeed} × {oeeParams.loadingFactor}% = <strong style={{color:C.accent}}>{Math.round(oeeParams.maxSpeed*(oeeParams.loadingFactor/100))} m/min</strong>
+                </div>
+              </div>
+              <div style={S.card}>
+                <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>DOWNTIME PROVISION</div>
+                <F label="Downtime Provision (%)">
+                  <input type="number" style={S.input} value={oeeParams.downtimeProvision} min="0" max="99" onChange={e=>setOeeParams(p=>({...p,downtimeProvision:parseFloat(e.target.value)||20}))} />
+                </F>
+                <div style={{fontSize:11,color:C.muted,marginTop:8}}>
+                  Available time = 100% − {oeeParams.downtimeProvision}% = <strong style={{color:C.accent}}>{100-oeeParams.downtimeProvision}% of shift</strong>
+                </div>
+              </div>
+            </Grid>
+            <div style={{...S.card,marginTop:8,background:C.accent+"11",border:`1px solid ${C.accent}33`}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.accent,marginBottom:6}}>CALCULATED AVAILABLE METERS PER 12-HOUR SHIFT</div>
+              <div style={{fontSize:22,fontWeight:800,color:C.accent}}>
+                {Math.round(oeeParams.maxSpeed*(oeeParams.loadingFactor/100)*720*((100-oeeParams.downtimeProvision)/100)).toLocaleString()} m
+              </div>
+              <div style={{fontSize:11,color:C.muted,marginTop:4}}>
+                {oeeParams.maxSpeed} m/min × {oeeParams.loadingFactor}% × 720 min × {100-oeeParams.downtimeProvision}%
+              </div>
+            </div>
+          </SC>
+          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{ setSaving(true); await dbUpsertList("oee_params",JSON.stringify(oeeParams)); await reload(); flash("OEE parameters saved!"); setSaving(false); }} disabled={saving}>{saving?"Saving…":"💾 Save OEE Parameters"}</button>
+          <div style={{color:C.muted,fontSize:11,marginTop:8}}>Changes take effect immediately in the Efficiency Report.</div>
+        </div>}
+
         {/* ── Regular list editor ── */}
-        {!isCustomerProducts&&!isProductInkCodes&&!isProductSpeeds&&!isShiftTimes&&<div>
+        {!isCustomerProducts&&!isProductInkCodes&&!isProductSpeeds&&!isShiftTimes&&!isOeeParams&&<div>
           <SC title={LIST_LABELS[activeList]}>
             {items.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:12}}>No items yet — add some below.</div>}
             {items.map((item,i)=>(
@@ -2789,8 +2848,11 @@
       const avgEff=(totalTarget>0&&totalActual>0)?Math.min(Math.round((totalActual/totalTarget)*100),999):null;
 
       // ── OEE — Available Meters calculation ───────────────────────────────────
-      const OEE_SPEED   = 140;
-      const OEE_AVAIL   = 0.80;
+      const oeeParamsCfg = (appLists.oee_params&&typeof appLists.oee_params==="object"&&!Array.isArray(appLists.oee_params))
+        ? appLists.oee_params
+        : {maxSpeed:200,loadingFactor:70,downtimeProvision:20};
+      const OEE_SPEED = Math.round((oeeParamsCfg.maxSpeed||200) * ((oeeParamsCfg.loadingFactor||70)/100));
+      const OEE_AVAIL = (100-(oeeParamsCfg.downtimeProvision||20))/100;
 
       const workDays = new Set(
         ((shiftTimes&&shiftTimes.workDays)||["Monday","Tuesday","Wednesday","Thursday","Friday"])
