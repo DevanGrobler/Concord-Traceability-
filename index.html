@@ -2894,6 +2894,7 @@
               jobList:[...g.jobNos].join(", ")};
           });
       };
+      const shiftRows=buildShiftRows(filtered);
       const jobRows=buildJobRows(filtered);
       const operatorRows=buildOperatorRows(filtered);
       const rows=viewMode==="job"?jobRows:viewMode==="operator"?operatorRows:shiftRows;
