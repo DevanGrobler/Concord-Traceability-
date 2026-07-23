@@ -2789,40 +2789,37 @@
       const avgEff=(totalTarget>0&&totalActual>0)?Math.min(Math.round((totalActual/totalTarget)*100),999):null;
 
       // ── OEE — Available Meters calculation ───────────────────────────────────
-      // Machine max = 200 m/min, loading = 70% → effective = 140 m/min
-      // Downtime provision = 20% → available time = 80% of shift
-      // Available per shift = 140 × shiftMins × 0.80
-      const OEE_SPEED   = 140;  // m/min (200 × 70%)
-      const OEE_AVAIL   = 0.80; // 80% of shift time available
+      const OEE_SPEED   = 140;
+      const OEE_AVAIL   = 0.80;
 
-      // Count working days in the FULL CALENDAR MONTH(S) covered by the date range
-      // Reference shift schedule for which days are working days
-      const workDays = new Set((shiftTimes.workDays||["Monday","Tuesday","Wednesday","Thursday","Friday"]).map(d=>d.toLowerCase()));
+      const workDays = new Set(
+        ((shiftTimes&&shiftTimes.workDays)||["Monday","Tuesday","Wednesday","Thursday","Friday"])
+        .map(d=>String(d).toLowerCase())
+      );
       const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
 
-      // Determine the months spanned by the date range
       const countWorkingDaysInMonth = (year, month) => {
         let count = 0;
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         for(let d = 1; d <= daysInMonth; d++){
-          const dayName = DAY_NAMES[new Date(year, month, d).getDay()];
-          if(workDays.has(dayName)) count++;
+          if(workDays.has(DAY_NAMES[new Date(year, month, d).getDay()])) count++;
         }
         return count;
       };
 
-      // Get unique year-months from the date range
-      const from = new Date(dateFrom);
-      const to   = new Date(dateTo);
+      // Count working days across all calendar months in the date range
       let totalWorkingDays = 0;
-      let cur = new Date(from.getFullYear(), from.getMonth(), 1);
-      while(cur <= to){
-        totalWorkingDays += countWorkingDaysInMonth(cur.getFullYear(), cur.getMonth());
-        cur.setMonth(cur.getMonth() + 1);
-      }
+      try {
+        const fromDate = new Date(dateFrom+"T00:00:00");
+        const toDate   = new Date(dateTo+"T00:00:00");
+        let cur = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+        const limit = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
+        while(cur <= limit){
+          totalWorkingDays += countWorkingDaysInMonth(cur.getFullYear(), cur.getMonth());
+          cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+        }
+      } catch(e){ totalWorkingDays = 22; }
 
-      // Each working day = 2 shifts (day + night), each shift = dayMins or nightMins
-      // Use average shift mins for simplicity (both are 720 here)
       const avgShiftMins = (dayMins + nightMins) / 2;
       const totalAvailableMeters = Math.round(OEE_SPEED * avgShiftMins * OEE_AVAIL * totalWorkingDays * 2);
       const oee = (totalAvailableMeters > 0 && totalActual > 0)
