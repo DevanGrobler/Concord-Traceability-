@@ -759,6 +759,7 @@
     // ── Shift auto-detect ─────────────────────────────────────────────────────
     function getShiftFromTime(){
       const h=new Date().getHours();
+      // Day shift 07:00–18:59, Night shift 19:00–06:59 (crosses midnight)
       return (h>=7&&h<19)?"Day Shift":"Night Shift";
     }
 
