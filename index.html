@@ -2754,6 +2754,13 @@
         return bestEntry;
       };
 
+      // ── OEE constants (defined early so all build functions can use them) ─────
+      const oeeParamsCfg = (appLists.oee_params&&typeof appLists.oee_params==="object"&&!Array.isArray(appLists.oee_params))
+        ? appLists.oee_params
+        : {maxSpeed:200,loadingFactor:70,downtimeProvision:20};
+      const OEE_SPEED = Math.round((oeeParamsCfg.maxSpeed||200) * ((oeeParamsCfg.loadingFactor||70)/100));
+      const OEE_AVAIL = (100-(oeeParamsCfg.downtimeProvision||20))/100;
+
       // ── BUILD SHIFT ROWS ─────────────────────────────────────────────────────
       const buildShiftRows=(recs)=>{
         const map={};
@@ -2896,11 +2903,7 @@
       const avgEff=(totalTarget>0&&totalActual>0)?Math.min(Math.round((totalActual/totalTarget)*100),999):null;
 
       // ── OEE — Available Meters calculation ───────────────────────────────────
-      const oeeParamsCfg = (appLists.oee_params&&typeof appLists.oee_params==="object"&&!Array.isArray(appLists.oee_params))
-        ? appLists.oee_params
-        : {maxSpeed:200,loadingFactor:70,downtimeProvision:20};
-      const OEE_SPEED = Math.round((oeeParamsCfg.maxSpeed||200) * ((oeeParamsCfg.loadingFactor||70)/100));
-      const OEE_AVAIL = (100-(oeeParamsCfg.downtimeProvision||20))/100;
+      // (OEE_SPEED and OEE_AVAIL defined above near build functions)
 
       const workDays = new Set(
         ((shiftTimes&&shiftTimes.workDays)||["Monday","Tuesday","Wednesday","Thursday","Friday"])
