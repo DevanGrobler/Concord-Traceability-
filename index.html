@@ -2810,15 +2810,17 @@
       // Count working days across all calendar months in the date range
       let totalWorkingDays = 0;
       try {
-        const fromDate = new Date(dateFrom+"T00:00:00");
-        const toDate   = new Date(dateTo+"T00:00:00");
-        let cur = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
-        const limit = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
-        while(cur <= limit){
-          totalWorkingDays += countWorkingDaysInMonth(cur.getFullYear(), cur.getMonth());
-          cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+        const fromDate = new Date(dateFrom+"T12:00:00");
+        const toDate   = new Date(dateTo+"T12:00:00");
+        const fromY=fromDate.getFullYear(), fromM=fromDate.getMonth();
+        const toY=toDate.getFullYear(),   toM=toDate.getMonth();
+        let y=fromY, m=fromM;
+        while(y<toY||(y===toY&&m<=toM)){
+          totalWorkingDays+=countWorkingDaysInMonth(y,m);
+          m++; if(m>11){m=0;y++;}
         }
-      } catch(e){ totalWorkingDays = 22; }
+      } catch(e){ totalWorkingDays=22; }
+      if(totalWorkingDays===0) totalWorkingDays=22; // safe fallback
 
       const avgShiftMins = (dayMins + nightMins) / 2;
       const totalAvailableMeters = Math.round(OEE_SPEED * avgShiftMins * OEE_AVAIL * totalWorkingDays * 2);
@@ -3070,13 +3072,14 @@
             {label:viewMode==="job"?"JOBS":"SHIFTS",     value:rows.length,                              color:C.blue},
             {label:"ACTUAL METERS",                       value:Math.round(totalActual).toLocaleString()+" m", color:C.text},
             {label:"TARGET METERS",                       value:totalTarget?totalTarget.toLocaleString()+" m":"—", color:C.muted},
-            {label:"AVAILABLE METERS",                    value:totalAvailableMeters.toLocaleString()+" m",color:C.blue,  tip:`${totalWorkingDays} working days × 2 shifts × 140 m/min × 80% uptime`},
-            {label:"EFFICIENCY (vs Target)",              value:avgEff!==null?avgEff+"%":"—",            color:avgEff!==null?effColor(avgEff):C.muted},
-            {label:"OEE (vs Available)",                  value:oee!==null?oee+"%":"—",                  color:oee!==null?effColor(oee):C.muted,  tip:"Actual ÷ Available × 100"},
-          ].map(({label,value,color,tip})=>(
+            {label:"AVAILABLE METERS",  value:totalAvailableMeters.toLocaleString()+" m", color:C.blue, sub:`${totalWorkingDays} days × 2 shifts × 140m/min × 80%`, tip:`${totalWorkingDays} working days × 2 shifts × 140 m/min × 80% uptime`},
+            {label:"EFFICIENCY (vs Target)", value:avgEff!==null?avgEff+"%":"—", color:avgEff!==null?effColor(avgEff):C.muted},
+            {label:"OEE (vs Available)",     value:oee!==null?oee+"%":"—",       color:oee!==null?effColor(oee):C.muted, sub:"Actual ÷ Available", tip:`Actual ÷ Available (${totalWorkingDays} working days)`},
+          ].map(({label,value,color,tip,sub})=>(
             <div key={label} style={{...S.card,textAlign:"center",padding:14,marginBottom:0}} title={tip||""}>
               <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{label}</div>
               <div style={{fontSize:22,fontWeight:800,color}}>{value}</div>
+              {sub&&<div style={{fontSize:9,color:C.muted,marginTop:4}}>{sub}</div>}
             </div>
           ))}
         </div>
