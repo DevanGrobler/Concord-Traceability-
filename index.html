@@ -782,7 +782,8 @@
         if(!res.ok){ setErr(res.msg); return; }
         const now=new Date();
         const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
-        onConfirm({signedBy:res.name,signedAt:timeStr,signedShift:getShiftFromTime()});
+        const dateStr=now.toISOString().split("T")[0];
+        onConfirm({signedBy:res.name,signedAt:timeStr,signedDate:dateStr,signedShift:getShiftFromTime()});
         setUn(""); setPin(""); setErr("");
       };
       return <div style={{display:"flex",gap:6,alignItems:"center",padding:"6px 8px",background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,flexWrap:"wrap",marginTop:4}}>
@@ -797,21 +798,24 @@
     // ── Signed badge ──────────────────────────────────────────────────────────
     function SignedBadge({row}){
       if(!row?.signedBy) return <div style={{fontSize:10,color:C.muted,fontStyle:"italic",padding:"2px 0"}}>— awaiting sign-off</div>;
-      return <div style={{fontSize:10,color:C.success,fontWeight:600,lineHeight:1.5}}>✔ {row.signedBy}<br/><span style={{color:C.muted,fontWeight:400}}>{row.signedShift} · {row.signedAt}</span></div>;
+      return <div style={{fontSize:10,color:C.success,fontWeight:600,lineHeight:1.5}}>
+        ✔ {row.signedBy}
+        <span style={{color:C.muted,fontWeight:400}}> · {row.signedShift}{row.signedDate?` · ${row.signedDate}`:""} · {row.signedAt}</span>
+      </div>;
     }
 
     // ── Production Form ───────────────────────────────────────────────────────
-    const eP    = () => ({material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedShift:""});
-    const ePOut = () => ({material:"",batchNo:"",qty:"",unit:"",meters:"",time:"",signedBy:"",signedAt:"",signedShift:""});
-    const eI    = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:"",signedBy:"",signedAt:"",signedShift:""});
-    const eSv   = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:"",signedBy:"",signedAt:"",signedShift:""});
+    const eP    = () => ({material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""});
+    const ePOut = () => ({material:"",batchNo:"",qty:"",unit:"",meters:"",time:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""});
+    const eI    = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""});
+    const eSv   = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""});
 
     function ProductionForm({onSave,onReset,users=[],lists={}}){
       const [hdr,setHdr]=useState(()=>({date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""}));
       const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([ePOut()]);
-      const [returnBopp,setReturnBopp]=useState([{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedShift:""}]);
+      const [returnBopp,setReturnBopp]=useState([{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
       const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eSv()]);
-      const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedShift:""}]);
+      const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
       const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
       const {errors:fErr,validate,clear:clrErr}=useFormValidation();
@@ -883,7 +887,8 @@
               {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off this entry" onConfirm={sig=>{
                 const now=new Date();
                 const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
-                setRawOut(a=>a.map((x,xi)=>xi===i?{...x,...sig,time:x.time||timeStr}:x));
+                const dateStr=now.toISOString().split("T")[0];
+                setRawOut(a=>a.map((x,xi)=>xi===i?{...x,...sig,time:x.time||timeStr,signedDate:dateStr}:x));
               }} />}
             </div>
           ))}
@@ -913,7 +918,7 @@
               {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off return" onConfirm={sig=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,...sig}:x))} />}
             </div>
           ))}
-          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setReturnBopp(a=>[...a,{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedShift:""}])}>+ Add Row</button>
+          <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setReturnBopp(a=>[...a,{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}])}>+ Add Row</button>
         </SC>
         <SC title="BOPP Waste">
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
@@ -936,7 +941,7 @@
               {r.signedBy?<SignedBadge row={r} />:<PinPrompt label="Sign off this entry" onConfirm={sig=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,...sig}:x))} />}
             </div>
           ))}
-          <button style={S.btn("ghost",{marginTop:2,fontSize:11})} onClick={()=>setBoppWaste(a=>[...a,{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedShift:""}])}>+ Add Row</button>
+          <button style={S.btn("ghost",{marginTop:2,fontSize:11})} onClick={()=>setBoppWaste(a=>[...a,{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}])}>+ Add Row</button>
         </SC>
         <SC title="Ink Input">
           <THead cols={["Ink Code","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)",""]} widths={["2.5fr","1fr","1.2fr","1.5fr","1fr","1fr","40px"]} />
@@ -2724,36 +2729,51 @@
         recs.forEach(r=>{
           const h=r.data?.header||{};
           const key=h.jobNo||"(no job)";
-          if(!map[key]) map[key]={jobNo:key,dates:new Set(),shifts:new Set(),operators:new Set(),customers:new Set(),products:new Set(),sheets:[],actualMeters:0,shiftCount:0};
+          if(!map[key]) map[key]={jobNo:key,dates:new Set(),shifts:new Set(),shiftSlots:new Set(),operators:new Set(),customers:new Set(),products:new Set(),sheets:[],actualMeters:0};
           const g=map[key];
-          if(h.date) g.dates.add(h.date);
-          if(h.shift) g.shifts.add(h.shift);
           if(h.operator) g.operators.add(h.operator);
           if(h.customer) g.customers.add(h.customer);
           if(h.productName) g.products.add(h.productName);
           g.sheets.push(r);
-          (r.data?.rawOut||[]).forEach(x=>{ g.actualMeters+=parseFloat(x.meters||0); });
+          // Use signedDate+signedShift from each rawOut entry to count exact shift slots
+          (r.data?.rawOut||[]).forEach(x=>{
+            g.actualMeters+=parseFloat(x.meters||0);
+            if(x.signedDate&&x.signedShift){
+              g.shiftSlots.add(`${x.signedDate}__${x.signedShift}`);
+              g.dates.add(x.signedDate);
+              g.shifts.add(x.signedShift);
+            } else if(x.signedDate){
+              // fallback: derive shift from time
+              const hr=parseInt((x.signedAt||x.time||"12:00").split(":")[0]||12);
+              const sh=(hr>=7&&hr<19)?"Day Shift":"Night Shift";
+              g.shiftSlots.add(`${x.signedDate}__${sh}`);
+              g.dates.add(x.signedDate);
+              g.shifts.add(sh);
+            }
+          });
+          // Fallback for old records without signedDate — use header date+shift
+          if(g.shiftSlots.size===0){
+            g.shiftSlots.add(`${h.date||""}__${h.shift||""}`);
+            if(h.date) g.dates.add(h.date);
+            if(h.shift) g.shifts.add(h.shift);
+          }
         });
-        // Count distinct shift-slots for this job
         return Object.values(map).sort((a,b)=>{
           const da=[...a.dates].sort().pop()||"";
           const db=[...b.dates].sort().pop()||"";
           return da<db?1:da>db?-1:0;
         }).map(g=>{
-          // Count how many unique date+shift combos this job spanned
-          const shiftSlots=new Set();
-          g.sheets.forEach(r=>{ const h=r.data?.header||{}; shiftSlots.add(`${h.date}__${h.shift}`); });
-          const numShifts=shiftSlots.size;
-          const shiftMinsTotal=g.sheets.reduce((a,r)=>{ const h=r.data?.header||{}; return a+(h.shift==="Night Shift"?nightMins:dayMins); },0)/Math.max(numShifts,1)*numShifts;
-          // Target = speed × total shift time (sum of each distinct shift's duration)
+          const numShifts=g.shiftSlots.size;
+          // Total shift minutes = sum of each slot's duration
           let totalShiftMins=0;
-          shiftSlots.forEach(slot=>{ const shift=slot.split("__")[1]||""; totalShiftMins+=(shift==="Night Shift"?nightMins:dayMins); });
+          g.shiftSlots.forEach(slot=>{ const sh=slot.split("__")[1]||""; totalShiftMins+=(sh==="Night Shift"?nightMins:dayMins); });
           const best=getBestSpeed(g.sheets);
           const runSpeed=best?.runSpeed||null;
           const downtime=best?.downtime||null;
           const targetMeters=(runSpeed&&downtime&&totalShiftMins)?Math.round((runSpeed*totalShiftMins)/downtime):null;
           const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
-          const dateRange=([...g.dates].sort()[0]||"")+([...g.dates].sort().pop()&&[...g.dates].sort().pop()!==[...g.dates].sort()[0]?" → "+[...g.dates].sort().pop():"");
+          const sortedDates=[...g.dates].sort();
+          const dateRange=sortedDates.length>1?`${sortedDates[0]} → ${sortedDates.pop()}`:(sortedDates[0]||"—");
           return {...g,numShifts,totalShiftMins,runSpeed,downtime,targetMeters,efficiency,dateRange,
             operatorList:[...g.operators].join(", "),customerList:[...g.customers].join(", "),
             productList:[...g.products].join(", "),dateList:[...g.dates].sort().join(", ")};
