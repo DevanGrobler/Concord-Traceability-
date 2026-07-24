@@ -1580,22 +1580,19 @@
     // ── Excel Export ──────────────────────────────────────────────────────────
     function exportToExcel(records){
       const wb=XLSX.utils.book_new();
-      const summaryData=[
-        ["Concord Packaging Traceability — Export"],
-        ["Generated:",new Date().toLocaleString()],
-        ["Total Records:",records.length],
-        [],
-        ["ID","Type","Title","Completed By","Date & Time"],
-        ...records.map(r=>[r.id,r.type,r.title,r.created_by,new Date(r.created_at).toLocaleString()])
-      ];
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(summaryData),"Summary");
 
       const prodRecs=records.filter(r=>r.type==="production");
       if(prodRecs.length){
-        const rows=[["Completed By","Date","Shift","Job Card Number","Continuation Of","Customer","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]];
+        const rows=[
+          ["Concord Packaging Traceability — Production Export"],
+          ["Generated:",new Date().toLocaleString()],
+          ["Total Records:",prodRecs.length],
+          [],
+          ["Completed By","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]
+        ];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
-          rows.push([r.created_by,h.date,h.shift,h.jobNo,h.continuationOf||"",h.customer,h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
+          rows.push([r.created_by,h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
           if(r.data?.rawIn?.length){
             rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit","Signed By","Shift","Time"]);
             r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
