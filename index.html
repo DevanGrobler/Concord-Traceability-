@@ -3194,8 +3194,8 @@
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:10}}>
-            <F label="Date From"><TI type="date" value={dateFrom} onChange={v=>setDateFrom(v)} /></F>
-            <F label="Date To"><TI type="date" value={dateTo} onChange={v=>setDateTo(v)} /></F>
+            <F label="Date From"><input type="date" style={{...S.input,background:"#e8eaed",color:"#1a1a1a",colorScheme:"light"}} value={dateFrom} onChange={e=>setDateFrom(e.target.value)} /></F>
+            <F label="Date To"><input type="date" style={{...S.input,background:"#e8eaed",color:"#1a1a1a",colorScheme:"light"}} value={dateTo} onChange={e=>setDateTo(e.target.value)} /></F>
             <F label="Shift">
               <select style={S.input} value={filterShift} onChange={e=>setFilterShift(e.target.value)}>
                 <option value="all">All Shifts</option>
