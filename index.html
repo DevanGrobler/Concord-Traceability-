@@ -812,7 +812,7 @@
     const eSv   = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""});
 
     function ProductionForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState(()=>({date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",width:"",length:"",speed:"",operator:"",supervisor:""}));
+      const [hdr,setHdr]=useState(()=>({date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",widthA:"",widthB:"",lengthA:"",lengthB:"",speed:"",operator:"",supervisor:""}));
       const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([ePOut()]);
       const [returnBopp,setReturnBopp]=useState([{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
       const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eSv()]);
@@ -849,8 +849,30 @@
             <F label="Customer"><TS value={hdr.customer} onChange={v=>{ h("customer",v); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
             <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_printing")} /></F>
             <F label="Substrate"><TS value={hdr.substrate} onChange={v=>h("substrate",v)} options={(lists.substrate||["BOPP","BOPP MAT","PET","PET MAT"]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.substrate} /></F>
-            <F label="Width (mm)"><TS value={hdr.width} onChange={v=>h("width",v)} options={(lists.width||[]).map(String).filter(Boolean)} /></F>
-            <F label="Length (m)"><TI type="number" value={hdr.length} onChange={v=>h("length",v)} /></F>
+            <F label="Width (mm)" col={2}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <div style={{fontSize:10,color:C.accent,fontWeight:700,marginBottom:4}}>A</div>
+                  <TS value={hdr.widthA} onChange={v=>h("widthA",v)} options={(lists.width||[]).map(String).filter(Boolean)} />
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:C.blue,fontWeight:700,marginBottom:4}}>B</div>
+                  <TS value={hdr.widthB} onChange={v=>h("widthB",v)} options={(lists.width||[]).map(String).filter(Boolean)} />
+                </div>
+              </div>
+            </F>
+            <F label="Length (m)" col={2}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <div style={{fontSize:10,color:C.accent,fontWeight:700,marginBottom:4}}>A</div>
+                  <TI type="number" value={hdr.lengthA} onChange={v=>h("lengthA",v)} placeholder="0" />
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:C.blue,fontWeight:700,marginBottom:4}}>B</div>
+                  <TI type="number" value={hdr.lengthB} onChange={v=>h("lengthB",v)} placeholder="0" />
+                </div>
+              </div>
+            </F>
             <F label="Speed (m/min)"><TI type="number" value={hdr.speed} onChange={v=>h("speed",v)} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
@@ -1588,11 +1610,11 @@
           ["Generated:",new Date().toLocaleString()],
           ["Total Records:",prodRecs.length],
           [],
-          ["Completed By","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width","Length","Speed","Operator","Supervisor","Remarks"]
+          ["Completed By","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks"]
         ];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
-          rows.push([r.created_by,h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,h.width,h.length,h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
+          rows.push([r.created_by,h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,h.widthA||h.width||"",h.widthB||"",h.lengthA||h.length||"",h.lengthB||"",h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
           if(r.data?.rawIn?.length){
             rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit","Signed By","Shift","Time"]);
             r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
@@ -1807,7 +1829,7 @@
       return <div>
         <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>JOB DETAILS</div>
         <Grid cols={4}>
-          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],["substrate","Substrate","text"],["width","Width","number"],["length","Length","number"],["speed","Speed","number"],["operator","Operator","text"],["supervisor","Supervisor","text"]].map(([k,label,type])=>(
+          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],["substrate","Substrate","text"],["widthA","Width A (mm)","text"],["widthB","Width B (mm)","text"],["lengthA","Length A (m)","number"],["lengthB","Length B (m)","number"],["speed","Speed","number"],["operator","Operator","text"],["supervisor","Supervisor","text"]].map(([k,label,type])=>(
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
@@ -1899,7 +1921,7 @@
           </div>
         )}
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
-          {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Customer",h.customer],["Product Name",h.productName],["Substrate",h.substrate],["Width",h.width],["Length",h.length],["Speed",h.speed],["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
+          {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Customer",h.customer],["Product Name",h.productName],["Substrate",h.substrate],["Width A (mm)",h.widthA||h.width],["Width B (mm)",h.widthB],["Length A (m)",h.lengthA||h.length],["Length B (m)",h.lengthB],["Speed",h.speed],["Operator",h.operator],["Supervisor",h.supervisor]].map(([k,v])=>(
             <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
           ))}
         </div>
