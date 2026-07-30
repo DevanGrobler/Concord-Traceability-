@@ -17,6 +17,9 @@
     ::-webkit-scrollbar-track { background: #0d1117; }
     ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
     input, select, textarea, button { font-family: 'IBM Plex Mono', monospace; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
   </style>
 </head>
 <body>
@@ -719,7 +722,11 @@
       return <div style={{gridColumn:`span ${col}`}}><label style={S.label}>{label}</label>{children}</div>;
     }
     function TI({value,onChange,type="text",placeholder="",onKeyDown}){
-      return <input type={type} style={S.input} value={value} placeholder={placeholder} onChange={e=>onChange(e.target.value)} onKeyDown={onKeyDown} />;
+      return <input type={type} style={S.input} value={value} placeholder={placeholder}
+        onChange={e=>onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        onWheel={e=>e.target.blur()}
+      />;
     }
     function TS({value,onChange,options}){
       return <select style={S.input} value={value} onChange={e=>onChange(e.target.value)}>
