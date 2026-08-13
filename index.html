@@ -818,30 +818,77 @@
     const eI    = () => ({inkCode:"",description:"",inkType:"",batchNo:"",supplier:"",qty:"",returned:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""});
     const eSv   = () => ({solvent:"",supplier:"",batchNo:"",qty:"",returned:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""});
 
+    const DRAFT_KEY = "cpk_production_draft";
+
     function ProductionForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState(()=>({date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",widthA:"",widthB:"",lengthA:"",lengthB:"",speed:"",operator:"",supervisor:""}));
-      const [rawIn,setRawIn]=useState([eP()]); const [rawOut,setRawOut]=useState([ePOut()]);
-      const [returnBopp,setReturnBopp]=useState([{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
-      const [inks,setInks]=useState([eI()]); const [solvents,setSolv]=useState([eSv()]);
-      const [boppWaste,setBoppWaste]=useState([{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
-      const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
+      // ── Draft restore ──────────────────────────────────────────────────────
+      const loadDraft=()=>{
+        try{ const d=localStorage.getItem(DRAFT_KEY); return d?JSON.parse(d):null; }catch{ return null; }
+      };
+      const draft=loadDraft();
+
+      const [hdr,setHdr]=useState(()=>draft?.hdr||{date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",widthA:"",widthB:"",lengthA:"",lengthB:"",speed:"",operator:"",supervisor:""});
+      const [rawIn,setRawIn]=useState(()=>draft?.rawIn||[eP()]);
+      const [rawOut,setRawOut]=useState(()=>draft?.rawOut||[ePOut()]);
+      const [returnBopp,setReturnBopp]=useState(()=>draft?.returnBopp||[{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
+      const [inks,setInks]=useState(()=>draft?.inks||[eI()]);
+      const [solvents,setSolv]=useState(()=>draft?.solvents||[eSv()]);
+      const [boppWaste,setBoppWaste]=useState(()=>draft?.boppWaste||[{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
+      const [remarks,setRemarks]=useState(()=>draft?.remarks||"");
+      const [saved,setSaved]=useState(false);
+      const [draftRestored,setDraftRestored]=useState(!!draft);
+      const [draftTime,setDraftTime]=useState(draft?.savedAt||"");
+      const [lastSaved,setLastSaved]=useState("");
+
+      // ── Auto-save draft every 30 seconds ──────────────────────────────────
+      React.useEffect(()=>{
+        const interval=setInterval(()=>{
+          if(saved) return;
+          const now=new Date().toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+          try{
+            localStorage.setItem(DRAFT_KEY,JSON.stringify({hdr,rawIn,rawOut,returnBopp,inks,solvents,boppWaste,remarks,savedAt:now}));
+            setLastSaved(now);
+          }catch(e){}
+        },30000);
+        return ()=>clearInterval(interval);
+      },[hdr,rawIn,rawOut,returnBopp,inks,solvents,boppWaste,remarks,saved]);
+
+      const clearDraft=()=>{ try{ localStorage.removeItem(DRAFT_KEY); }catch{} };
+      const discardDraft=()=>{ clearDraft(); onReset(); };
+
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
       const {errors:fErr,validate,clear:clrErr}=useFormValidation();
       const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
       const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
       const asSign=(fn,i,sig)=>fn(a=>a.map((r,x)=>x===i?{...r,...sig}:r));
       const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
-      if(saved) return <Done label="Production Sheet" reset={onReset} />;
+      if(saved) return <Done label="Production Sheet" reset={()=>{ clearDraft(); onReset(); }} />;
       const save=async()=>{
         if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},customer:{value:hdr.customer,label:"Customer"},substrate:{value:hdr.substrate,label:"Substrate"},operator:{value:hdr.operator,label:"Operator"}})) return;
         const now=new Date();
         const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
         const finalRawOut=rawOut.map((row,xi)=>xi===rawOut.length-1&&!row.time?{...row,time:timeStr}:row);
         const normBopp=boppWaste.map(r=>({...r,printingBopp:r.printingBopp===""?"0":r.printingBopp,rawBopp:r.rawBopp===""?"0":r.rawBopp}));
-        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,returnBopp,boppWaste:normBopp,inks,solvents,remarks}}); setSaved(true);
+        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,returnBopp,boppWaste:normBopp,inks,solvents,remarks}});
+        clearDraft();
+        setSaved(true);
       };
       return <div>
         <PH title="Daily Production Sheet Printing" sub="Record job details, materials, inks and solvents" />
+
+        {/* ── Draft restored banner ── */}
+        {draftRestored&&(
+          <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"12px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,color:C.warn,fontWeight:700}}>⚠ Draft restored from {draftTime}</span>
+            <span style={{fontSize:12,color:C.muted}}>Your previous session was recovered. Continue where you left off.</span>
+            <button style={{...S.btn("ghost",{padding:"5px 14px",fontSize:12}),color:C.danger,outline:`1px solid ${C.danger}`,marginLeft:"auto"}} onClick={discardDraft}>Discard Draft</button>
+          </div>
+        )}
+
+        {/* ── Auto-save indicator ── */}
+        {lastSaved&&!draftRestored&&(
+          <div style={{fontSize:10,color:C.success,textAlign:"right",marginBottom:8}}>✔ Draft auto-saved at {lastSaved}</div>
+        )}
         {Object.keys(fErr).length>0&&<div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>⚠ Please complete all required fields before saving.</div>}
         <SC title="Job Details">
           <Grid cols={4}>
