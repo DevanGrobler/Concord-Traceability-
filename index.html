@@ -2821,40 +2821,26 @@
         recs.forEach(r=>{
           const h=r.data?.header||{};
           const key=h.jobNo||"(no job)";
-          if(!map[key]) map[key]={jobNo:key,dates:new Set(),shifts:new Set(),shiftSlots:new Set(),operators:new Set(),customers:new Set(),products:new Set(),sheets:[],actualMeters:0};
+          if(!map[key]) map[key]={jobNo:key,dates:new Set(),shifts:new Set(),shiftSlots:new Set(),hasSignedDates:false,operators:new Set(),customers:new Set(),products:new Set(),sheets:[],actualMeters:0,fallbackShift:h.shift||"Day Shift",fallbackDate:h.date||""};
           const g=map[key];
           if(h.operator) g.operators.add(h.operator);
           if(h.customer) g.customers.add(h.customer);
           if(h.productName) g.products.add(h.productName);
+          if(h.date) g.dates.add(h.date);
           g.sheets.push(r);
-          // Use signedDate+signedShift from each rawOut entry to count exact shift slots
           (r.data?.rawOut||[]).forEach(x=>{
             g.actualMeters+=parseFloat(x.meters||0);
-            if(x.signedDate&&x.signedShift){
-              g.shiftSlots.add(`${x.signedDate}__${x.signedShift}`);
-              g.dates.add(x.signedDate);
-              g.shifts.add(x.signedShift);
-            } else if(x.signedDate){
-              // fallback: derive shift from time
+            if(x.signedDate){
+              g.hasSignedDates=true;
               const hr=parseInt((x.signedAt||x.time||"12:00").split(":")[0]||12);
-              const sh=(hr>=7&&hr<19)?"Day Shift":"Night Shift";
+              const sh=x.signedShift||((hr>=7&&hr<19)?"Day Shift":"Night Shift");
               g.shiftSlots.add(`${x.signedDate}__${sh}`);
               g.dates.add(x.signedDate);
               g.shifts.add(sh);
             }
           });
-          // Fallback for old records without signedDate
-          if(g.shiftSlots.size===0){
-            const startDate=h.date||"";
-            if(startDate) g.dates.add(startDate);
-            if(h.shift) g.shifts.add(h.shift);
-            // Mark as needing estimation — will be resolved in map step below
-            g.needsShiftEstimate=true;
-            g.fallbackShift=h.shift||"Day Shift";
-            g.fallbackDate=startDate;
-            g.shiftSlots.add(`${startDate}__${h.shift||"Day Shift"}`);
-          }
         });
+
         return Object.values(map).sort((a,b)=>{
           const da=[...a.dates].sort().pop()||"";
           const db=[...b.dates].sort().pop()||"";
@@ -2863,28 +2849,33 @@
           const best=getBestSpeed(g.sheets);
           const runSpeed=best?.runSpeed||null;
           const downtime=best?.downtime||null;
-          const fallbackShiftMins=g.fallbackShift==="Night Shift"?nightMins:dayMins;
+          const fallbackShiftMins=(g.fallbackShift==="Night Shift"?nightMins:dayMins);
 
           let totalShiftMins=0;
           let numShifts=0;
 
-          if(g.needsShiftEstimate&&runSpeed&&downtime&&g.actualMeters>0){
-            // Estimate number of shifts from actual meters produced
-            const metersPerShift=Math.round((runSpeed*fallbackShiftMins)/downtime);
-            numShifts=Math.max(1,Math.round(g.actualMeters/metersPerShift));
-            totalShiftMins=numShifts*fallbackShiftMins;
-          } else {
+          if(g.hasSignedDates){
+            // Accurate: use actual date+shift stamps
             numShifts=g.shiftSlots.size;
             g.shiftSlots.forEach(slot=>{ const sh=slot.split("__")[1]||""; totalShiftMins+=(sh==="Night Shift"?nightMins:dayMins); });
+          } else if(runSpeed&&downtime&&g.actualMeters>0){
+            // Old record: estimate shifts from meters produced ÷ expected meters per shift
+            const metersPerShift=Math.round((runSpeed*fallbackShiftMins)/downtime);
+            numShifts=metersPerShift>0?Math.max(1,Math.round(g.actualMeters/metersPerShift)):1;
+            totalShiftMins=numShifts*fallbackShiftMins;
+          } else {
+            // Last resort: one shift
+            numShifts=1;
+            totalShiftMins=fallbackShiftMins;
           }
 
           const targetMeters=(runSpeed&&downtime&&totalShiftMins)?Math.round((runSpeed*totalShiftMins)/downtime):null;
           const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
           const sortedDates=[...g.dates].sort();
-          const dateRange=sortedDates.length>1?`${sortedDates[0]} → ${sortedDates.pop()}`:(sortedDates[0]||"—");
+          const dateRange=sortedDates.length>1?`${sortedDates[0]} → ${sortedDates[sortedDates.length-1]}`:(sortedDates[0]||"—");
           return {...g,numShifts,totalShiftMins,runSpeed,downtime,targetMeters,efficiency,dateRange,
             operatorList:[...g.operators].join(", "),customerList:[...g.customers].join(", "),
-            productList:[...g.products].join(", "),dateList:[...g.dates].sort().join(", ")};
+            productList:[...g.products].join(", "),dateList:sortedDates.join(", ")};
         });
       };
 
