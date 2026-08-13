@@ -2843,11 +2843,16 @@
               g.shifts.add(sh);
             }
           });
-          // Fallback for old records without signedDate — use header date+shift
+          // Fallback for old records without signedDate
           if(g.shiftSlots.size===0){
-            g.shiftSlots.add(`${h.date||""}__${h.shift||""}`);
-            if(h.date) g.dates.add(h.date);
+            const startDate=h.date||"";
+            if(startDate) g.dates.add(startDate);
             if(h.shift) g.shifts.add(h.shift);
+            // Mark as needing estimation — will be resolved in map step below
+            g.needsShiftEstimate=true;
+            g.fallbackShift=h.shift||"Day Shift";
+            g.fallbackDate=startDate;
+            g.shiftSlots.add(`${startDate}__${h.shift||"Day Shift"}`);
           }
         });
         return Object.values(map).sort((a,b)=>{
@@ -2855,13 +2860,24 @@
           const db=[...b.dates].sort().pop()||"";
           return da<db?1:da>db?-1:0;
         }).map(g=>{
-          const numShifts=g.shiftSlots.size;
-          // Total shift minutes = sum of each slot's duration
-          let totalShiftMins=0;
-          g.shiftSlots.forEach(slot=>{ const sh=slot.split("__")[1]||""; totalShiftMins+=(sh==="Night Shift"?nightMins:dayMins); });
           const best=getBestSpeed(g.sheets);
           const runSpeed=best?.runSpeed||null;
           const downtime=best?.downtime||null;
+          const fallbackShiftMins=g.fallbackShift==="Night Shift"?nightMins:dayMins;
+
+          let totalShiftMins=0;
+          let numShifts=0;
+
+          if(g.needsShiftEstimate&&runSpeed&&downtime&&g.actualMeters>0){
+            // Estimate number of shifts from actual meters produced
+            const metersPerShift=Math.round((runSpeed*fallbackShiftMins)/downtime);
+            numShifts=Math.max(1,Math.round(g.actualMeters/metersPerShift));
+            totalShiftMins=numShifts*fallbackShiftMins;
+          } else {
+            numShifts=g.shiftSlots.size;
+            g.shiftSlots.forEach(slot=>{ const sh=slot.split("__")[1]||""; totalShiftMins+=(sh==="Night Shift"?nightMins:dayMins); });
+          }
+
           const targetMeters=(runSpeed&&downtime&&totalShiftMins)?Math.round((runSpeed*totalShiftMins)/downtime):null;
           const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
           const sortedDates=[...g.dates].sort();
