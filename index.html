@@ -2864,10 +2864,35 @@
         });
         return Object.values(map).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).map(g=>{
           const shiftMins=g.shift==="Night Shift"?nightMins:dayMins;
-          const best=getBestSpeed(g.sheets);
-          const runSpeed=best?.runSpeed||null;
-          const downtime=best?.downtime||null;
-          const targetMeters=(runSpeed&&downtime&&shiftMins)?Math.round((runSpeed*shiftMins)/downtime):null;
+
+          // Weighted target — each job contributes its own speed proportionally
+          // For each sheet, calculate meters and find its speed
+          // Target = sum of (sheetMeters / totalMeters) × shiftMins × speed / downtime
+          let weightedTarget=null;
+          if(g.actualMeters>0){
+            let totalWeighted=0;
+            let allHaveSpeed=true;
+            g.sheets.forEach(r=>{
+              const h=r.data?.header||{};
+              const sheetMeters=(r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0);
+              const speedEntry=productSpeeds.find(s=>
+                s.customer?.toLowerCase().trim()===h.customer?.toLowerCase().trim()&&
+                s.product?.toLowerCase().trim()===h.productName?.toLowerCase().trim()
+              );
+              if(speedEntry&&speedEntry.runSpeed&&speedEntry.downtime){
+                // This job's share of the target
+                const weight=sheetMeters/g.actualMeters;
+                totalWeighted+=weight*(speedEntry.runSpeed*shiftMins/speedEntry.downtime);
+              } else {
+                allHaveSpeed=false;
+              }
+            });
+            if(totalWeighted>0) weightedTarget=Math.round(totalWeighted);
+          }
+
+          const runSpeed=null; // no single speed — weighted
+          const downtime=null;
+          const targetMeters=weightedTarget;
           const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
           return {...g,shiftMins,runSpeed,downtime,targetMeters,efficiency,
             operatorList:[...g.operators].join(", "),customerList:[...g.customers].join(", "),
@@ -3408,8 +3433,10 @@
                         <td style={{padding:"8px 10px",color:C.text,fontSize:11}}>{g.customerList||"—"}</td>
                         <td style={{padding:"8px 10px",color:C.muted,fontSize:11,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={g.productList}>{g.productList||"—"}</td>
                         <td style={{padding:"8px 10px",color:C.muted,fontSize:11}}>{g.operatorList||"—"}</td>
-                        <td style={{padding:"8px 10px",color:C.text,textAlign:"right",whiteSpace:"nowrap"}}>{g.runSpeed?`${g.runSpeed} m/min`:<span style={{color:C.warn,fontSize:10}}>⚠ not set</span>}</td>
-                        <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{g.downtime||"—"}</td>
+                        <td style={{padding:"8px 10px",color:C.text,textAlign:"right",whiteSpace:"nowrap"}}>
+                          {g.sheets.length>1?<span style={{color:C.blue,fontSize:10}}>weighted</span>:g.runSpeed?`${g.runSpeed} m/min`:<span style={{color:C.warn,fontSize:10}}>⚠ not set</span>}
+                        </td>
+                        <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{g.sheets.length>1?"—":g.downtime||"—"}</td>
                         <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{g.targetMeters!=null?g.targetMeters.toLocaleString():"—"}</td>
                         <td style={{padding:"8px 10px",color:C.blue,textAlign:"right",fontWeight:600}}>{rowAvail.toLocaleString()}</td>
                         <td style={{padding:"8px 10px",color:C.text,fontWeight:700,textAlign:"right"}}>{g.actualMeters>0?Math.round(g.actualMeters).toLocaleString():"—"}</td>
