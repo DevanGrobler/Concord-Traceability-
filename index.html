@@ -2796,6 +2796,8 @@
       // Settings
       const productSpeeds=Array.isArray(appLists.product_speeds)?appLists.product_speeds:DEFAULT_PRODUCT_SPEEDS;
       const shiftTimes=(appLists.shift_times&&typeof appLists.shift_times==="object"&&!Array.isArray(appLists.shift_times))?appLists.shift_times:DEFAULT_SHIFT_TIMES;
+      // Debug info
+      const psSource=Array.isArray(appLists.product_speeds)?"database ("+appLists.product_speeds.length+" entries)":"DEFAULT_PRODUCT_SPEEDS ("+DEFAULT_PRODUCT_SPEEDS.length+" entries)";
 
       // Shift duration in minutes
       const parseTime=t=>{ const [h,m]=(t||"00:00").split(":").map(Number); return h*60+(m||0); };
@@ -3261,6 +3263,16 @@
 
       return <div>
         <PH title="Efficiency Report" sub="Printing press efficiency vs target speed" />
+
+        {/* Debug banner — remove once matching is confirmed working */}
+        <div style={{background:C.blue+"11",border:`1px solid ${C.blue}33`,borderRadius:6,padding:"8px 14px",marginBottom:12,fontSize:11,color:C.muted}}>
+          🔍 Speed data source: <strong style={{color:C.blue}}>{psSource}</strong>
+          {allProd.length>0&&(()=>{
+            const sample=allProd[0]?.data?.header||{};
+            const match=productSpeeds.find(s=>s.customer?.toLowerCase().trim()===sample.customer?.toLowerCase().trim()&&s.product?.toLowerCase().trim()===sample.productName?.toLowerCase().trim());
+            return <span> · Sample record: customer=<strong>"{sample.customer}"</strong> product=<strong>"{sample.productName}"</strong> → {match?<span style={{color:C.success}}>✔ matched ({match.runSpeed} m/min)</span>:<span style={{color:C.danger}}>✕ no match</span>}</span>;
+          })()}
+        </div>
 
         {/* ── Filters ── */}
         <div style={S.card}>
