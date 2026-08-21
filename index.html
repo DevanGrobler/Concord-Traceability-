@@ -2479,23 +2479,34 @@
             </div>
             <input style={{...S.input,maxWidth:320,marginBottom:14}} value={psSearch} onChange={e=>setPsSearch(e.target.value)} placeholder="Search customer or product…" />
             <div style={{display:"grid",gridTemplateColumns:"2fr 3fr 100px 100px 40px",gap:6,marginBottom:6,padding:"0 4px"}}>
-              {["Customer","Product","Run Speed","Downtime",""].map(h=><div key={h} style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.06em"}}>{h}</div>)}
+              {["Customer","Product","Run Speed (m/min)","Downtime",""].map(h=><div key={h} style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.06em"}}>{h}</div>)}
             </div>
-            {psEntries.filter(e=>!psSearch||(e.customer+e.product).toLowerCase().includes(psSearch.toLowerCase())).map((e,i)=>(
+            {psEntries.filter(e=>!psSearch||(e.customer+e.product).toLowerCase().includes(psSearch.toLowerCase())).map((e,i)=>{
+              // Get products for this customer from customer_products or fall back to full list
+              const custProds=getProductsForCustomer(e.customer,appLists,"product_name_printing");
+              return (
               <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 3fr 100px 100px 40px",gap:6,marginBottom:4,alignItems:"center"}}>
-                <input style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.customer} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,customer:ev.target.value}:x))} placeholder="Customer" />
-                <input style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.product} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,product:ev.target.value}:x))} placeholder="Product" />
-                <input type="number" style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.runSpeed} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,runSpeed:parseFloat(ev.target.value)||0}:x))} placeholder="m/min" />
-                <input type="number" step="0.1" style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.downtime} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,downtime:parseFloat(ev.target.value)||1}:x))} placeholder="1.2" />
+                <select style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.customer} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,customer:ev.target.value,product:""}:x))}>
+                  <option value="">— Customer —</option>
+                  {(appLists.customer||[]).map(String).filter(Boolean).map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+                <select style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.product} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,product:ev.target.value}:x))}>
+                  <option value="">— Product —</option>
+                  {custProds.map(p=><option key={p} value={p}>{p}</option>)}
+                </select>
+                <input type="number" style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.runSpeed} onWheel={e=>e.target.blur()} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,runSpeed:parseFloat(ev.target.value)||0}:x))} placeholder="m/min" />
+                <input type="number" step="0.1" style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.downtime} onWheel={e=>e.target.blur()} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,downtime:parseFloat(ev.target.value)||1}:x))} placeholder="1.2" />
                 <button style={S.btn("danger",{padding:"3px 7px",fontSize:11})} onClick={()=>setPsEntries(a=>a.filter((_,xi)=>xi!==i))}>✕</button>
               </div>
-            ))}
+              );
+            })}
             <button style={S.btn("ghost",{marginTop:10,fontSize:11})} onClick={()=>setPsEntries(a=>[...a,{customer:"",product:"",runSpeed:130,downtime:1.2}])}>+ Add Row</button>
           </SC>
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
             <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{ setSaving(true); await dbUpsertList("product_speeds",JSON.stringify(psEntries)); await reload(); flash("Product speeds saved!"); setSaving(false); }} disabled={saving}>{saving?"Saving…":"💾 Save Product Speeds"}</button>
             <button style={S.btn("ghost",{padding:"12px 16px",fontSize:12})} onClick={()=>setPsEntries(DEFAULT_PRODUCT_SPEEDS)}>↺ Reset to Defaults</button>
           </div>
+          <div style={{color:C.muted,fontSize:11,marginTop:8}}>Customer and product names match exactly what operators select on production sheets — no mismatches possible.</div>
         </div>}
 
         {/* ── Shift Times editor ── */}
@@ -2905,22 +2916,20 @@
             // Accurate: use actual date+shift stamps
             numShifts=g.shiftSlots.size;
             g.shiftSlots.forEach(slot=>{ const sh=slot.split("__")[1]||""; totalShiftMins+=(sh==="Night Shift"?nightMins:dayMins); });
-          } else if(runSpeed&&downtime&&g.actualMeters>0){
-            // Old record: estimate shifts from meters produced ÷ expected meters per shift
-            const metersPerShift=Math.round((runSpeed*fallbackShiftMins)/downtime);
-            numShifts=metersPerShift>0?Math.max(1,Math.round(g.actualMeters/metersPerShift)):1;
-            totalShiftMins=numShifts*fallbackShiftMins;
           } else {
-            // Last resort: one shift
-            numShifts=1;
-            totalShiftMins=fallbackShiftMins;
+            // Old record — no signedDate, efficiency will show as null (no data)
+            numShifts=0;
+            totalShiftMins=0;
           }
 
           const targetMeters=(runSpeed&&downtime&&totalShiftMins)?Math.round((runSpeed*totalShiftMins)/downtime):null;
-          const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
+          // Only show efficiency for records with accurate signedDate stamps
+          // Old records without signedDate show null (no data) — no guessing
+          const efficiency=(targetMeters&&g.actualMeters>0&&g.hasSignedDates)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
+          const isEstimated=false; // no longer used
           const sortedDates=[...g.dates].sort();
           const dateRange=sortedDates.length>1?`${sortedDates[0]} → ${sortedDates[sortedDates.length-1]}`:(sortedDates[0]||"—");
-          return {...g,numShifts,totalShiftMins,runSpeed,downtime,targetMeters,efficiency,dateRange,
+          return {...g,numShifts,totalShiftMins,runSpeed,downtime,targetMeters,efficiency,isEstimated,dateRange,
             operatorList:[...g.operators].join(", "),customerList:[...g.customers].join(", "),
             productList:[...g.products].join(", "),dateList:sortedDates.join(", ")};
         });
@@ -3438,7 +3447,9 @@
                               </div>
                               <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{g.efficiency}%</span>
                             </div>
-                          :<span style={{color:C.warn,fontSize:10}}>⚠ no speed data</span>
+                          :g.runSpeed
+                            ?<span style={{color:C.muted,fontSize:10}}>— no sign-off data</span>
+                            :<span style={{color:C.warn,fontSize:10}}>⚠ no speed data</span>
                         }</td>
                         <td style={{padding:"8px 10px",minWidth:100}}>{g.oeeRow!==null
                           ?<div style={{display:"flex",alignItems:"center",gap:6}}>
