@@ -3289,15 +3289,33 @@
       return <div>
         <PH title="Efficiency Report" sub="Printing press efficiency vs target speed" />
 
-        {/* Debug banner — remove once matching is confirmed working */}
-        <div style={{background:C.blue+"11",border:`1px solid ${C.blue}33`,borderRadius:6,padding:"8px 14px",marginBottom:12,fontSize:11,color:C.muted}}>
-          🔍 Speed data source: <strong style={{color:C.blue}}>{psSource}</strong>
-          {allProd.length>0&&(()=>{
-            const sample=allProd[0]?.data?.header||{};
-            const match=productSpeeds.find(s=>s.customer?.toLowerCase().trim()===sample.customer?.toLowerCase().trim()&&s.product?.toLowerCase().trim()===sample.productName?.toLowerCase().trim());
-            return <span> · Sample record: customer=<strong>"{sample.customer}"</strong> product=<strong>"{sample.productName}"</strong> → {match?<span style={{color:C.success}}>✔ matched ({match.runSpeed} m/min)</span>:<span style={{color:C.danger}}>✕ no match</span>}</span>;
-          })()}
-        </div>
+        {/* ── Speed data diagnostic — shows unmatched combinations ── */}
+        {(()=>{
+          const unmatched=new Map();
+          allProd.forEach(r=>{
+            const h=r.data?.header||{};
+            if(!h.customer||!h.productName) return;
+            const key=`${h.customer}||${h.productName}`;
+            if(!unmatched.has(key)){
+              const found=productSpeeds.find(s=>
+                s.customer?.toLowerCase().trim()===h.customer?.toLowerCase().trim()&&
+                s.product?.toLowerCase().trim()===h.productName?.toLowerCase().trim()
+              );
+              if(!found) unmatched.set(key,{customer:h.customer,product:h.productName});
+            }
+          });
+          if(unmatched.size===0) return null;
+          return <div style={{background:C.warn+"11",border:`1px solid ${C.warn}33`,borderRadius:6,padding:"10px 14px",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.warn,marginBottom:6}}>⚠ {unmatched.size} customer/product combination{unmatched.size>1?"s":""} not found in Product Speeds — add them in Lists / Settings → Product Speeds:</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {[...unmatched.values()].map(({customer,product})=>(
+                <div key={customer+product} style={{fontSize:10,padding:"3px 8px",background:C.warn+"22",borderRadius:4,color:C.warn}}>
+                  {customer} / {product}
+                </div>
+              ))}
+            </div>
+          </div>;
+        })()}
 
         {/* ── Filters ── */}
         <div style={S.card}>
