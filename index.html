@@ -2812,11 +2812,22 @@
       const [filterCustomer,setFilterCustomer]=useState("all");
       const [viewMode,setViewMode]=useState("shift"); // "shift" | "job" | "operator"
 
-      // Settings
-      const productSpeeds=Array.isArray(appLists.product_speeds)?appLists.product_speeds:DEFAULT_PRODUCT_SPEEDS;
-      const shiftTimes=(appLists.shift_times&&typeof appLists.shift_times==="object"&&!Array.isArray(appLists.shift_times))?appLists.shift_times:DEFAULT_SHIFT_TIMES;
-      // Debug info
-      const psSource=Array.isArray(appLists.product_speeds)?"database ("+appLists.product_speeds.length+" entries)":"DEFAULT_PRODUCT_SPEEDS ("+DEFAULT_PRODUCT_SPEEDS.length+" entries)";
+      // Merge DB speeds with defaults — defaults win for known products to ensure correct speeds
+      // DB entries only add NEW products not in defaults
+      const productSpeeds=(()=>{
+        const db=Array.isArray(appLists.product_speeds)?appLists.product_speeds:[];
+        const merged=[...DEFAULT_PRODUCT_SPEEDS];
+        db.forEach(dbEntry=>{
+          const exists=DEFAULT_PRODUCT_SPEEDS.find(d=>
+            d.customer?.toLowerCase().trim()===dbEntry.customer?.toLowerCase().trim()&&
+            d.product?.toLowerCase().trim()===dbEntry.product?.toLowerCase().trim()
+          );
+          if(!exists&&dbEntry.customer&&dbEntry.product&&dbEntry.runSpeed){
+            merged.push(dbEntry);
+          }
+        });
+        return merged;
+      })();
 
       // Shift duration in minutes
       const parseTime=t=>{ const [h,m]=(t||"00:00").split(":").map(Number); return h*60+(m||0); };
@@ -2920,8 +2931,15 @@
             if(totalWeighted>0) weightedTarget=Math.round(totalWeighted);
           }
 
-          const runSpeed=null; // no single speed — weighted
-          const downtime=null;
+          // For single job shifts use direct speed, for multi-job use weighted
+          let displaySpeed=null, displayDowntime=null;
+          if(g.sheets.length===1){
+            const best=getBestSpeed(g.sheets);
+            displaySpeed=best?.runSpeed||null;
+            displayDowntime=best?.downtime||null;
+          }
+          const runSpeed=displaySpeed;
+          const downtime=displayDowntime;
           const targetMeters=weightedTarget;
           const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
           return {...g,shiftMins,runSpeed,downtime,targetMeters,efficiency,
