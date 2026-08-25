@@ -2813,7 +2813,6 @@
       const [viewMode,setViewMode]=useState("shift"); // "shift" | "job" | "operator"
 
       // Merge DB speeds with defaults — defaults win for known products to ensure correct speeds
-      // DB entries only add NEW products not in defaults
       const productSpeeds=(()=>{
         const db=Array.isArray(appLists.product_speeds)?appLists.product_speeds:[];
         const merged=[...DEFAULT_PRODUCT_SPEEDS];
@@ -2828,6 +2827,7 @@
         });
         return merged;
       })();
+      const shiftTimes=(appLists.shift_times&&typeof appLists.shift_times==="object"&&!Array.isArray(appLists.shift_times))?appLists.shift_times:DEFAULT_SHIFT_TIMES;
 
       // Shift duration in minutes
       const parseTime=t=>{ const [h,m]=(t||"00:00").split(":").map(Number); return h*60+(m||0); };
