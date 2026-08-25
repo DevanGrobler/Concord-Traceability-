@@ -3319,7 +3319,21 @@
       return <div>
         <PH title="Efficiency Report" sub="Printing press efficiency vs target speed" />
 
-        {/* ── Speed data diagnostic — shows unmatched combinations ── */}
+        {/* ── Detailed debug ── */}
+        {(()=>{
+          const dbPS=Array.isArray(appLists.product_speeds);
+          const psLen=dbPS?appLists.product_speeds.length:0;
+          const sample=allProd[0]?.data?.header||{};
+          const exactMatch=productSpeeds.find(s=>s.customer?.toLowerCase().trim()===sample.customer?.toLowerCase().trim()&&s.product?.toLowerCase().trim()===sample.productName?.toLowerCase().trim());
+          const prodMatch=productSpeeds.find(s=>s.product?.toLowerCase().trim()===sample.productName?.toLowerCase().trim());
+          return <div style={{background:"#1a1a2e",border:"1px solid #444",borderRadius:6,padding:"10px 14px",marginBottom:12,fontSize:10,color:"#aaa",fontFamily:"monospace"}}>
+            <div>DB product_speeds: <strong style={{color:dbPS?"#3fb950":"#f85149"}}>{dbPS?`YES (${psLen} entries)`:"NO — using defaults"}</strong></div>
+            <div>Sample record: customer=<strong style={{color:"#58a6ff"}}>"{sample.customer}"</strong> product=<strong style={{color:"#58a6ff"}}>"{sample.productName}"</strong></div>
+            <div>Exact match: <strong style={{color:exactMatch?"#3fb950":"#f85149"}}>{exactMatch?`✔ ${exactMatch.runSpeed}m/min`:"✕ none"}</strong></div>
+            <div>Product-only match: <strong style={{color:prodMatch?"#3fb950":"#f85149"}}>{prodMatch?`✔ ${prodMatch.runSpeed}m/min (customer: ${prodMatch.customer})`:"✕ none"}</strong></div>
+            {dbPS&&psLen>0&&<div>First DB entry: customer="{appLists.product_speeds[0]?.customer}" product="{appLists.product_speeds[0]?.product}" speed={appLists.product_speeds[0]?.runSpeed}</div>}
+          </div>;
+        })()}
         {(()=>{
           const unmatched=new Map();
           allProd.forEach(r=>{
