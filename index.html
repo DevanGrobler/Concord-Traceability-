@@ -311,6 +311,25 @@
       {customer:"PRIDE FIRELIGHTERS",product:"PRIDE FIRE YELLOW 12G",runSpeed:130,downtime:1.3},
       {customer:"PRIDE FIRELIGHTERS",product:"PRIDE VALUE PACK CLEAR",runSpeed:130,downtime:1.3},
       {customer:"PRIDE FIRELIGHTERS",product:"PRIDE VALUE PACK PRINTED",runSpeed:130,downtime:1.3},
+      // Missing entries
+      {customer:"PREMIER KROONSTAD",product:"1 KG OBC BANANA",runSpeed:130,downtime:1.3},
+      // LFC Meule aliases (old customer name — same speeds as LFC MILLING)
+      {customer:"LFC Meule",product:"1 KG UBUNTU",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"2.5 KG UBUNTU",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"1 KG IMPILO",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"2.5KG IMPILO",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"5 KG UBUNTU",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"5 KG IMPILO",runSpeed:140,downtime:1.2},
+      {customer:"LFC Meule",product:"5 KG PICK N PAY",runSpeed:140,downtime:1.2},
+      {customer:"LFC Meule",product:"10 KG UBUNTU",runSpeed:140,downtime:1.2},
+      {customer:"LFC Meule",product:"12.5KG UBUNTU",runSpeed:140,downtime:1.2},
+      {customer:"LFC Meule",product:"10 KG IMPILO",runSpeed:140,downtime:1.2},
+      {customer:"LFC Meule",product:"12.5KG IMPILO",runSpeed:140,downtime:1.2},
+      {customer:"LFC Meule",product:"25KG IMPILO",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"25KG PICK N PAY",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"10 KG PICK N PAY",runSpeed:140,downtime:1.2},
+      {customer:"LFC Meule",product:"1 KG PICK N PAY",runSpeed:130,downtime:1.2},
+      {customer:"LFC Meule",product:"2.5 KG PICK N PAY",runSpeed:130,downtime:1.2},
     ];
 
     const DEFAULT_LISTS = {
@@ -2830,10 +2849,17 @@
           const m=(r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0);
           if(m>=bestMeters){
             bestMeters=m;
-            const found=productSpeeds.find(s=>
-              s.customer?.toLowerCase().trim()===h.customer?.toLowerCase().trim()&&
-              s.product?.toLowerCase().trim()===h.productName?.toLowerCase().trim()
+            const custL=(h.customer||"").toLowerCase().trim();
+            const prodL=(h.productName||"").toLowerCase().trim();
+            // 1. Try exact customer + product match
+            let found=productSpeeds.find(s=>
+              s.customer?.toLowerCase().trim()===custL&&
+              s.product?.toLowerCase().trim()===prodL
             );
+            // 2. Fallback: try product-only match (handles customer name variations like LFC Meule vs LFC Milling)
+            if(!found&&prodL){
+              found=productSpeeds.find(s=>s.product?.toLowerCase().trim()===prodL);
+            }
             if(found) bestEntry=found;
           }
         });
@@ -2875,10 +2901,14 @@
             g.sheets.forEach(r=>{
               const h=r.data?.header||{};
               const sheetMeters=(r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0);
-              const speedEntry=productSpeeds.find(s=>
-                s.customer?.toLowerCase().trim()===h.customer?.toLowerCase().trim()&&
-                s.product?.toLowerCase().trim()===h.productName?.toLowerCase().trim()
+              const custL=(h.customer||"").toLowerCase().trim();
+              const prodL=(h.productName||"").toLowerCase().trim();
+              let speedEntry=productSpeeds.find(s=>
+                s.customer?.toLowerCase().trim()===custL&&
+                s.product?.toLowerCase().trim()===prodL
               );
+              // Fallback: product-only match
+              if(!speedEntry&&prodL) speedEntry=productSpeeds.find(s=>s.product?.toLowerCase().trim()===prodL);
               if(speedEntry&&speedEntry.runSpeed&&speedEntry.downtime){
                 // This job's share of the target
                 const weight=sheetMeters/g.actualMeters;
@@ -3297,10 +3327,13 @@
             if(!h.customer||!h.productName) return;
             const key=`${h.customer}||${h.productName}`;
             if(!unmatched.has(key)){
-              const found=productSpeeds.find(s=>
-                s.customer?.toLowerCase().trim()===h.customer?.toLowerCase().trim()&&
-                s.product?.toLowerCase().trim()===h.productName?.toLowerCase().trim()
+              const custL=h.customer.toLowerCase().trim();
+              const prodL=h.productName.toLowerCase().trim();
+              let found=productSpeeds.find(s=>
+                s.customer?.toLowerCase().trim()===custL&&
+                s.product?.toLowerCase().trim()===prodL
               );
+              if(!found&&prodL) found=productSpeeds.find(s=>s.product?.toLowerCase().trim()===prodL);
               if(!found) unmatched.set(key,{customer:h.customer,product:h.productName});
             }
           });
