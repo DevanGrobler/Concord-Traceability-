@@ -2507,7 +2507,12 @@
               <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 3fr 100px 100px 40px",gap:6,marginBottom:4,alignItems:"center"}}>
                 <select style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.customer} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,customer:ev.target.value,product:""}:x))}>
                   <option value="">— Customer —</option>
-                  {(appLists.customer||[]).map(String).filter(Boolean).map(c=><option key={c} value={c}>{c}</option>)}
+                  {(()=>{
+                    const custList=(appLists.customer||[]).map(String).filter(Boolean);
+                    // Add current value if not in list
+                    if(e.customer&&!custList.includes(e.customer)) custList.unshift(e.customer);
+                    return custList.map(c=><option key={c} value={c}>{c}</option>);
+                  })()}
                 </select>
                 <select style={{...S.input,padding:"4px 8px",fontSize:11}} value={e.product} onChange={ev=>setPsEntries(a=>a.map((x,xi)=>xi===i?{...x,product:ev.target.value}:x))}>
                   <option value="">— Product —</option>
@@ -2523,7 +2528,19 @@
           </SC>
           <div style={{display:"flex",gap:10,alignItems:"center"}}>
             <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{ setSaving(true); await dbUpsertList("product_speeds",JSON.stringify(psEntries)); await reload(); flash("Product speeds saved!"); setSaving(false); }} disabled={saving}>{saving?"Saving…":"💾 Save Product Speeds"}</button>
-            <button style={S.btn("ghost",{padding:"12px 16px",fontSize:12})} onClick={()=>setPsEntries(DEFAULT_PRODUCT_SPEEDS)}>↺ Reset to Defaults</button>
+            <button style={S.btn("ghost",{padding:"12px 16px",fontSize:12})} onClick={async()=>{
+              if(!window.confirm(`Reset all ${DEFAULT_PRODUCT_SPEEDS.length} product speeds to defaults? This will overwrite your current saved speeds.`)) return;
+              setSaving(true);
+              setPsEntries([...DEFAULT_PRODUCT_SPEEDS]);
+              try{
+                await dbUpsertList("product_speeds",JSON.stringify(DEFAULT_PRODUCT_SPEEDS));
+                await reload();
+                flash(`✔ Reset complete — ${DEFAULT_PRODUCT_SPEEDS.length} products loaded from defaults!`);
+              }catch(e){
+                flash("Error saving: "+e.message,"danger");
+              }
+              setSaving(false);
+            }} disabled={saving}>↺ Reset to Defaults & Save</button>
           </div>
           <div style={{color:C.muted,fontSize:11,marginTop:8}}>Customer and product names match exactly what operators select on production sheets — no mismatches possible.</div>
         </div>}
