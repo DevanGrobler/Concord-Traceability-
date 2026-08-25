@@ -4,7 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Concord Packaging Traceability</title>
+  <meta name="description" content="Concord Packaging production traceability system" />
+  <meta name="theme-color" content="#0d1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Concord" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230d1117'/%3E%3Crect x='80' y='100' width='352' height='312' rx='20' fill='%23161b22' stroke='%23f0a500' stroke-width='8'/%3E%3Ctext x='256' y='200' font-family='monospace' font-size='72' font-weight='bold' fill='%23f0a500' text-anchor='middle'%3ECPK%3C/text%3E%3Ctext x='256' y='310' font-family='monospace' font-size='36' fill='%238b949e' text-anchor='middle'%3ETRACEABILITY%3C/text%3E%3C/svg%3E" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- PWA Manifest (inline) -->
+  <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Concord+Packaging+Traceability%22%2C%22short_name%22%3A%22CPK+Trace%22%2C%22description%22%3A%22Concord+Packaging+production+traceability+system%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230d1117%22%2C%22theme_color%22%3A%22%230d1117%22%2C%22orientation%22%3A%22landscape%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg+xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'+viewBox%3D'0+0+512+512'%253E%253Crect+width%3D'512'+height%3D'512'+fill%3D'%25230d1117'%2F%253E%253Crect+x%3D'80'+y%3D'100'+width%3D'352'+height%3D'312'+rx%3D'20'+fill%3D'%2523161b22'+stroke%3D'%2523f0a500'+stroke-width%3D'8'%2F%253E%253Ctext+x%3D'256'+y%3D'200'+font-family%3D'monospace'+font-size%3D'72'+font-weight%3D'bold'+fill%3D'%2523f0a500'+text-anchor%3D'middle'%253ECPK%253C%2Ftext%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -3755,6 +3764,85 @@
     }
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+  <!-- PWA Install Prompt -->
+  <div id="pwa-banner" style="display:none;position:fixed;bottom:24px;right:24px;z-index:99999;background:#161b22;border:1px solid #f0a500;borderRadius:10px;padding:16px 20px;boxShadow:0 4px 24px rgba(0,0,0,0.5);fontFamily:'IBM Plex Mono',monospace;maxWidth:320px;">
+    <div style="font-size:13px;font-weight:700;color:#f0a500;margin-bottom:6px;">📦 Install CPK Traceability</div>
+    <div style="font-size:11px;color:#8b949e;margin-bottom:14px;">Install this app on your desktop for quick access — no URL needed.</div>
+    <div style="display:flex;gap:8px;">
+      <button id="pwa-install" style="flex:1;background:#f0a500;color:#0d1117;border:none;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Install App</button>
+      <button id="pwa-dismiss" style="background:transparent;color:#8b949e;border:1px solid #30363d;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer;font-family:inherit;">Later</button>
+    </div>
+  </div>
+
+  <script>
+    // PWA Install prompt
+    let deferredPrompt = null;
+    const banner = document.getElementById('pwa-banner');
+    const installBtn = document.getElementById('pwa-install');
+    const dismissBtn = document.getElementById('pwa-dismiss');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      // Show banner after 3 seconds if not already installed
+      if(!localStorage.getItem('pwa-dismissed')){
+        setTimeout(() => { banner.style.display = 'block'; }, 3000);
+      }
+    });
+
+    installBtn && installBtn.addEventListener('click', async () => {
+      if(!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if(outcome === 'accepted') banner.style.display = 'none';
+      deferredPrompt = null;
+    });
+
+    dismissBtn && dismissBtn.addEventListener('click', () => {
+      banner.style.display = 'none';
+      localStorage.setItem('pwa-dismissed', '1');
+    });
+
+    // Hide banner if already installed
+    window.addEventListener('appinstalled', () => {
+      banner.style.display = 'none';
+      deferredPrompt = null;
+    });
+
+    // Service Worker for offline capability
+    if('serviceWorker' in navigator){
+      window.addEventListener('load', () => {
+        // Inline service worker as blob
+        const swCode = `
+          const CACHE = 'cpk-trace-v1';
+          const URLS = [self.location.pathname];
+          self.addEventListener('install', e => {
+            e.waitUntil(caches.open(CACHE).then(c => c.addAll(URLS)));
+            self.skipWaiting();
+          });
+          self.addEventListener('activate', e => {
+            e.waitUntil(caches.keys().then(keys =>
+              Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+            ));
+            self.clients.claim();
+          });
+          self.addEventListener('fetch', e => {
+            if(e.request.url.includes('supabase.co') || e.request.url.includes('cdn.')) return;
+            e.respondWith(
+              fetch(e.request).then(r => {
+                const clone = r.clone();
+                caches.open(CACHE).then(c => c.put(e.request, clone));
+                return r;
+              }).catch(() => caches.match(e.request))
+            );
+          });
+        `;
+        const blob = new Blob([swCode], {type: 'application/javascript'});
+        const swUrl = URL.createObjectURL(blob);
+        navigator.serviceWorker.register(swUrl).catch(() => {});
+      });
+    }
   </script>
 </body>
 </html>
