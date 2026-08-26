@@ -2971,60 +2971,67 @@
         const map={};
         recs.forEach(r=>{
           const h=r.data?.header||{};
-          const key=`${h.date||""}__${h.shift||""}`;
-          if(!map[key]) map[key]={date:h.date||"",shift:h.shift||"",operators:new Set(),customers:new Set(),products:new Set(),jobNos:new Set(),sheets:[],actualMeters:0};
-          const g=map[key];
-          if(h.operator) g.operators.add(h.operator);
-          if(h.customer) g.customers.add(h.customer);
-          if(h.productName) g.products.add(h.productName);
-          if(h.jobNo) g.jobNos.add(h.jobNo);
-          g.sheets.push(r);
-          (r.data?.rawOut||[]).forEach(x=>{ g.actualMeters+=parseFloat(x.meters||0); });
+          const entries=r.data?.rawOut||[];
+          const hasSignedDates=entries.some(x=>x.signedDate);
+          if(hasSignedDates){
+            // New records — group each entry by its own signedDate+signedShift
+            entries.forEach(x=>{
+              const entryDate=x.signedDate||h.date||"";
+              const hr=parseInt((x.signedAt||x.time||"12:00").split(":")[0]||12);
+              const entryShift=x.signedShift||((hr>=7&&hr<19)?"Day Shift":"Night Shift");
+              const key=`${entryDate}__${entryShift}`;
+              if(!map[key]) map[key]={date:entryDate,shift:entryShift,operators:new Set(),customers:new Set(),products:new Set(),jobNos:new Set(),sheets:[],actualMeters:0,isOldRecord:false};
+              const g=map[key];
+              if(x.signedBy) g.operators.add(x.signedBy);
+              else if(h.operator) g.operators.add(h.operator);
+              if(h.customer) g.customers.add(h.customer);
+              if(h.productName) g.products.add(h.productName);
+              if(h.jobNo) g.jobNos.add(h.jobNo);
+              if(!g.sheets.find(s=>s.id===r.id)) g.sheets.push(r);
+              g.actualMeters+=parseFloat(x.meters||0);
+            });
+          } else {
+            // Old records — use header date+shift, flag as unreliable
+            const key=`${h.date||""}__${h.shift||""}`;
+            if(!map[key]) map[key]={date:h.date||"",shift:h.shift||"",operators:new Set(),customers:new Set(),products:new Set(),jobNos:new Set(),sheets:[],actualMeters:0,isOldRecord:true};
+            const g=map[key];
+            if(h.operator) g.operators.add(h.operator);
+            if(h.customer) g.customers.add(h.customer);
+            if(h.productName) g.products.add(h.productName);
+            if(h.jobNo) g.jobNos.add(h.jobNo);
+            g.sheets.push(r);
+            entries.forEach(x=>{ g.actualMeters+=parseFloat(x.meters||0); });
+          }
         });
         return Object.values(map).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).map(g=>{
           const shiftMins=g.shift==="Night Shift"?nightMins:dayMins;
-
-          // Weighted target — each job contributes its own speed proportionally
-          // For each sheet, calculate meters and find its speed
-          // Target = sum of (sheetMeters / totalMeters) × shiftMins × speed / downtime
           let weightedTarget=null;
           if(g.actualMeters>0){
             let totalWeighted=0;
-            let allHaveSpeed=true;
             g.sheets.forEach(r=>{
               const h=r.data?.header||{};
               const sheetMeters=(r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0);
               const custL=(h.customer||"").toLowerCase().trim();
               const prodL=(h.productName||"").toLowerCase().trim();
-              let speedEntry=productSpeeds.find(s=>
-                s.customer?.toLowerCase().trim()===custL&&
-                s.product?.toLowerCase().trim()===prodL
-              );
-              // Fallback: product-only match
-              if(!speedEntry&&prodL) speedEntry=productSpeeds.find(s=>s.product?.toLowerCase().trim()===prodL);
-              if(speedEntry&&speedEntry.runSpeed&&speedEntry.downtime){
-                // This job's share of the target
-                const weight=sheetMeters/g.actualMeters;
-                totalWeighted+=weight*(speedEntry.runSpeed*shiftMins/speedEntry.downtime);
-              } else {
-                allHaveSpeed=false;
+              let se=productSpeeds.find(s=>s.customer?.toLowerCase().trim()===custL&&s.product?.toLowerCase().trim()===prodL);
+              if(!se&&prodL) se=productSpeeds.find(s=>s.product?.toLowerCase().trim()===prodL);
+              if(se?.runSpeed&&se?.downtime){
+                const weight=sheetMeters/Math.max(g.actualMeters,1);
+                totalWeighted+=weight*(se.runSpeed*shiftMins/se.downtime);
               }
             });
             if(totalWeighted>0) weightedTarget=Math.round(totalWeighted);
           }
-
-          // For single job shifts use direct speed, for multi-job use weighted
-          let displaySpeed=null, displayDowntime=null;
+          let displaySpeed=null,displayDowntime=null;
           if(g.sheets.length===1){
             const best=getBestSpeed(g.sheets);
             displaySpeed=best?.runSpeed||null;
             displayDowntime=best?.downtime||null;
           }
-          const runSpeed=displaySpeed;
-          const downtime=displayDowntime;
-          const targetMeters=weightedTarget;
-          const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
-          return {...g,shiftMins,runSpeed,downtime,targetMeters,efficiency,
+          // Old records without signedDate — show no efficiency
+          const efficiency=(weightedTarget&&g.actualMeters>0&&!g.isOldRecord)
+            ?Math.min(Math.round((g.actualMeters/weightedTarget)*100),999):null;
+          return {...g,shiftMins,runSpeed:displaySpeed,downtime:displayDowntime,targetMeters:weightedTarget,efficiency,
             operatorList:[...g.operators].join(", "),customerList:[...g.customers].join(", "),
             productList:[...g.products].join(", "),jobList:[...g.jobNos].join(", ")};
         });
