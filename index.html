@@ -3005,12 +3005,25 @@
         });
         return Object.values(map).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0).map(g=>{
           const shiftMins=g.shift==="Night Shift"?nightMins:dayMins;
+          // Weighted target: each job contributes proportionally based on meters it produced
+          // Target = Σ (jobMeters/totalMeters × shiftMins × jobSpeed / jobDowntime)
+          // This gives a fair blended target when multiple products ran in the same shift
           let weightedTarget=null;
           if(g.actualMeters>0){
             let totalWeighted=0;
+            let hasAnySpeed=false;
             g.sheets.forEach(r=>{
               const h=r.data?.header||{};
-              const sheetMeters=(r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0);
+              // Only count meters from entries that belong to this shift
+              const sheetMeters=g.isOldRecord
+                ?(r.data?.rawOut||[]).reduce((a,x)=>a+parseFloat(x.meters||0),0)
+                :(r.data?.rawOut||[]).filter(x=>{
+                    if(!x.signedDate) return false;
+                    const hr=parseInt((x.signedAt||x.time||"12:00").split(":")[0]||12);
+                    const sh=x.signedShift||((hr>=7&&hr<19)?"Day Shift":"Night Shift");
+                    return x.signedDate===g.date&&sh===g.shift;
+                  }).reduce((a,x)=>a+parseFloat(x.meters||0),0);
+              if(sheetMeters<=0) return;
               const custL=(h.customer||"").toLowerCase().trim();
               const prodL=(h.productName||"").toLowerCase().trim();
               let se=productSpeeds.find(s=>s.customer?.toLowerCase().trim()===custL&&s.product?.toLowerCase().trim()===prodL);
@@ -3018,6 +3031,7 @@
               if(se?.runSpeed&&se?.downtime){
                 const weight=sheetMeters/Math.max(g.actualMeters,1);
                 totalWeighted+=weight*(se.runSpeed*shiftMins/se.downtime);
+                hasAnySpeed=true;
               }
             });
             if(totalWeighted>0) weightedTarget=Math.round(totalWeighted);
@@ -3140,7 +3154,7 @@
             const targetMeters=(runSpeed&&downtime&&shiftMins)?Math.round((runSpeed*shiftMins)/downtime):null;
             const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
             const rowAvail=Math.round(OEE_SPEED*shiftMins*OEE_AVAIL);
-            const oeeRow=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+            const oeeRow=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
             return {...g,shiftMins,runSpeed,downtime,targetMeters,efficiency,rowAvail,oeeRow,
               customerList:[...g.customers].join(", "),
               productList:[...g.products].join(", "),
@@ -3194,7 +3208,7 @@
       const avgShiftMins = (dayMins + nightMins) / 2;
       const totalAvailableMeters = Math.round(OEE_SPEED * avgShiftMins * OEE_AVAIL * totalWorkingDays * 2);
       const oee = (totalAvailableMeters > 0 && totalActual > 0)
-        ? Math.min(Math.round((totalActual / totalAvailableMeters) * 100), 999)
+        ? Math.min(Math.round((totalActual / totalAvailableMeters) * 100), 100)
         : null;
 
       // ── Excel Export ──────────────────────────────────────────────────────────
@@ -3307,7 +3321,7 @@
             const r={sz:11,fc:COL.white,bg};
             const rr={sz:11,fc:COL.white,bg,align:"right"};
             const rowAvail=Math.round(OEE_SPEED*(g.shift==="Night Shift"?nightMins:dayMins)*OEE_AVAIL);
-            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
             dataRows.push([
               cell(g.date,{...r,bold:true,fc:COL.accent}),
               cell(g.shift==="Night Shift"?"🌙 Night":"☀ Day",{...r,fc:g.shift==="Night Shift"?COL.blue:COL.accent}),
@@ -3348,7 +3362,7 @@
             const r={sz:11,fc:COL.white,bg};
             const rr={sz:11,fc:COL.white,bg,align:"right"};
             const rowAvail=Math.round(OEE_SPEED*g.totalShiftMins*OEE_AVAIL);
-            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
             dataRows.push([
               cell(g.jobNo,{...r,bold:true,fc:COL.accent}),
               cell(g.dateRange||"—",{...r,fc:COL.blue}),
@@ -3592,9 +3606,10 @@
                   {viewMode==="shift"
                     ?shiftRows.map((g,i)=>{
                       const rowAvail=Math.round(OEE_SPEED*(g.shift==="Night Shift"?nightMins:dayMins)*OEE_AVAIL);
-                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+                      // OEE = actual vs theoretical machine ceiling (never shows >100% as it's a ceiling)
+                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
                       return (
-                      <tr key={g.date+g.shift} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
+                      <tr key={g.date+g.shift+(g.isOldRecord?"_old":"")} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
                         <td style={{padding:"8px 10px",color:C.text,whiteSpace:"nowrap",fontWeight:600}}>{g.date}</td>
                         <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
                           <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:g.shift==="Night Shift"?C.blue+"33":C.accent+"33",color:g.shift==="Night Shift"?C.blue:C.accent,fontWeight:700}}>
@@ -3619,7 +3634,9 @@
                               </div>
                               <span style={{color:effColor(g.efficiency),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{g.efficiency}%</span>
                             </div>
-                          :<div><div style={{color:C.warn,fontSize:10,fontWeight:600}}>⚠ no speed data</div><div style={{color:C.muted,fontSize:9,marginTop:2}}>{[...g.customers].map((c,ci)=>{ const prod=[...g.products][ci]||[...g.products][0]||""; return <div key={ci}>"{c}" / "{prod}"</div>; })}</div></div>
+                          :g.isOldRecord
+                            ?<span style={{color:C.muted,fontSize:10}}>— no sign-off data</span>
+                            :<div><div style={{color:C.warn,fontSize:10,fontWeight:600}}>⚠ no speed data</div><div style={{color:C.muted,fontSize:9,marginTop:2}}>{[...g.customers].map((c,ci)=>{ const prod=[...g.products][ci]||[...g.products][0]||""; return <div key={ci}>"{c}" / "{prod}"</div>; })}</div></div>
                         }</td>
                         <td style={{padding:"8px 10px",minWidth:100}}>{rowOee!==null
                           ?<div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3675,7 +3692,7 @@
                     ))
                     :jobRows.map((g,i)=>{
                       const rowAvail=Math.round(OEE_SPEED*g.totalShiftMins*OEE_AVAIL);
-                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
+                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
                       return (
                       <tr key={g.jobNo} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
                         <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,whiteSpace:"nowrap"}}>{g.jobNo}</td>
