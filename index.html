@@ -2894,18 +2894,19 @@
       const [filterCustomer,setFilterCustomer]=useState("all");
       const [viewMode,setViewMode]=useState("shift"); // "shift" | "job" | "operator"
 
-      // Merge DB speeds with defaults — defaults win for known products to ensure correct speeds
+      // Build productSpeeds — DB entries win (user changes respected), defaults fill gaps
       const productSpeeds=(()=>{
         const db=Array.isArray(appLists.product_speeds)?appLists.product_speeds:[];
-        const merged=[...DEFAULT_PRODUCT_SPEEDS];
-        db.forEach(dbEntry=>{
-          const exists=DEFAULT_PRODUCT_SPEEDS.find(d=>
-            d.customer?.toLowerCase().trim()===dbEntry.customer?.toLowerCase().trim()&&
-            d.product?.toLowerCase().trim()===dbEntry.product?.toLowerCase().trim()
+        if(db.length===0) return DEFAULT_PRODUCT_SPEEDS;
+        // Start with DB entries
+        const merged=[...db.filter(e=>e.customer&&e.product&&e.runSpeed)];
+        // Add defaults that don't exist in DB
+        DEFAULT_PRODUCT_SPEEDS.forEach(def=>{
+          const exists=merged.find(d=>
+            d.customer?.toLowerCase().trim()===def.customer?.toLowerCase().trim()&&
+            d.product?.toLowerCase().trim()===def.product?.toLowerCase().trim()
           );
-          if(!exists&&dbEntry.customer&&dbEntry.product&&dbEntry.runSpeed){
-            merged.push(dbEntry);
-          }
+          if(!exists) merged.push(def);
         });
         return merged;
       })();
