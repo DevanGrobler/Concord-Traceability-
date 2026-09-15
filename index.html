@@ -521,6 +521,8 @@
 
     const ALL_TABS = [
       {id:"dashboard",     label:"Dashboard",                icon:"◈"},
+      {id:"approval",      label:"Pending Approval",         icon:"⏳"},
+      {id:"rejected",      label:"Rejected",                 icon:"✕"},
       {id:"printinglive",  label:"Printing Live",            icon:"📡"},
       {id:"production",    label:"Daily Production Printing",icon:"◤"},
       {id:"viscosity",     label:"Viscosity QC",             icon:"◉"},
@@ -554,11 +556,11 @@
     ];
 
     const ROLE_DEFAULTS = {
-      admin:    ["dashboard","printinglive","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","users","trash","loginlog","lists","debug","password"],
-      manager:  ["dashboard","printinglive","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","lists","password"],
-      operator: ["dashboard","printinglive","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","bagmaking1","bagmaking2","bagmaking3","bagmaking4","records","password"],
-      qc:       ["dashboard","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","bagmaking1qc","bagmaking2qc","bagmaking3qc","bagmaking4qc","records","password"],
-      viewer:   ["dashboard","printinglive","records","password"],
+      admin:    ["dashboard","approval","rejected","printinglive","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","users","trash","loginlog","lists","debug","password"],
+      manager:  ["dashboard","rejected","printinglive","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","lists","password"],
+      operator: ["dashboard","rejected","printinglive","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","bagmaking1","bagmaking2","bagmaking3","bagmaking4","records","password"],
+      qc:       ["dashboard","rejected","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","bagmaking1qc","bagmaking2qc","bagmaking3qc","bagmaking4qc","records","password"],
+      viewer:   ["dashboard","rejected","printinglive","records","password"],
     };
 
     function getTabs(user){
@@ -596,6 +598,29 @@
       const permDelete    = async id  => { await dbEmptyTrash(id);  await reload(); flash("Permanently deleted."); };
       const saveRecord    = async (id,data) => { await sb.from("records").update({data}).eq("id",id); await reload(); flash("Record updated."); };
 
+      // ── Approval functions ────────────────────────────────────────────────────
+      const approveRecord = async (id, approverName) => {
+        const now=new Date();
+        const rec=records.find(r=>r.id===id); if(!rec) return;
+        const history=[...(rec.approval_history||[]),{action:"approved",by:approverName,date:now.toISOString().split("T")[0],time:now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}];
+        await sb.from("records").update({approval_status:"approved",approved_by:approverName,approved_at:now.toISOString(),approval_history:history}).eq("id",id);
+        await reload(); flash("✔ Record approved!");
+      };
+      const rejectRecord = async (id, approverName, reason) => {
+        const now=new Date();
+        const rec=records.find(r=>r.id===id); if(!rec) return;
+        const history=[...(rec.approval_history||[]),{action:"rejected",by:approverName,date:now.toISOString().split("T")[0],time:now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}),reason}];
+        await sb.from("records").update({approval_status:"rejected",rejection_reason:reason,rejected_by:approverName,rejected_at:now.toISOString(),approval_history:history}).eq("id",id);
+        await reload(); flash("Record rejected.","danger");
+      };
+      const resubmitRecord = async (id, operatorName) => {
+        const now=new Date();
+        const rec=records.find(r=>r.id===id); if(!rec) return;
+        const history=[...(rec.approval_history||[]),{action:"resubmitted",by:operatorName,date:now.toISOString().split("T")[0],time:now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}];
+        await sb.from("records").update({approval_status:"pending",rejection_reason:null,approval_history:history}).eq("id",id);
+        await reload(); flash("Record resubmitted for approval.");
+      };
+
       const visibleTabs = getTabs(session);
       React.useEffect(()=>{ if(!visibleTabs.find(t=>t.id===tab)) setTab("dashboard"); },[session]);
 
@@ -615,17 +640,25 @@
           </div>
           {/* Nav items */}
           <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
-            {visibleTabs.map(t=>(
+            {visibleTabs.map(t=>{
+              const pendingCount=t.id==="approval"?records.filter(r=>(r.approval_status||"pending")==="pending").length:0;
+              const rejectedCount=t.id==="rejected"?records.filter(r=>r.approval_status==="rejected").length:0;
+              const badge=pendingCount||rejectedCount;
+              return (
               <button key={t.id} onClick={()=>setTab(t.id)} style={{
-                display:"block",width:"100%",textAlign:"left",
-                padding:"8px 16px",border:"none",cursor:"pointer",
+                display:"flex",alignItems:"center",justifyContent:"space-between",
+                width:"100%",textAlign:"left",padding:"8px 16px",border:"none",cursor:"pointer",
                 fontSize:11,fontWeight:600,fontFamily:"'IBM Plex Mono',monospace",
                 background:tab===t.id?C.accent+"22":"transparent",
                 color:tab===t.id?C.accent:C.muted,
                 borderLeft:tab===t.id?`3px solid ${C.accent}`:"3px solid transparent",
                 transition:"all 0.1s",
-              }}>{t.icon} {t.label}</button>
-            ))}
+              }}>
+                <span>{t.icon} {t.label}</span>
+                {badge>0&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:10,background:t.id==="approval"?C.warn:C.danger,color:"#fff",minWidth:18,textAlign:"center"}}>{badge}</span>}
+              </button>
+              );
+            })}
           </div>
           {/* Bottom user strip */}
           <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`,flexShrink:0}}>
@@ -640,7 +673,9 @@
         {/* ── Content ── */}
         <div style={{flex:1,padding:24,overflowY:"auto",minWidth:0}}>
           <div style={{display:tab==="dashboard"    ?"block":"none"}}><Dashboard records={records} session={session} /></div>
-          <div style={{display:tab==="printinglive" ?"block":"none"}}><PrintingLive session={session} /></div>
+          <div style={{display:tab==="approval"    ?"block":"none"}}><PendingApproval records={records} session={session} onApprove={approveRecord} onReject={rejectRecord} onSave={saveRecord} users={users} appLists={appLists} /></div>
+          <div style={{display:tab==="rejected"    ?"block":"none"}}><RejectedRecords records={records} session={session} onResubmit={resubmitRecord} onSave={saveRecord} users={users} appLists={appLists} /></div>
+          <div style={{display:tab==="printinglive"?"block":"none"}}><PrintingLive session={session} /></div>
           <div style={{display:tab==="production"   ?"block":"none"}}><ProductionForm   key={getTabKey("production")}   onReset={()=>resetTab("production")}   onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="viscosity"    ?"block":"none"}}><ViscosityForm    key={getTabKey("viscosity")}    onReset={()=>resetTab("viscosity")}    onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="printingqc"   ?"block":"none"}}><PrintingQCForm   key={getTabKey("printingqc")}   onReset={()=>resetTab("printingqc")}   onSave={addRecord} users={users} lists={appLists} /></div>
@@ -1927,6 +1962,7 @@
                   <span>🕐 {new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})} {new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}</span>
                 </div>
               </div>
+              <ApprovalBadge record={r} />
               <span style={{fontSize:10,color}}>{isExp?"▲":"▼"}</span>
               {isAdmin&&<>
                 <button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
@@ -1945,11 +1981,13 @@
     function RecDetail({r,createdBy}){
       const d=r.data||{};
       return <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,fontSize:12}}>
-        <div style={{marginBottom:12,padding:"8px 12px",background:C.bg,borderRadius:6,display:"inline-block"}}>
+        <div style={{marginBottom:12,padding:"8px 12px",background:C.bg,borderRadius:6,display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{color:C.muted}}>Completed by: </span><span style={{color:C.accent,fontWeight:700}}>{createdBy}</span>
-          <span style={{color:C.muted,marginLeft:12}}>on {new Date(r.created_at).toLocaleString()}</span>
+          <span style={{color:C.muted}}>on {new Date(r.created_at).toLocaleString()}</span>
+          <ApprovalBadge record={r} />
         </div>
         {r.type==="production"?<ProdD d={d}/>:r.type==="viscosity"?<ViscD d={d}/>:r.type.endsWith("qc")?<QCD d={d}/>:<GenericD d={d}/>}
+        <ApprovalHistory record={r} />
       </div>;
     }
 
@@ -2204,7 +2242,10 @@
 
     // ── User Management ───────────────────────────────────────────────────────
     const SHEET_OPTIONS=[
-      {id:"dashboard",label:"Dashboard"},{id:"printinglive",label:"📡 Printing Live"},{id:"production",label:"Daily Production Printing"},
+      {id:"dashboard",label:"Dashboard"},
+      {id:"approval",label:"⏳ Pending Approval"},
+      {id:"rejected",label:"✕ Rejected Records"},
+      {id:"printinglive",label:"📡 Printing Live"},{id:"production",label:"Daily Production Printing"},
       {id:"viscosity",label:"Viscosity QC"},{id:"printingqc",label:"Printing QC"},
       {id:"lamination",label:"Lamination"},{id:"laminationqc",label:"Lamination QC"},
       {id:"extruder1",label:"Extruder 1"},{id:"extruder1qc",label:"Extruder 1 QC"},
@@ -3764,6 +3805,170 @@
     }
 
         // ── Debug Panel ───────────────────────────────────────────────────────────
+    // ── Approval Badge ────────────────────────────────────────────────────────
+    function ApprovalBadge({record}){
+      const status=record.approval_status||"pending";
+      const cfg={
+        pending: {color:C.warn,   bg:C.warn+"22",   icon:"⏳",label:"Pending"},
+        approved:{color:C.success,bg:C.success+"22",icon:"✔", label:"Approved"},
+        rejected:{color:C.danger, bg:C.danger+"22", icon:"✕", label:"Rejected"},
+      }[status]||{color:C.muted,bg:C.panel,icon:"?",label:"Unknown"};
+      return <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:4,background:cfg.bg,color:cfg.color,whiteSpace:"nowrap"}}>{cfg.icon} {cfg.label}</span>;
+    }
+
+    // ── Approval History ──────────────────────────────────────────────────────
+    function ApprovalHistory({record}){
+      const history=record.approval_history||[];
+      if(!history.length) return null;
+      const cfg={submitted:{color:C.blue,icon:"📝"},approved:{color:C.success,icon:"✔"},rejected:{color:C.danger,icon:"✕"},resubmitted:{color:C.warn,icon:"↩"}};
+      return <div style={{marginTop:12,padding:"10px 14px",background:C.bg,borderRadius:8,border:`1px solid ${C.border}`}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>DOCUMENT HISTORY</div>
+        {history.map((h,i)=>{
+          const c=cfg[h.action]||{color:C.muted,icon:"•"};
+          return <div key={i} style={{display:"flex",gap:10,padding:"5px 0",borderTop:i>0?`1px solid ${C.border}`:"none"}}>
+            <span style={{color:c.color,fontWeight:700,minWidth:20}}>{c.icon}</span>
+            <div style={{flex:1}}>
+              <span style={{color:c.color,fontWeight:700,textTransform:"capitalize"}}>{h.action}</span>
+              <span style={{color:C.muted}}> by </span>
+              <span style={{color:C.text,fontWeight:600}}>{h.by}</span>
+              <span style={{color:C.muted,fontSize:10}}> · {h.date} {h.time}</span>
+              {h.reason&&<div style={{color:C.danger,fontSize:11,marginTop:2}}>Reason: {h.reason}</div>}
+            </div>
+          </div>;
+        })}
+      </div>;
+    }
+
+    // ── Approval PIN Prompt ───────────────────────────────────────────────────
+    function ApprovalPinPrompt({label,onConfirm,btnColor="accent"}){
+      const [un,setUn]=useState(""); const [pin,setPin]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+      const go=async()=>{
+        if(!un.trim()||!pin.trim()){ setErr("Username and PIN required."); return; }
+        setBusy(true); setErr("");
+        const res=await verifyPin(un.trim(),pin.trim());
+        setBusy(false);
+        if(!res.ok){ setErr(res.msg); return; }
+        onConfirm(res.name);
+        setUn(""); setPin(""); setErr("");
+      };
+      return <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
+        <input style={{...S.input,width:130,padding:"5px 8px",fontSize:11}} value={un} onChange={e=>setUn(e.target.value)} placeholder="Username" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
+        <input type="password" style={{...S.input,width:80,padding:"5px 8px",fontSize:11}} value={pin} onChange={e=>setPin(e.target.value)} placeholder="PIN" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
+        <button style={S.btn(btnColor,{padding:"5px 14px",fontSize:11})} onClick={go} disabled={busy}>{busy?"…":label}</button>
+        {err&&<span style={{fontSize:11,color:C.danger,fontWeight:600}}>{err}</span>}
+      </div>;
+    }
+
+    // ── Pending Approval ──────────────────────────────────────────────────────
+    function PendingApproval({records,session,onApprove,onReject,onSave,users,appLists}){
+      const [exp,setExp]=useState(null);
+      const [rejectId,setRejectId]=useState(null);
+      const [rejectReason,setRejectReason]=useState("");
+      const pending=records.filter(r=>(r.approval_status||"pending")==="pending");
+
+      return <div>
+        <PH title="Pending Approval" sub={`${pending.length} record${pending.length!==1?"s":""} awaiting approval`} />
+        {pending.length===0
+          ?<div style={{...S.card,textAlign:"center",padding:40}}>
+              <div style={{fontSize:32,marginBottom:12}}>✔</div>
+              <div style={{color:C.success,fontWeight:700,fontSize:16}}>All records approved</div>
+              <div style={{color:C.muted,fontSize:12,marginTop:6}}>No records pending approval.</div>
+            </div>
+          :<div>{pending.map(r=>(
+            <div key={r.id} style={{...S.card,marginBottom:12,border:`1px solid ${C.warn}44`}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8,cursor:"pointer"}} onClick={()=>setExp(exp===r.id?null:r.id)}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,color:C.text,fontSize:13}}>{r.title}</div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                    Submitted by <span style={{color:C.blue}}>{r.created_by}</span> · {new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})} {new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
+                    {r.data?.header?.customer&&<span> · {r.data.header.customer}</span>}
+                    {r.data?.header?.productName&&<span> · {r.data.header.productName}</span>}
+                  </div>
+                </div>
+                <ApprovalBadge record={r} />
+                <span style={{color:C.muted,fontSize:12}}>{exp===r.id?"▲":"▼"}</span>
+              </div>
+              {exp===r.id&&<div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginTop:4}}>
+                <RecDetail r={r} createdBy={r.created_by} />
+                <ApprovalHistory record={r} />
+                {rejectId===r.id
+                  ?<div style={{marginTop:12,padding:"12px 14px",background:C.danger+"11",border:`1px solid ${C.danger}33`,borderRadius:8}}>
+                      <div style={{fontSize:12,fontWeight:700,color:C.danger,marginBottom:8}}>Rejection Reason</div>
+                      <textarea style={{...S.input,width:"100%",minHeight:70,resize:"vertical",marginBottom:8}} value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Explain why this record is being rejected…" />
+                      {rejectReason.trim()&&<ApprovalPinPrompt label="✕ Confirm Reject" btnColor="danger" onConfirm={async(name)=>{ await onReject(r.id,name,rejectReason); setRejectId(null); setRejectReason(""); setExp(null); }} />}
+                      <button style={{...S.btn("ghost",{padding:"6px 14px",fontSize:11,marginTop:8}),color:C.muted}} onClick={()=>{ setRejectId(null); setRejectReason(""); }}>Cancel</button>
+                    </div>
+                  :<div style={{marginTop:12,padding:"12px 14px",background:C.bg,borderRadius:8,border:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Sign off with your PIN to approve or reject:</div>
+                      <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-start"}}>
+                        <div>
+                          <div style={{fontSize:11,color:C.success,fontWeight:600,marginBottom:4}}>Approve</div>
+                          <ApprovalPinPrompt label="✔ Approve" onConfirm={async(name)=>{ await onApprove(r.id,name); setExp(null); }} />
+                        </div>
+                        <div style={{paddingTop:4}}>
+                          <button style={S.btn("danger",{padding:"5px 14px",fontSize:11,marginTop:22})} onClick={()=>setRejectId(r.id)}>✕ Reject</button>
+                        </div>
+                      </div>
+                    </div>
+                }
+              </div>}
+            </div>
+          ))}</div>
+        }
+      </div>;
+    }
+
+    // ── Rejected Records ──────────────────────────────────────────────────────
+    function RejectedRecords({records,session,onResubmit,onSave,users,appLists}){
+      const [exp,setExp]=useState(null);
+      const [editing,setEditing]=useState(null);
+      const rejected=records.filter(r=>r.approval_status==="rejected");
+
+      return <div>
+        <PH title="Rejected Records" sub={`${rejected.length} record${rejected.length!==1?"s":""} rejected`} />
+        {rejected.length===0
+          ?<div style={{...S.card,textAlign:"center",padding:40}}>
+              <div style={{fontSize:32,marginBottom:12}}>✔</div>
+              <div style={{color:C.success,fontWeight:700,fontSize:16}}>No rejected records</div>
+            </div>
+          :<div>{rejected.map(r=>(
+            <div key={r.id} style={{...S.card,marginBottom:12,border:`1px solid ${C.danger}44`}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8,cursor:"pointer"}} onClick={()=>{ if(editing===r.id) return; setExp(exp===r.id?null:r.id); }}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,color:C.text,fontSize:13}}>{r.title}</div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                    Submitted by <span style={{color:C.blue}}>{r.created_by}</span>
+                    {r.rejected_by&&<span> · Rejected by <span style={{color:C.danger}}>{r.rejected_by}</span></span>}
+                  </div>
+                  {r.rejection_reason&&<div style={{fontSize:12,color:C.danger,fontWeight:600,marginTop:4,padding:"4px 8px",background:C.danger+"11",borderRadius:4}}>
+                    ✕ Reason: {r.rejection_reason}
+                  </div>}
+                </div>
+                <ApprovalBadge record={r} />
+                <span style={{color:C.muted,fontSize:12}}>{exp===r.id?"▲":"▼"}</span>
+              </div>
+              {exp===r.id&&<div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginTop:4}}>
+                {editing===r.id
+                  ?<EditProd r={r} onSave={async(id,data)=>{ await onSave(id,data); setEditing(null); }} onCancel={()=>setEditing(null)} appLists={appLists} users={users} />
+                  :<div>
+                      <RecDetail r={r} createdBy={r.created_by} />
+                      <ApprovalHistory record={r} />
+                      <div style={{marginTop:12,padding:"12px 14px",background:C.bg,borderRadius:8,border:`1px solid ${C.border}`}}>
+                        <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Edit the record to fix the issue, then resubmit for approval:</div>
+                        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                          <button style={S.btn("accent",{padding:"6px 16px",fontSize:12})} onClick={()=>setEditing(r.id)}>✎ Edit Record</button>
+                          <ApprovalPinPrompt label="↩ Resubmit" onConfirm={async(name)=>{ await onResubmit(r.id,name); setExp(null); }} />
+                        </div>
+                      </div>
+                    </div>
+                }
+              </div>}
+            </div>
+          ))}</div>
+        }
+      </div>;
+    }
+
     // ── Printing Live Component ───────────────────────────────────────────────
     function PrintingLive({session}){
       const [readings,setReadings]=useState([]);
