@@ -3789,14 +3789,29 @@
           for(let i=0;i<todayReadings.length-1;i++){
             if(!todayReadings[i].running&&todayReadings[i+1].running){
               const stopTime=new Date(todayReadings[i+1].created_at);
-              const startTime=new Date(todayReadings[i].created_at);
-              const duration=Math.round((startTime-stopTime)/60000);
+              const resumeTime=new Date(todayReadings[i].created_at);
+              const duration=Math.round((resumeTime-stopTime)/60000);
               if(duration>0) events.push({
                 stopped:todayReadings[i+1].created_at,
                 resumed:todayReadings[i].created_at,
-                duration
+                duration,
+                active:false
               });
             }
+          }
+          // Add current stop if machine is stopped right now
+          const lastReading=todayReadings[0];
+          if(lastReading&&!lastReading.running){
+            // Find when it last stopped (last running reading)
+            const lastRunningIdx=todayReadings.findIndex(r=>r.running);
+            const stopStart=lastRunningIdx>=0?todayReadings[lastRunningIdx-1]?.created_at||todayReadings[lastRunningIdx].created_at:todayReadings[todayReadings.length-1].created_at;
+            const currentDuration=Math.round((Date.now()-new Date(stopStart).getTime())/60000);
+            if(currentDuration>0) events.unshift({
+              stopped:stopStart,
+              resumed:null,
+              duration:currentDuration,
+              active:true
+            });
           }
           setDowntimeEvents(events.slice(0,5));
         }
@@ -3844,7 +3859,7 @@
                 {label:"CURRENT SPEED",    value:isRunning?speed.toFixed(1)+" m/min":"0 m/min",    color:speedColor,     sub:`Target: ${TARGET_SPEED} m/min`},
                 {label:"AVERAGE SPEED",    value:avgSpeed>0?avgSpeed.toFixed(1)+" m/min":"—",       color:C.blue,         sub:"Running time only"},
                 {label:"METERS THIS SHIFT",value:shiftMeters>0?Math.round(shiftMeters).toLocaleString()+" m":"0 m", color:C.accent, sub:"Since shift start"},
-                {label:"DOWNTIME TODAY",   value:totalDowntime>0?totalDowntime+" min":"0 min",       color:totalDowntime>60?C.danger:C.muted, sub:`${downtimeEvents.length} stop${downtimeEvents.length!==1?"s":""} today`},
+                {label:"DOWNTIME TODAY",   value:totalDowntime>0?totalDowntime+" min":"0 min", color:totalDowntime>60?C.danger:totalDowntime>0?C.warn:C.muted, sub:`${downtimeEvents.length} stop${downtimeEvents.length!==1?"s":""} today`},
               ].map(({label,value,color,sub})=>(
                 <div key={label} style={{...S.card,textAlign:"center",padding:16,marginBottom:0}}>
                   <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
@@ -3878,11 +3893,12 @@
               <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>DOWNTIME EVENTS TODAY</div>
               {downtimeEvents.map((e,i)=>(
                 <div key={i} style={{display:"flex",gap:12,padding:"8px 0",borderTop:i>0?`1px solid ${C.border}`:"none",alignItems:"center"}}>
-                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:C.danger+"22",color:C.danger,fontWeight:700,whiteSpace:"nowrap"}}>{e.duration} min</span>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:C.danger+"22",color:C.danger,fontWeight:700,whiteSpace:"nowrap"}}>
+                    {e.active?"⏱ ":""}{e.duration} min{e.active?" (ongoing)":""}
+                  </span>
                   <span style={{fontSize:11,color:C.muted}}>
                     Stopped: {new Date(e.stopped).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
-                    {" → "}
-                    Resumed: {new Date(e.resumed).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
+                    {e.resumed?" → Resumed: "+new Date(e.resumed).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false}):" → Still stopped"}
                   </span>
                 </div>
               ))}
