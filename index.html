@@ -519,12 +519,46 @@
       </div>;
     }
 
+    const ALL_TABS = [
+      {id:"dashboard",     label:"Dashboard",                icon:"◈"},
+      {id:"printinglive",  label:"Printing Live",            icon:"📡"},
+      {id:"production",    label:"Daily Production Printing",icon:"◤"},
+      {id:"viscosity",     label:"Viscosity QC",             icon:"◉"},
+      {id:"printingqc",    label:"Printing QC",              icon:"✔"},
+      {id:"lamination",    label:"Lamination",               icon:"⬡"},
+      {id:"laminationqc",  label:"Lamination QC",            icon:"✦"},
+      {id:"extruder1",     label:"Extruder 1",               icon:"▣"},
+      {id:"extruder1qc",   label:"Extruder 1 QC",            icon:"✧"},
+      {id:"extruder2",     label:"Extruder 2",               icon:"▣"},
+      {id:"extruder2qc",   label:"Extruder 2 QC",            icon:"✧"},
+      {id:"slitting1",     label:"Slitting 1",               icon:"⊟"},
+      {id:"slitting1qc",   label:"Slitting 1 QC",            icon:"⊠"},
+      {id:"slitting2",     label:"Slitting 2",               icon:"⊟"},
+      {id:"slitting2qc",   label:"Slitting 2 QC",            icon:"⊠"},
+      {id:"bagmaking1",    label:"Bag Making 1",             icon:"◫"},
+      {id:"bagmaking1qc",  label:"Bag Making 1 QC",          icon:"◻"},
+      {id:"bagmaking2",    label:"Bag Making 2",             icon:"◫"},
+      {id:"bagmaking2qc",  label:"Bag Making 2 QC",          icon:"◻"},
+      {id:"bagmaking3",    label:"Bag Making 3",             icon:"◫"},
+      {id:"bagmaking3qc",  label:"Bag Making 3 QC",          icon:"◻"},
+      {id:"bagmaking4",    label:"Bag Making 4",             icon:"◫"},
+      {id:"bagmaking4qc",  label:"Bag Making 4 QC",          icon:"◻"},
+      {id:"efficiency",    label:"Efficiency Report",        icon:"📈"},
+      {id:"records",       label:"All Records",              icon:"☰"},
+      {id:"users",         label:"User Mgmt",                icon:"⌖"},
+      {id:"trash",         label:"Trash Bin",                icon:"🗑"},
+      {id:"loginlog",      label:"Login Log",                icon:"📋"},
+      {id:"lists",         label:"Lists / Settings",         icon:"☰"},
+      {id:"debug",         label:"Debug / AI Help",          icon:"⚙"},
+      {id:"password",      label:"Change Password",          icon:"🔑"},
+    ];
+
     const ROLE_DEFAULTS = {
-      admin:    ["dashboard","approval","rejected","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","users","trash","loginlog","lists","debug","password"],
-      manager:  ["dashboard","rejected","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","records","lists","password"],
-      operator: ["dashboard","rejected","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","bagmaking1","bagmaking2","bagmaking3","bagmaking4","records","password"],
-      qc:       ["dashboard","rejected","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","bagmaking1qc","bagmaking2qc","bagmaking3qc","bagmaking4qc","records","password"],
-      viewer:   ["dashboard","rejected","records","password"],
+      admin:    ["dashboard","printinglive","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","users","trash","loginlog","lists","debug","password"],
+      manager:  ["dashboard","printinglive","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","lists","password"],
+      operator: ["dashboard","printinglive","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","bagmaking1","bagmaking2","bagmaking3","bagmaking4","records","password"],
+      qc:       ["dashboard","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","bagmaking1qc","bagmaking2qc","bagmaking3qc","bagmaking4qc","records","password"],
+      viewer:   ["dashboard","printinglive","records","password"],
     };
 
     function getTabs(user){
