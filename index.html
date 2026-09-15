@@ -519,46 +519,12 @@
       </div>;
     }
 
-    // ── Tab definitions ───────────────────────────────────────────────────────
-    const ALL_TABS = [
-      {id:"dashboard",     label:"Dashboard",              icon:"◈"},
-      {id:"production",    label:"Daily Production Printing", icon:"◤"},
-      {id:"viscosity",     label:"Viscosity QC",           icon:"◉"},
-      {id:"printingqc",    label:"Printing QC",            icon:"✔"},
-      {id:"lamination",    label:"Lamination",             icon:"⬡"},
-      {id:"laminationqc",  label:"Lamination QC",          icon:"✦"},
-      {id:"extruder1",     label:"Extruder 1",             icon:"▣"},
-      {id:"extruder1qc",   label:"Extruder 1 QC",          icon:"✧"},
-      {id:"extruder2",     label:"Extruder 2",             icon:"▣"},
-      {id:"extruder2qc",   label:"Extruder 2 QC",          icon:"✧"},
-      {id:"slitting1",     label:"Slitting 1",             icon:"⊟"},
-      {id:"slitting1qc",   label:"Slitting 1 QC",          icon:"⊠"},
-      {id:"slitting2",     label:"Slitting 2",             icon:"⊟"},
-      {id:"slitting2qc",   label:"Slitting 2 QC",          icon:"⊠"},
-      {id:"bagmaking1",    label:"Bag Making 1",           icon:"◫"},
-      {id:"bagmaking1qc",  label:"Bag Making 1 QC",        icon:"◻"},
-      {id:"bagmaking2",    label:"Bag Making 2",           icon:"◫"},
-      {id:"bagmaking2qc",  label:"Bag Making 2 QC",        icon:"◻"},
-      {id:"bagmaking3",    label:"Bag Making 3",           icon:"◫"},
-      {id:"bagmaking3qc",  label:"Bag Making 3 QC",        icon:"◻"},
-      {id:"bagmaking4",    label:"Bag Making 4",           icon:"◫"},
-      {id:"bagmaking4qc",  label:"Bag Making 4 QC",        icon:"◻"},
-      {id:"efficiency",    label:"Efficiency Report",      icon:"📈"},
-      {id:"records",       label:"All Records",            icon:"☰"},
-      {id:"users",         label:"User Mgmt",              icon:"⌖"},
-      {id:"trash",         label:"Trash Bin",              icon:"🗑"},
-      {id:"loginlog",      label:"Login Log",              icon:"📋"},
-      {id:"lists",         label:"Lists / Settings",       icon:"☰"},
-      {id:"debug",         label:"Debug / AI Help",        icon:"⚙"},
-      {id:"password",      label:"Change Password",        icon:"🔑"},
-    ];
-
     const ROLE_DEFAULTS = {
-      admin:    ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","users","trash","loginlog","lists","debug","password"],
-      manager:  ["dashboard","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","records","lists","password"],
-      operator: ["dashboard","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","bagmaking1","bagmaking2","bagmaking3","bagmaking4","records","password"],
-      qc:       ["dashboard","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","bagmaking1qc","bagmaking2qc","bagmaking3qc","bagmaking4qc","records","password"],
-      viewer:   ["dashboard","records","password"],
+      admin:    ["dashboard","approval","rejected","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","efficiency","records","users","trash","loginlog","lists","debug","password"],
+      manager:  ["dashboard","rejected","production","viscosity","printingqc","lamination","laminationqc","extruder1","extruder1qc","extruder2","extruder2qc","slitting1","slitting1qc","slitting2","slitting2qc","bagmaking1","bagmaking1qc","bagmaking2","bagmaking2qc","bagmaking3","bagmaking3qc","bagmaking4","bagmaking4qc","records","lists","password"],
+      operator: ["dashboard","rejected","production","lamination","laminationqc","extruder1","extruder2","slitting1","slitting2","bagmaking1","bagmaking2","bagmaking3","bagmaking4","records","password"],
+      qc:       ["dashboard","rejected","viscosity","printingqc","lamination","laminationqc","extruder1qc","extruder2qc","slitting1qc","slitting2qc","bagmaking1qc","bagmaking2qc","bagmaking3qc","bagmaking4qc","records","password"],
+      viewer:   ["dashboard","rejected","records","password"],
     };
 
     function getTabs(user){
@@ -640,6 +606,7 @@
         {/* ── Content ── */}
         <div style={{flex:1,padding:24,overflowY:"auto",minWidth:0}}>
           <div style={{display:tab==="dashboard"    ?"block":"none"}}><Dashboard records={records} session={session} /></div>
+          <div style={{display:tab==="printinglive" ?"block":"none"}}><PrintingLive session={session} /></div>
           <div style={{display:tab==="production"   ?"block":"none"}}><ProductionForm   key={getTabKey("production")}   onReset={()=>resetTab("production")}   onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="viscosity"    ?"block":"none"}}><ViscosityForm    key={getTabKey("viscosity")}    onReset={()=>resetTab("viscosity")}    onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="printingqc"   ?"block":"none"}}><PrintingQCForm   key={getTabKey("printingqc")}   onReset={()=>resetTab("printingqc")}   onSave={addRecord} users={users} lists={appLists} /></div>
@@ -3155,7 +3122,7 @@
             const targetMeters=(runSpeed&&downtime&&shiftMins)?Math.round((runSpeed*shiftMins)/downtime):null;
             const efficiency=(targetMeters&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/targetMeters)*100),999):null;
             const rowAvail=Math.round(OEE_SPEED*shiftMins*OEE_AVAIL);
-            const oeeRow=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
+            const oeeRow=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
             return {...g,shiftMins,runSpeed,downtime,targetMeters,efficiency,rowAvail,oeeRow,
               customerList:[...g.customers].join(", "),
               productList:[...g.products].join(", "),
@@ -3209,7 +3176,7 @@
       const avgShiftMins = (dayMins + nightMins) / 2;
       const totalAvailableMeters = Math.round(OEE_SPEED * avgShiftMins * OEE_AVAIL * totalWorkingDays * 2);
       const oee = (totalAvailableMeters > 0 && totalActual > 0)
-        ? Math.min(Math.round((totalActual / totalAvailableMeters) * 100), 100)
+        ? Math.min(Math.round((totalActual / totalAvailableMeters) * 100), 999)
         : null;
 
       // ── Excel Export ──────────────────────────────────────────────────────────
@@ -3322,7 +3289,7 @@
             const r={sz:11,fc:COL.white,bg};
             const rr={sz:11,fc:COL.white,bg,align:"right"};
             const rowAvail=Math.round(OEE_SPEED*(g.shift==="Night Shift"?nightMins:dayMins)*OEE_AVAIL);
-            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
+            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
             dataRows.push([
               cell(g.date,{...r,bold:true,fc:COL.accent}),
               cell(g.shift==="Night Shift"?"🌙 Night":"☀ Day",{...r,fc:g.shift==="Night Shift"?COL.blue:COL.accent}),
@@ -3363,7 +3330,7 @@
             const r={sz:11,fc:COL.white,bg};
             const rr={sz:11,fc:COL.white,bg,align:"right"};
             const rowAvail=Math.round(OEE_SPEED*g.totalShiftMins*OEE_AVAIL);
-            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
+            const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
             dataRows.push([
               cell(g.jobNo,{...r,bold:true,fc:COL.accent}),
               cell(g.dateRange||"—",{...r,fc:COL.blue}),
@@ -3608,7 +3575,7 @@
                     ?shiftRows.map((g,i)=>{
                       const rowAvail=Math.round(OEE_SPEED*(g.shift==="Night Shift"?nightMins:dayMins)*OEE_AVAIL);
                       // OEE = actual vs theoretical machine ceiling (never shows >100% as it's a ceiling)
-                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
+                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
                       return (
                       <tr key={g.date+g.shift+(g.isOldRecord?"_old":"")} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
                         <td style={{padding:"8px 10px",color:C.text,whiteSpace:"nowrap",fontWeight:600}}>{g.date}</td>
@@ -3693,7 +3660,7 @@
                     ))
                     :jobRows.map((g,i)=>{
                       const rowAvail=Math.round(OEE_SPEED*g.totalShiftMins*OEE_AVAIL);
-                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),100):null;
+                      const rowOee=(rowAvail>0&&g.actualMeters>0)?Math.min(Math.round((g.actualMeters/rowAvail)*100),999):null;
                       return (
                       <tr key={g.jobNo} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
                         <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,whiteSpace:"nowrap"}}>{g.jobNo}</td>
@@ -3748,6 +3715,182 @@
     }
 
         // ── Debug Panel ───────────────────────────────────────────────────────────
+    // ── Printing Live Component ───────────────────────────────────────────────
+    function PrintingLive({session}){
+      const [readings,setReadings]=useState([]);
+      const [latest,setLatest]=useState(null);
+      const [loading,setLoading]=useState(true);
+      const [shiftMeters,setShiftMeters]=useState(0);
+      const [avgSpeed,setAvgSpeed]=useState(0);
+      const [downtimeEvents,setDowntimeEvents]=useState([]);
+      const [lastRunning,setLastRunning]=useState(null);
+
+      const fetchReadings=async()=>{
+        const {data}=await sb.from("machine_readings")
+          .select("*")
+          .order("created_at",{ascending:false})
+          .limit(50);
+        if(data&&data.length>0){
+          setLatest(data[0]);
+          setReadings(data);
+
+          // Calculate shift stats from today's readings
+          const today=new Date().toISOString().split("T")[0];
+          const todayReadings=data.filter(r=>r.created_at.startsWith(today));
+
+          // Shift meters = max meters_shift value today
+          if(todayReadings.length>0){
+            setShiftMeters(Math.max(...todayReadings.map(r=>parseFloat(r.meters_shift||0))));
+          }
+
+          // Average speed (only when running)
+          const runningReadings=todayReadings.filter(r=>r.running&&r.speed>0);
+          if(runningReadings.length>0){
+            const avg=runningReadings.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningReadings.length;
+            setAvgSpeed(avg);
+          }
+
+          // Detect downtime events (transitions from running to stopped)
+          const events=[];
+          for(let i=0;i<todayReadings.length-1;i++){
+            if(!todayReadings[i].running&&todayReadings[i+1].running){
+              const stopTime=new Date(todayReadings[i+1].created_at);
+              const startTime=new Date(todayReadings[i].created_at);
+              const duration=Math.round((startTime-stopTime)/60000);
+              if(duration>0) events.push({
+                stopped:todayReadings[i+1].created_at,
+                resumed:todayReadings[i].created_at,
+                duration
+              });
+            }
+          }
+          setDowntimeEvents(events.slice(0,5));
+        }
+        setLoading(false);
+      };
+
+      // Poll every 10 seconds
+      React.useEffect(()=>{
+        fetchReadings();
+        const interval=setInterval(fetchReadings,10000);
+        return ()=>clearInterval(interval);
+      },[]);
+
+      const isRunning=latest?.running===true;
+      const speed=parseFloat(latest?.speed||0);
+      const lastSeen=latest?new Date(latest.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"—";
+      const totalDowntime=downtimeEvents.reduce((a,e)=>a+e.duration,0);
+
+      // Speed colour
+      const TARGET_SPEED=130; // default — will use product speed later
+      const speedColor=speed>=TARGET_SPEED*0.9?C.success:speed>=TARGET_SPEED*0.7?C.warn:speed>0?C.danger:C.muted;
+
+      return <div>
+        <PH title="Printing Live" sub="Live machine data from Arduino Opta — updates every 10 seconds" />
+
+        {loading
+          ?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>Loading live data…</div>
+          :<div>
+
+            {/* ── Status banner ── */}
+            <div style={{...S.card,marginBottom:16,padding:20,background:isRunning?C.success+"11":C.danger+"11",border:`1px solid ${isRunning?C.success:C.danger}44`,display:"flex",alignItems:"center",gap:16}}>
+              <div style={{width:16,height:16,borderRadius:"50%",background:isRunning?C.success:C.danger,boxShadow:`0 0 12px ${isRunning?C.success:C.danger}`,flexShrink:0}} />
+              <div style={{flex:1}}>
+                <div style={{fontSize:18,fontWeight:800,color:isRunning?C.success:C.danger}}>{isRunning?"▶ MACHINE RUNNING":"■ MACHINE STOPPED"}</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>Last reading: {lastSeen}</div>
+              </div>
+              {!isRunning&&latest&&<div style={{fontSize:12,color:C.danger,fontWeight:600}}>
+                Stopped for {Math.round((Date.now()-new Date(latest.created_at).getTime())/60000)} min
+              </div>}
+            </div>
+
+            {/* ── Live stats cards ── */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+              {[
+                {label:"CURRENT SPEED",    value:isRunning?speed.toFixed(1)+" m/min":"0 m/min",    color:speedColor,     sub:`Target: ${TARGET_SPEED} m/min`},
+                {label:"AVERAGE SPEED",    value:avgSpeed>0?avgSpeed.toFixed(1)+" m/min":"—",       color:C.blue,         sub:"Running time only"},
+                {label:"METERS THIS SHIFT",value:shiftMeters>0?Math.round(shiftMeters).toLocaleString()+" m":"0 m", color:C.accent, sub:"Since shift start"},
+                {label:"DOWNTIME TODAY",   value:totalDowntime>0?totalDowntime+" min":"0 min",       color:totalDowntime>60?C.danger:C.muted, sub:`${downtimeEvents.length} stop${downtimeEvents.length!==1?"s":""} today`},
+              ].map(({label,value,color,sub})=>(
+                <div key={label} style={{...S.card,textAlign:"center",padding:16,marginBottom:0}}>
+                  <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
+                  <div style={{fontSize:22,fontWeight:800,color}}>{value}</div>
+                  {sub&&<div style={{fontSize:10,color:C.muted,marginTop:4}}>{sub}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* ── Speed gauge bar ── */}
+            {isRunning&&<div style={{...S.card,marginBottom:16,padding:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:11,color:C.muted,fontWeight:600,flexShrink:0,width:100}}>SPEED</div>
+                <div style={{flex:1,height:20,background:C.border,borderRadius:10,overflow:"hidden"}}>
+                  <div style={{width:`${Math.min((speed/200)*100,100)}%`,height:"100%",background:speedColor,borderRadius:10,transition:"width 0.5s",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8}}>
+                    {speed>20&&<span style={{fontSize:11,fontWeight:700,color:"#fff"}}>{speed.toFixed(1)}</span>}
+                  </div>
+                </div>
+                <div style={{fontSize:11,color:C.muted,flexShrink:0,minWidth:60,textAlign:"right"}}>max 200</div>
+              </div>
+              {/* Target line indicator */}
+              <div style={{fontSize:10,color:C.muted,marginTop:8,display:"flex",gap:16}}>
+                <span><span style={{color:C.success}}>■</span> ≥{Math.round(TARGET_SPEED*0.9)} m/min good</span>
+                <span><span style={{color:C.warn}}>■</span> ≥{Math.round(TARGET_SPEED*0.7)} m/min low</span>
+                <span><span style={{color:C.danger}}>■</span> &lt;{Math.round(TARGET_SPEED*0.7)} m/min critical</span>
+              </div>
+            </div>}
+
+            {/* ── Downtime events ── */}
+            {downtimeEvents.length>0&&<div style={{...S.card,marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>DOWNTIME EVENTS TODAY</div>
+              {downtimeEvents.map((e,i)=>(
+                <div key={i} style={{display:"flex",gap:12,padding:"8px 0",borderTop:i>0?`1px solid ${C.border}`:"none",alignItems:"center"}}>
+                  <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:C.danger+"22",color:C.danger,fontWeight:700,whiteSpace:"nowrap"}}>{e.duration} min</span>
+                  <span style={{fontSize:11,color:C.muted}}>
+                    Stopped: {new Date(e.stopped).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
+                    {" → "}
+                    Resumed: {new Date(e.resumed).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
+                  </span>
+                </div>
+              ))}
+              <div style={{fontSize:10,color:C.muted,marginTop:8,borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+                Total downtime: <strong style={{color:C.danger}}>{totalDowntime} min</strong>
+              </div>
+            </div>}
+
+            {/* ── Last 10 readings ── */}
+            <div style={S.card}>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>LAST 10 READINGS</div>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead>
+                  <tr style={{borderBottom:`1px solid ${C.border}`}}>
+                    {["Time","Speed (m/min)","Meters Shift","Status"].map(h=>(
+                      <th key={h} style={{padding:"4px 10px",color:C.muted,fontWeight:600,textAlign:"left",fontSize:10}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {readings.slice(0,10).map((r,i)=>(
+                    <tr key={r.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
+                      <td style={{padding:"6px 10px",color:C.muted,whiteSpace:"nowrap"}}>{new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</td>
+                      <td style={{padding:"6px 10px",color:r.running?speedColor:C.muted,fontWeight:r.running?700:400}}>{r.running?parseFloat(r.speed||0).toFixed(1):"—"}</td>
+                      <td style={{padding:"6px 10px",color:C.text}}>{Math.round(parseFloat(r.meters_shift||0)).toLocaleString()} m</td>
+                      <td style={{padding:"6px 10px"}}>
+                        <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:r.running?C.success+"22":C.danger+"22",color:r.running?C.success:C.danger,fontWeight:700}}>
+                          {r.running?"▶ Running":"■ Stopped"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{fontSize:10,color:C.muted,marginTop:8,textAlign:"right"}}>Auto-refreshes every 10 seconds</div>
+            </div>
+          </div>
+        }
+      </div>;
+    }
+
+    // ── Debug Panel ───────────────────────────────────────────────────────────
     function DebugPanel({records,users,session}){
       const [copied,setCopied]=useState(false);
       const buildReport=()=>{
