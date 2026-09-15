@@ -349,6 +349,7 @@
       product_speeds: DEFAULT_PRODUCT_SPEEDS,
       shift_times: DEFAULT_SHIFT_TIMES,
       oee_params: {maxSpeed:200, loadingFactor:70, downtimeProvision:20},
+      approval_settings: {production:true,viscosity:false,printingqc:false,lamination:false,laminationqc:false,extruder1:false,extruder1qc:false,extruder2:false,extruder2qc:false,slitting1:false,slitting1qc:false,slitting2:false,slitting2qc:false,bagmaking1:false,bagmaking1qc:false,bagmaking2:false,bagmaking2qc:false,bagmaking3:false,bagmaking3qc:false,bagmaking4:false,bagmaking4qc:false},
       product_name_printing:baseProductNames,
       product_name_lamination:baseProductNames,
       product_name_extruders:baseProductNames,
@@ -583,9 +584,13 @@
 
       const addRecord = async rec => {
         setSaving(true);
-        const {error} = await dbAddRec({...rec, created_by:session.name, created_at:new Date().toISOString()});
+        const approvalCfg=appLists.approval_settings||{production:true};
+        const needsApproval=approvalCfg[rec.type]===true;
+        const now=new Date().toISOString();
+        const history=needsApproval?[{action:"submitted",by:session.name,date:now.split("T")[0],time:now.split("T")[1].substring(0,8)}]:[];
+        const {error} = await dbAddRec({...rec, created_by:session.name, created_at:now, approval_status:needsApproval?"pending":"approved", approval_history:history});
         if(error) flash("Save failed: "+error.message,"danger");
-        else { await reload(); flash("Saved to database!"); setTab("records"); }
+        else { await reload(); flash(needsApproval?"Saved — pending manager approval":"Saved to database!"); setTab("records"); }
         setSaving(false);
       };
 
@@ -641,8 +646,9 @@
           {/* Nav items */}
           <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
             {visibleTabs.map(t=>{
-              const pendingCount=t.id==="approval"?records.filter(r=>(r.approval_status||"pending")==="pending").length:0;
-              const rejectedCount=t.id==="rejected"?records.filter(r=>r.approval_status==="rejected").length:0;
+              const approvalCfg=appLists?.approval_settings||{production:true};
+              const pendingCount=t.id==="approval"?records.filter(r=>(r.approval_status||"pending")==="pending"&&approvalCfg[r.type]===true).length:0;
+              const rejectedCount=t.id==="rejected"?records.filter(r=>r.approval_status==="rejected"&&approvalCfg[r.type]===true).length:0;
               const badge=pendingCount||rejectedCount;
               return (
               <button key={t.id} onClick={()=>setTab(t.id)} style={{
@@ -2347,6 +2353,7 @@
       const isProductSpeeds=activeList==="product_speeds";
       const isShiftTimes=activeList==="shift_times";
       const isOeeParams=activeList==="oee_params";
+      const isApprovalSettings=activeList==="approval_settings";
 
       // Customer Products state
       const [cpEntries,setCpEntries]=useState([]); // [{customer,products:[]}]
@@ -2369,6 +2376,8 @@
 
       // OEE Parameters state
       const [oeeParams,setOeeParams]=useState({maxSpeed:200,loadingFactor:70,downtimeProvision:20});
+      const DEFAULT_APPROVAL={production:true,viscosity:false,printingqc:false,lamination:false,laminationqc:false,extruder1:false,extruder1qc:false,extruder2:false,extruder2qc:false,slitting1:false,slitting1qc:false,slitting2:false,slitting2qc:false,bagmaking1:false,bagmaking1qc:false,bagmaking2:false,bagmaking2qc:false,bagmaking3:false,bagmaking3qc:false,bagmaking4:false,bagmaking4qc:false};
+      const [approvalSettings,setApprovalSettings]=useState({...DEFAULT_APPROVAL});
 
       React.useEffect(()=>{
         if(isCustomerProducts){
@@ -2394,6 +2403,11 @@
         if(isOeeParams){
           const raw=appLists.oee_params||{maxSpeed:200,loadingFactor:70,downtimeProvision:20};
           setOeeParams({maxSpeed:200,loadingFactor:70,downtimeProvision:20,...(typeof raw==="object"&&!Array.isArray(raw)?raw:{})});
+          return;
+        }
+        if(isApprovalSettings){
+          const raw=appLists.approval_settings||DEFAULT_APPROVAL;
+          setApprovalSettings({...DEFAULT_APPROVAL,...(typeof raw==="object"&&!Array.isArray(raw)?raw:{})});
           return;
         }
         const raw=appLists[activeList]||[];
@@ -2489,6 +2503,7 @@
           <button onClick={()=>setActiveList("product_speeds")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="product_speeds"?C.blue:C.panel,color:activeList==="product_speeds"?"#fff":C.muted,outline:activeList==="product_speeds"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>📈 Product Speeds</button>
           <button onClick={()=>setActiveList("shift_times")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="shift_times"?C.blue:C.panel,color:activeList==="shift_times"?"#fff":C.muted,outline:activeList==="shift_times"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>🕐 Shift Times</button>
           <button onClick={()=>setActiveList("oee_params")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="oee_params"?C.blue:C.panel,color:activeList==="oee_params"?"#fff":C.muted,outline:activeList==="oee_params"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>⚙ OEE Parameters</button>
+          <button onClick={()=>setActiveList("approval_settings")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="approval_settings"?C.blue:C.panel,color:activeList==="approval_settings"?"#fff":C.muted,outline:activeList==="approval_settings"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>✔ Approval Settings</button>
           {allListKeys.map(k=>(
             <button key={k} onClick={()=>setActiveList(k)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList===k?C.accent:C.panel,color:activeList===k?"#fff":C.muted,outline:activeList===k?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>{LIST_LABELS[k]}</button>
           ))}
@@ -2763,8 +2778,58 @@
           <div style={{color:C.muted,fontSize:11,marginTop:8}}>Changes take effect immediately in the Efficiency Report.</div>
         </div>}
 
+        {/* ── Approval Settings editor ── */}
+        {isApprovalSettings&&<div>
+          <SC title="Approval Settings">
+            <div style={{fontSize:12,color:C.muted,marginBottom:16,padding:"10px 14px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
+              Select which document types require manager approval before they are considered compliant.
+              Documents with approval enabled will show as <strong style={{color:C.warn}}>⏳ Pending</strong> until a manager approves them.
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+              {[
+                {id:"production",label:"Daily Production Printing"},
+                {id:"viscosity",label:"Viscosity QC"},
+                {id:"printingqc",label:"Printing QC"},
+                {id:"lamination",label:"Lamination"},
+                {id:"laminationqc",label:"Lamination QC"},
+                {id:"extruder1",label:"Extruder 1"},
+                {id:"extruder1qc",label:"Extruder 1 QC"},
+                {id:"extruder2",label:"Extruder 2"},
+                {id:"extruder2qc",label:"Extruder 2 QC"},
+                {id:"slitting1",label:"Slitting 1"},
+                {id:"slitting1qc",label:"Slitting 1 QC"},
+                {id:"slitting2",label:"Slitting 2"},
+                {id:"slitting2qc",label:"Slitting 2 QC"},
+                {id:"bagmaking1",label:"Bag Making 1"},
+                {id:"bagmaking1qc",label:"Bag Making 1 QC"},
+                {id:"bagmaking2",label:"Bag Making 2"},
+                {id:"bagmaking2qc",label:"Bag Making 2 QC"},
+                {id:"bagmaking3",label:"Bag Making 3"},
+                {id:"bagmaking3qc",label:"Bag Making 3 QC"},
+                {id:"bagmaking4",label:"Bag Making 4"},
+                {id:"bagmaking4qc",label:"Bag Making 4 QC"},
+              ].map(({id,label})=>(
+                <div key={id} onClick={()=>setApprovalSettings(p=>({...p,[id]:!p[id]}))}
+                  style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:6,cursor:"pointer",
+                    background:approvalSettings[id]?C.success+"11":C.bg,
+                    border:`1px solid ${approvalSettings[id]?C.success:C.border}`,
+                    transition:"all 0.15s"}}>
+                  <div style={{width:18,height:18,borderRadius:4,border:`2px solid ${approvalSettings[id]?C.success:C.border}`,
+                    background:approvalSettings[id]?C.success:"transparent",
+                    display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+                    {approvalSettings[id]&&<span style={{color:"#fff",fontSize:12,fontWeight:700}}>✔</span>}
+                  </div>
+                  <span style={{fontSize:12,color:approvalSettings[id]?C.success:C.muted,fontWeight:approvalSettings[id]?600:400}}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </SC>
+          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{ setSaving(true); await dbUpsertList("approval_settings",JSON.stringify(approvalSettings)); await reload(); flash("Approval settings saved!"); setSaving(false); }} disabled={saving}>{saving?"Saving…":"💾 Save Approval Settings"}</button>
+          <div style={{color:C.muted,fontSize:11,marginTop:8}}>Changes take effect immediately — new records saved after this change will follow the new settings.</div>
+        </div>}
+
         {/* ── Regular list editor ── */}
-        {!isCustomerProducts&&!isProductInkCodes&&!isProductSpeeds&&!isShiftTimes&&!isOeeParams&&<div>
+        {!isCustomerProducts&&!isProductInkCodes&&!isProductSpeeds&&!isShiftTimes&&!isOeeParams&&!isApprovalSettings&&<div>
           <SC title={LIST_LABELS[activeList]}>
             {items.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:12}}>No items yet — add some below.</div>}
             {items.map((item,i)=>(
@@ -3864,7 +3929,8 @@
       const [exp,setExp]=useState(null);
       const [rejectId,setRejectId]=useState(null);
       const [rejectReason,setRejectReason]=useState("");
-      const pending=records.filter(r=>(r.approval_status||"pending")==="pending");
+      const approvalCfg=appLists?.approval_settings||{production:true};
+      const pending=records.filter(r=>(r.approval_status||"pending")==="pending"&&approvalCfg[r.type]===true);
 
       return <div>
         <PH title="Pending Approval" sub={`${pending.length} record${pending.length!==1?"s":""} awaiting approval`} />
@@ -3922,7 +3988,8 @@
     function RejectedRecords({records,session,onResubmit,onSave,users,appLists}){
       const [exp,setExp]=useState(null);
       const [editing,setEditing]=useState(null);
-      const rejected=records.filter(r=>r.approval_status==="rejected");
+      const approvalCfgR=appLists?.approval_settings||{production:true};
+      const rejected=records.filter(r=>r.approval_status==="rejected"&&approvalCfgR[r.type]===true);
 
       return <div>
         <PH title="Rejected Records" sub={`${rejected.length} record${rejected.length!==1?"s":""} rejected`} />
