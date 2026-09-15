@@ -1693,11 +1693,19 @@
           ["Generated:",new Date().toLocaleString()],
           ["Total Records:",prodRecs.length],
           [],
-          ["Completed By","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks"]
+          ["Completed By","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks"]
         ];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
-          rows.push([r.created_by,h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,h.widthA||h.width||"",h.widthB||"",h.lengthA||h.length||"",h.lengthB||"",h.speed,h.operator,h.supervisor,r.data?.remarks||""]);
+          const submittedDate=new Date(r.created_at);
+          rows.push([
+            r.created_by,
+            submittedDate.toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}),
+            submittedDate.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false}),
+            h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,
+            h.widthA||h.width||"",h.widthB||"",h.lengthA||h.length||"",h.lengthB||"",
+            h.speed,h.operator,h.supervisor,r.data?.remarks||""
+          ]);
           if(r.data?.rawIn?.length){
             rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit","Signed By","Shift","Time"]);
             r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
@@ -1916,7 +1924,7 @@
                   {r.data?.header?.continuationOf&&(
                     <span style={{color:C.warn,fontWeight:600}}>🔗 Cont. of {r.data.header.continuationOf}</span>
                   )}
-                  <span>🕐 {new Date(r.created_at).toLocaleString()}</span>
+                  <span>🕐 {new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})} {new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}</span>
                 </div>
               </div>
               <span style={{fontSize:10,color}}>{isExp?"▲":"▼"}</span>
@@ -3913,7 +3921,7 @@
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                 <thead>
                   <tr style={{borderBottom:`1px solid ${C.border}`}}>
-                    {["Time","Speed (m/min)","Meters Shift","Status"].map(h=>(
+                    {["Date","Time","Speed (m/min)","Meters Shift","Status"].map(h=>(
                       <th key={h} style={{padding:"4px 10px",color:C.muted,fontWeight:600,textAlign:"left",fontSize:10}}>{h}</th>
                     ))}
                   </tr>
@@ -3921,6 +3929,7 @@
                 <tbody>
                   {readings.slice(0,10).map((r,i)=>(
                     <tr key={r.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
+                      <td style={{padding:"6px 10px",color:C.muted,whiteSpace:"nowrap"}}>{new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})}</td>
                       <td style={{padding:"6px 10px",color:C.muted,whiteSpace:"nowrap"}}>{new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</td>
                       <td style={{padding:"6px 10px",color:r.running?speedColor:C.muted,fontWeight:r.running?700:400}}>{r.running?parseFloat(r.speed||0).toFixed(1):"—"}</td>
                       <td style={{padding:"6px 10px",color:C.text}}>{Math.round(parseFloat(r.meters_shift||0)).toLocaleString()} m</td>
