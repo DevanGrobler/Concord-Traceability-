@@ -1725,7 +1725,7 @@
             const totalQty=r.data.returnBopp.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             rows.push(["","","TOTAL",totalQty||"","","","",""]);
           }
-          if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP (kg)","Print Comment","Raw BOPP (kg)","Raw Comment","Signed By","Shift","Time"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||"",x.signedBy||"",x.signedShift||"",x.signedAt||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","","","",""]); } }
+          if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP (kg)","Print Comment","Raw BOPP (kg)","Raw Comment","Signed By","Shift","Date","Time"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||"",x.signedBy||"",x.signedShift||"",x.signedDate||"",x.signedAt||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","","","","",""]); } }
           if(r.data?.inks?.length){
             rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)","Signed By","Shift","Date","Time"]);
             r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned,x.signedBy||"",x.signedShift||"",x.signedDate||"",x.signedAt||""]));
@@ -2084,12 +2084,15 @@
           const sumRaw=rows.reduce((a,r)=>a+parseFloat(r.rawBopp||0),0);
           return <div style={{marginBottom:12}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>BOPP WASTE</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:4}}>
-              <div style={{fontSize:10,color:C.muted}}>Printing BOPP Waste</div>
-              <div style={{fontSize:10,color:C.muted}}>Raw BOPP Film Waste</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:4,marginBottom:4}}>
+              <div style={{fontSize:10,color:C.muted}}>Printing BOPP (kg)</div>
+              <div style={{fontSize:10,color:C.muted}}>Raw BOPP (kg)</div>
+              <div style={{fontSize:10,color:C.muted}}>Signed By</div>
+              <div style={{fontSize:10,color:C.muted}}>Date</div>
+              <div style={{fontSize:10,color:C.muted}}>Time</div>
             </div>
             {rows.map((r,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,padding:"6px 0",borderTop:`1px solid ${C.border}`}}>
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:4,padding:"6px 0",borderTop:`1px solid ${C.border}`}}>
                 <div>
                   <div style={{color:C.text,fontWeight:600}}>{r.printingBopp||"0"} kg</div>
                   {r.printingComment&&<div style={{color:C.muted,fontSize:11,marginTop:2}}>{r.printingComment}</div>}
@@ -2098,12 +2101,16 @@
                   <div style={{color:C.text,fontWeight:600}}>{r.rawBopp||"0"} kg</div>
                   {r.rawComment&&<div style={{color:C.muted,fontSize:11,marginTop:2}}>{r.rawComment}</div>}
                 </div>
+                <div style={{color:C.success,fontWeight:600,fontSize:11}}>{r.signedBy||"—"}</div>
+                <div style={{color:C.blue,fontSize:11}}>{r.signedDate||"—"}</div>
+                <div style={{color:C.muted,fontSize:11}}>{r.signedAt||"—"}</div>
               </div>
             ))}
             {rows.length>1&&(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,padding:"5px 0",borderTop:`2px solid ${C.border}`,marginTop:2}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr",gap:4,padding:"5px 0",borderTop:`2px solid ${C.border}`,marginTop:2}}>
                 <div style={{color:C.accent,fontWeight:700,fontSize:11}}>Σ {sumPrinting%1===0?sumPrinting:sumPrinting.toFixed(3)} kg</div>
                 <div style={{color:C.accent,fontWeight:700,fontSize:11}}>Σ {sumRaw%1===0?sumRaw:sumRaw.toFixed(3)} kg</div>
+                <div/><div/><div/>
               </div>
             )}
           </div>;
