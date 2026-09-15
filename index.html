@@ -1707,35 +1707,35 @@
             h.speed,h.operator,h.supervisor,r.data?.remarks||""
           ]);
           if(r.data?.rawIn?.length){
-            rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit","Signed By","Shift","Time"]);
-            r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
+            rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit","Signed By","Shift","Date","Time"]);
+            r.data.rawIn.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedDate||"",x.signedAt||""]));
             const totalQty=r.data.rawIn.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             rows.push(["","","TOTAL",totalQty||"","","","",""]);
           }
           if(r.data?.rawOut?.length){
-            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT (PRINTING REELS)","Material","Batch No.","Qty","Unit","Meters","Time","Signed By","Shift","Sign Time"]);
-            r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||"",x.time||"",x.signedBy||"",x.signedShift||"",x.signedAt||""]));
+            rows.push([]); rows.push(["  RAW MATERIAL OUTPUT (PRINTING REELS)","Material","Batch No.","Qty","Unit","Meters","Time","Signed By","Shift","Date","Sign Time"]);
+            r.data.rawOut.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.meters||"",x.time||"",x.signedBy||"",x.signedShift||"",x.signedDate||"",x.signedAt||""]));
             const totalQty=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalMeters=r.data.rawOut.reduce((a,x)=>a+parseFloat(x.meters||0),0);
             rows.push(["","","TOTAL",totalQty||"","",totalMeters||"","","","",""]);
           }
           if(r.data?.returnBopp?.length&&r.data.returnBopp.some(x=>x.material||x.qty)){
-            rows.push([]); rows.push(["  RETURN RAW BOPP (JOB COMPLETE)","Material","Batch No.","Qty","Unit","Signed By","Shift","Time"]);
-            r.data.returnBopp.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
+            rows.push([]); rows.push(["  RETURN RAW BOPP (JOB COMPLETE)","Material","Batch No.","Qty","Unit","Signed By","Shift","Date","Time"]);
+            r.data.returnBopp.forEach(x=>rows.push(["",x.material,x.batchNo,x.qty,x.unit,x.signedBy||"",x.signedShift||"",x.signedDate||"",x.signedAt||""]));
             const totalQty=r.data.returnBopp.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             rows.push(["","","TOTAL",totalQty||"","","","",""]);
           }
           if(r.data?.boppWaste){ const bwRows=Array.isArray(r.data.boppWaste)?r.data.boppWaste:[r.data.boppWaste]; if(bwRows.some(x=>x.printingBopp||x.rawBopp)){ rows.push([]); rows.push(["  BOPP WASTE","Printing BOPP (kg)","Print Comment","Raw BOPP (kg)","Raw Comment","Signed By","Shift","Time"]); bwRows.forEach(x=>rows.push(["",x.printingBopp||"0",x.printingComment||"",x.rawBopp||"0",x.rawComment||"",x.signedBy||"",x.signedShift||"",x.signedAt||""])); const tP=bwRows.reduce((a,x)=>a+parseFloat(x.printingBopp||0),0); const tR=bwRows.reduce((a,x)=>a+parseFloat(x.rawBopp||0),0); rows.push(["","TOTAL","",tP||"","","","",""]); } }
           if(r.data?.inks?.length){
-            rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)","Signed By","Shift","Time"]);
-            r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
+            rows.push([]); rows.push(["  INK INPUT","Ink Code","Description","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)","Signed By","Shift","Date","Time"]);
+            r.data.inks.forEach(x=>rows.push(["",x.inkCode,x.description||x.shade||"",x.inkType||"",x.batchNo||"",x.supplier,x.qty,x.returned,x.signedBy||"",x.signedShift||"",x.signedDate||"",x.signedAt||""]));
             const totalQty=r.data.inks.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalRet=r.data.inks.reduce((a,x)=>a+parseFloat(x.returned||0),0);
             rows.push(["","","","","","TOTAL",totalQty||"",totalRet||"","","",""]);
           }
           if(r.data?.solvents?.length){
-            rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty (L)","Returned (L)","Signed By","Shift","Time"]);
-            r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned,x.signedBy||"",x.signedShift||"",x.signedAt||""]));
+            rows.push([]); rows.push(["  SOLVENT INPUT","Solvent","Supplier","Batch Code","Qty (L)","Returned (L)","Signed By","Shift","Date","Time"]);
+            r.data.solvents.forEach(x=>rows.push(["",x.solvent,x.supplier,x.batchNo,x.qty,x.returned,x.signedBy||"",x.signedShift||"",x.signedDate||"",x.signedAt||""]));
             const totalQty=r.data.solvents.reduce((a,x)=>a+parseFloat(x.qty||0),0);
             const totalRet=r.data.solvents.reduce((a,x)=>a+parseFloat(x.returned||0),0);
             rows.push(["","","","TOTAL",totalQty||"",totalRet||"","","",""]);
@@ -2072,9 +2072,9 @@
             <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
           ))}
         </div>
-        <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit","signedBy","signedShift","signedAt"]} sumCols={["qty"]} />
-        <DT title="Raw Material Output (Printing Reels)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters","time","signedBy","signedShift","signedAt"]} sumCols={["qty","meters"]} />
-        <DT title="Return Raw BOPP (When Job is Complete)" rows={d.returnBopp} cols={["material","batchNo","qty","unit","signedBy","signedShift","signedAt"]} sumCols={["qty"]} />
+        <DT title="Raw Material Input"  rows={d.rawIn}  cols={["material","batchNo","qty","unit","signedBy","signedShift","signedDate","signedAt"]} sumCols={["qty"]} />
+        <DT title="Raw Material Output (Printing Reels)" rows={d.rawOut} cols={["material","batchNo","qty","unit","meters","time","signedBy","signedShift","signedDate","signedAt"]} sumCols={["qty","meters"]} />
+        <DT title="Return Raw BOPP (When Job is Complete)" rows={d.returnBopp} cols={["material","batchNo","qty","unit","signedBy","signedShift","signedDate","signedAt"]} sumCols={["qty"]} />
         {(()=>{
           const bw=d.boppWaste;
           if(!bw) return null;
@@ -2108,8 +2108,8 @@
             )}
           </div>;
         })()}
-        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned","signedBy","signedShift","signedAt"]} sumCols={["qty","returned"]} />
-        <DT title="Solvent Input" rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned","signedBy","signedShift","signedAt"]} sumCols={["qty","returned"]} />
+        <DT title="Ink Input" rows={(d.inks||[]).map(i=>({...i,inkLabel:i.inkCode?(i.description||i.shade?`${i.inkCode} — ${i.description||i.shade}`:i.inkCode):""}))} cols={["inkLabel","inkType","batchNo","supplier","qty","returned","signedBy","signedShift","signedDate","signedAt"]} sumCols={["qty","returned"]} />
+        <DT title="Solvent Input" rows={d.solvents} cols={["solvent","supplier","batchNo","qty","returned","signedBy","signedShift","signedDate","signedAt"]} sumCols={["qty","returned"]} />
         {d.remarks&&<div style={{marginTop:10}}><span style={{color:C.muted}}>Remarks: </span>{d.remarks}</div>}
       </div>;
     }
@@ -2169,7 +2169,7 @@
 
     function DT({title,rows,cols,sumCols=[]}){
       if(!rows?.length) return null;
-      const colLabels={material:"Material",batchNo:"Batch No.",qty:"Qty",unit:"Unit",meters:"Meters",inkLabel:"Ink Code",inkType:"Type",batchNo:"Batch No.",supplier:"Supplier",returned:"Returned",solvent:"Solvent"};
+      const colLabels={material:"Material",batchNo:"Batch No.",qty:"Qty",unit:"Unit",meters:"Meters",inkLabel:"Ink Code",inkType:"Type",supplier:"Supplier",returned:"Returned",solvent:"Solvent",time:"Time",signedBy:"Signed By",signedShift:"Shift",signedDate:"Date",signedAt:"Time"};
       const totals={};
       if(sumCols.length){
         sumCols.forEach(col=>{
@@ -2179,9 +2179,9 @@
       }
       return <div style={{marginBottom:12}}>
         <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>{title.toUpperCase()}</div>
-        <div style={{display:"flex",gap:4,marginBottom:4}}>{cols.map(c=><div key={c} style={{flex:1,fontSize:10,color:C.muted,textTransform:"capitalize"}}>{c.replace(/([A-Z])/g," $1")}</div>)}</div>
+        <div style={{display:"flex",gap:4,marginBottom:4}}>{cols.map(c=><div key={c} style={{flex:1,fontSize:10,color:C.muted}}>{colLabels[c]||c.replace(/([A-Z])/g," $1")}</div>)}</div>
         {rows.map((r,i)=><div key={i} style={{display:"flex",gap:4,padding:"3px 0",borderTop:`1px solid ${C.border}`}}>
-          {cols.map(c=><div key={c} style={{flex:1,color:C.text}}>{r[c]||"—"}</div>)}
+          {cols.map(c=><div key={c} style={{flex:1,color:c==="signedBy"?C.success:c==="signedDate"?C.blue:C.text,fontWeight:c==="signedBy"?600:400}}>{r[c]||"—"}</div>)}
         </div>)}
         {sumCols.length>0&&(
           <div style={{display:"flex",gap:4,padding:"5px 0",borderTop:`2px solid ${C.border}`,marginTop:2}}>
