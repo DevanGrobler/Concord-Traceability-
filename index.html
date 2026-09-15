@@ -523,6 +523,7 @@
     const ALL_TABS = [
       {id:"dashboard",     label:"Dashboard",                icon:"◈"},
       {id:"approval",      label:"Pending Approval",         icon:"⏳"},
+      {id:"approval_instant", label:"Instant Approve",       icon:"⚡", hidden:true},
       {id:"rejected",      label:"Rejected",                 icon:"✕"},
       {id:"printinglive",  label:"Printing Live",            icon:"📡"},
       {id:"production",    label:"Daily Production Printing",icon:"◤"},
@@ -626,7 +627,7 @@
         await reload(); flash("Record resubmitted for approval.");
       };
 
-      const visibleTabs = getTabs(session);
+      const visibleTabs = getTabs(session).filter(t=>!t.hidden);
       React.useEffect(()=>{ if(!visibleTabs.find(t=>t.id===tab)) setTab("dashboard"); },[session]);
 
       return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"row"}}>
@@ -679,7 +680,7 @@
         {/* ── Content ── */}
         <div style={{flex:1,padding:24,overflowY:"auto",minWidth:0}}>
           <div style={{display:tab==="dashboard"    ?"block":"none"}}><Dashboard records={records} session={session} /></div>
-          <div style={{display:tab==="approval"    ?"block":"none"}}><PendingApproval records={records} session={session} onApprove={approveRecord} onReject={rejectRecord} onSave={saveRecord} users={users} appLists={appLists} /></div>
+          <div style={{display:tab==="approval"    ?"block":"none"}}><PendingApproval records={records} session={session} onApprove={approveRecord} onReject={rejectRecord} onSave={saveRecord} users={users} appLists={appLists} canInstant={getTabs(session).some(t=>t.id==="approval_instant")} /></div>
           <div style={{display:tab==="rejected"    ?"block":"none"}}><RejectedRecords records={records} session={session} onResubmit={resubmitRecord} onSave={saveRecord} users={users} appLists={appLists} /></div>
           <div style={{display:tab==="printinglive"?"block":"none"}}><PrintingLive session={session} /></div>
           <div style={{display:tab==="production"   ?"block":"none"}}><ProductionForm   key={getTabKey("production")}   onReset={()=>resetTab("production")}   onSave={addRecord} users={users} lists={appLists} /></div>
@@ -2250,6 +2251,7 @@
     const SHEET_OPTIONS=[
       {id:"dashboard",label:"Dashboard"},
       {id:"approval",label:"⏳ Pending Approval"},
+      {id:"approval_instant",label:"⚡ Instant Approve / Reject (no PIN)"},
       {id:"rejected",label:"✕ Rejected Records"},
       {id:"printinglive",label:"📡 Printing Live"},{id:"production",label:"Daily Production Printing"},
       {id:"viscosity",label:"Viscosity QC"},{id:"printingqc",label:"Printing QC"},
@@ -3925,10 +3927,12 @@
     }
 
     // ── Pending Approval ──────────────────────────────────────────────────────
-    function PendingApproval({records,session,onApprove,onReject,onSave,users,appLists}){
+    function PendingApproval({records,session,onApprove,onReject,onSave,users,appLists,canInstant}){
       const [exp,setExp]=useState(null);
       const [rejectId,setRejectId]=useState(null);
       const [rejectReason,setRejectReason]=useState("");
+      const [instantRejectId,setInstantRejectId]=useState(null);
+      const [instantReason,setInstantReason]=useState("");
       const approvalCfg=appLists?.approval_settings||{production:true};
       const pending=records.filter(r=>(r.approval_status||"pending")==="pending"&&approvalCfg[r.type]===true);
 
@@ -3942,8 +3946,9 @@
             </div>
           :<div>{pending.map(r=>(
             <div key={r.id} style={{...S.card,marginBottom:12,border:`1px solid ${C.warn}44`}}>
-              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8,cursor:"pointer"}} onClick={()=>setExp(exp===r.id?null:r.id)}>
-                <div style={{flex:1}}>
+              {/* Header row */}
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{flex:1,cursor:"pointer"}} onClick={()=>{ if(instantRejectId===r.id) return; setExp(exp===r.id?null:r.id); }}>
                   <div style={{fontWeight:700,color:C.text,fontSize:13}}>{r.title}</div>
                   <div style={{fontSize:11,color:C.muted,marginTop:2}}>
                     Submitted by <span style={{color:C.blue}}>{r.created_by}</span> · {new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})} {new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
@@ -3952,12 +3957,26 @@
                   </div>
                 </div>
                 <ApprovalBadge record={r} />
-                <span style={{color:C.muted,fontSize:12}}>{exp===r.id?"▲":"▼"}</span>
+                {canInstant&&instantRejectId!==r.id&&<div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button style={{...S.btn("ghost",{padding:"5px 14px",fontSize:11}),background:C.success+"22",color:C.success,border:`1px solid ${C.success}44`}} onClick={async(e)=>{ e.stopPropagation(); await onApprove(r.id,session.name); }}>⚡ Approve</button>
+                  <button style={S.btn("danger",{padding:"5px 14px",fontSize:11})} onClick={(e)=>{ e.stopPropagation(); setInstantRejectId(r.id); setExp(null); }}>✕ Reject</button>
+                </div>}
+                <span style={{color:C.muted,fontSize:12,cursor:"pointer"}} onClick={()=>setExp(exp===r.id?null:r.id)}>{exp===r.id?"▲":"▼"}</span>
               </div>
-              {exp===r.id&&<div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginTop:4}}>
+              {/* Instant reject reason input */}
+              {instantRejectId===r.id&&<div style={{marginTop:10,padding:"12px 14px",background:C.danger+"11",border:`1px solid ${C.danger}33`,borderRadius:8}}>
+                <div style={{fontSize:12,fontWeight:700,color:C.danger,marginBottom:8}}>Rejection Reason</div>
+                <textarea style={{...S.input,width:"100%",minHeight:60,resize:"vertical",marginBottom:8}} value={instantReason} onChange={e=>setInstantReason(e.target.value)} placeholder="Explain why this record is being rejected…" autoFocus />
+                <div style={{display:"flex",gap:8}}>
+                  <button style={S.btn("danger",{padding:"6px 16px",fontSize:12})} disabled={!instantReason.trim()} onClick={async()=>{ await onReject(r.id,session.name,instantReason); setInstantRejectId(null); setInstantReason(""); }}>✕ Confirm Reject</button>
+                  <button style={S.btn("ghost",{padding:"6px 14px",fontSize:12})} onClick={()=>{ setInstantRejectId(null); setInstantReason(""); }}>Cancel</button>
+                </div>
+              </div>}
+              {/* Expanded full detail + PIN approval (for non-instant users) */}
+              {exp===r.id&&<div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginTop:8}}>
                 <RecDetail r={r} createdBy={r.created_by} />
                 <ApprovalHistory record={r} />
-                {rejectId===r.id
+                {!canInstant&&(rejectId===r.id
                   ?<div style={{marginTop:12,padding:"12px 14px",background:C.danger+"11",border:`1px solid ${C.danger}33`,borderRadius:8}}>
                       <div style={{fontSize:12,fontWeight:700,color:C.danger,marginBottom:8}}>Rejection Reason</div>
                       <textarea style={{...S.input,width:"100%",minHeight:70,resize:"vertical",marginBottom:8}} value={rejectReason} onChange={e=>setRejectReason(e.target.value)} placeholder="Explain why this record is being rejected…" />
@@ -3971,19 +3990,18 @@
                           <div style={{fontSize:11,color:C.success,fontWeight:600,marginBottom:4}}>Approve</div>
                           <ApprovalPinPrompt label="✔ Approve" onConfirm={async(name)=>{ await onApprove(r.id,name); setExp(null); }} />
                         </div>
-                        <div style={{paddingTop:4}}>
+                        <div>
                           <button style={S.btn("danger",{padding:"5px 14px",fontSize:11,marginTop:22})} onClick={()=>setRejectId(r.id)}>✕ Reject</button>
                         </div>
                       </div>
                     </div>
-                }
+                )}
               </div>}
             </div>
           ))}</div>
         }
       </div>;
     }
-
     // ── Rejected Records ──────────────────────────────────────────────────────
     function RejectedRecords({records,session,onResubmit,onSave,users,appLists}){
       const [exp,setExp]=useState(null);
