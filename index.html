@@ -350,6 +350,36 @@
       shift_times: DEFAULT_SHIFT_TIMES,
       oee_params: {maxSpeed:200, loadingFactor:70, downtimeProvision:20},
       approval_settings: {production:true,viscosity:false,printingqc:false,lamination:false,laminationqc:false,extruder1:false,extruder1qc:false,extruder2:false,extruder2qc:false,slitting1:false,slitting1qc:false,slitting2:false,slitting2qc:false,bagmaking1:false,bagmaking1qc:false,bagmaking2:false,bagmaking2qc:false,bagmaking3:false,bagmaking3qc:false,bagmaking4:false,bagmaking4qc:false},
+      iso_global: {
+        companyName:"Golden Tree Holdings (Pty) Ltd t/a Concord Packaging",
+        manualTitle:"Food Safety Management Manual",
+        reviewedBy:"Food Safety Officer",
+        approvedBy:"Managing Director",
+        issueDate:"02 March 2021",
+      },
+      iso_docs: {
+        production:   {title:"Printing Traceability",        docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        viscosity:    {title:"Viscosity QC",                 docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        printingqc:   {title:"Printing QC",                  docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        lamination:   {title:"Lamination Traceability",      docNo:"13.6.2",revNo:"01",revisedDate:"25/03/2026",reviewedBy:"Food Safety Officer",approvedBy:"Managing Director"},
+        laminationqc: {title:"Lamination QC",                docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        extruder1:    {title:"Extruder 1 Traceability",      docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        extruder1qc:  {title:"Extruder 1 QC",                docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        extruder2:    {title:"Extruder 2 Traceability",      docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        extruder2qc:  {title:"Extruder 2 QC",                docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        slitting1:    {title:"Slitting 1 Traceability",      docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        slitting1qc:  {title:"Slitting 1 QC",                docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        slitting2:    {title:"Slitting 2 Traceability",      docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        slitting2qc:  {title:"Slitting 2 QC",                docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking1:   {title:"Bag Making 1 Traceability",    docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking1qc: {title:"Bag Making 1 QC",              docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking2:   {title:"Bag Making 2 Traceability",    docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking2qc: {title:"Bag Making 2 QC",              docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking3:   {title:"Bag Making 3 Traceability",    docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking3qc: {title:"Bag Making 3 QC",              docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking4:   {title:"Bag Making 4 Traceability",    docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+        bagmaking4qc: {title:"Bag Making 4 QC",              docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""},
+      },
       product_name_printing:baseProductNames,
       product_name_lamination:baseProductNames,
       product_name_extruders:baseProductNames,
@@ -1725,12 +1755,27 @@
     const BagMakingQCForm  = (p) => <GenericQCForm {...p} type={`bagmaking${p.machine}qc`}  title={`Bag Making ${p.machine} QC`}  productListKey="product_name_bagmaking"  checksKey="bagmaking_qc_checks" />;
 
     // ── Excel Export ──────────────────────────────────────────────────────────
-    function exportToExcel(records){
+    function exportToExcel(records, appLists={}){
       const wb=XLSX.utils.book_new();
+      const isoG=appLists.iso_global||{companyName:"Golden Tree Holdings (Pty) Ltd t/a Concord Packaging",manualTitle:"Food Safety Management Manual",reviewedBy:"Food Safety Officer",approvedBy:"Managing Director",issueDate:"02 March 2021"};
+      const isoD=appLists.iso_docs||{};
+
+      const makeIsoHeader=(type)=>{
+        const doc=isoD[type]||{title:"",docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""};
+        return [
+          [isoG.companyName,"","",isoG.manualTitle,"","","Document No:","",doc.docNo||""],
+          ["","","","Document title:","",doc.title||type,"Revision No:","",doc.revNo||"01"],
+          ["","","",`Reviewed by: ${doc.reviewedBy||isoG.reviewedBy}`,"",`Approved by: ${doc.approvedBy||isoG.approvedBy}`,"Revised Date:","",doc.revisedDate||""],
+          [`Initial Issue Date: ${isoG.issueDate}`,"","","","","","","",""],
+          [],
+        ];
+      };
 
       const prodRecs=records.filter(r=>r.type==="production");
       if(prodRecs.length){
+        const isoHeader=makeIsoHeader("production");
         const rows=[
+          ...isoHeader,
           ["Concord Packaging Traceability — Production Export"],
           ["Generated:",new Date().toLocaleString()],
           ["Total Records:",prodRecs.length],
@@ -1941,7 +1986,7 @@
             </button>
           )}
           {selected.size>0&&<button style={S.btn("ghost",{padding:"6px 16px",fontSize:11})} onClick={()=>setSelected(new Set())}>Clear Selection</button>}
-          <button style={{...S.btn("accent",{padding:"6px 16px",fontSize:11}),background:C.success}} onClick={()=>exportToExcel(toExport)}>↓ Export to Excel ({toExport.length})</button>
+          <button style={{...S.btn("accent",{padding:"6px 16px",fontSize:11}),background:C.success}} onClick={()=>exportToExcel(toExport,appLists)}>↓ Export to Excel ({toExport.length})</button>
         </div>
         {filtered.length===0&&<div style={{color:C.muted,fontSize:13}}>No records found.</div>}
         {filtered.map(r=>{
@@ -2356,6 +2401,7 @@
       const isShiftTimes=activeList==="shift_times";
       const isOeeParams=activeList==="oee_params";
       const isApprovalSettings=activeList==="approval_settings";
+      const isIsoSettings=activeList==="iso_settings";
 
       // Customer Products state
       const [cpEntries,setCpEntries]=useState([]); // [{customer,products:[]}]
@@ -2380,6 +2426,21 @@
       const [oeeParams,setOeeParams]=useState({maxSpeed:200,loadingFactor:70,downtimeProvision:20});
       const DEFAULT_APPROVAL={production:true,viscosity:false,printingqc:false,lamination:false,laminationqc:false,extruder1:false,extruder1qc:false,extruder2:false,extruder2qc:false,slitting1:false,slitting1qc:false,slitting2:false,slitting2qc:false,bagmaking1:false,bagmaking1qc:false,bagmaking2:false,bagmaking2qc:false,bagmaking3:false,bagmaking3qc:false,bagmaking4:false,bagmaking4qc:false};
       const [approvalSettings,setApprovalSettings]=useState({...DEFAULT_APPROVAL});
+      const [isoGlobal,setIsoGlobal]=useState({companyName:"Golden Tree Holdings (Pty) Ltd t/a Concord Packaging",manualTitle:"Food Safety Management Manual",reviewedBy:"Food Safety Officer",approvedBy:"Managing Director",issueDate:"02 March 2021"});
+      const [isoDocs,setIsoDocs]=useState({});
+      const [isoSelected,setIsoSelected]=useState("production");
+      const ISO_DOC_TYPES=[
+        {id:"production",label:"Printing Production"},{id:"viscosity",label:"Viscosity QC"},{id:"printingqc",label:"Printing QC"},
+        {id:"lamination",label:"Lamination"},{id:"laminationqc",label:"Lamination QC"},
+        {id:"extruder1",label:"Extruder 1"},{id:"extruder1qc",label:"Extruder 1 QC"},
+        {id:"extruder2",label:"Extruder 2"},{id:"extruder2qc",label:"Extruder 2 QC"},
+        {id:"slitting1",label:"Slitting 1"},{id:"slitting1qc",label:"Slitting 1 QC"},
+        {id:"slitting2",label:"Slitting 2"},{id:"slitting2qc",label:"Slitting 2 QC"},
+        {id:"bagmaking1",label:"Bag Making 1"},{id:"bagmaking1qc",label:"Bag Making 1 QC"},
+        {id:"bagmaking2",label:"Bag Making 2"},{id:"bagmaking2qc",label:"Bag Making 2 QC"},
+        {id:"bagmaking3",label:"Bag Making 3"},{id:"bagmaking3qc",label:"Bag Making 3 QC"},
+        {id:"bagmaking4",label:"Bag Making 4"},{id:"bagmaking4qc",label:"Bag Making 4 QC"},
+      ];
 
       React.useEffect(()=>{
         if(isCustomerProducts){
@@ -2410,6 +2471,13 @@
         if(isApprovalSettings){
           const raw=appLists.approval_settings||DEFAULT_APPROVAL;
           setApprovalSettings({...DEFAULT_APPROVAL,...(typeof raw==="object"&&!Array.isArray(raw)?raw:{})});
+          return;
+        }
+        if(isIsoSettings){
+          const rawG=appLists.iso_global||{};
+          setIsoGlobal(p=>({...p,...rawG}));
+          const rawD=appLists.iso_docs||{};
+          setIsoDocs(rawD);
           return;
         }
         const raw=appLists[activeList]||[];
@@ -2506,6 +2574,7 @@
           <button onClick={()=>setActiveList("shift_times")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="shift_times"?C.blue:C.panel,color:activeList==="shift_times"?"#fff":C.muted,outline:activeList==="shift_times"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>🕐 Shift Times</button>
           <button onClick={()=>setActiveList("oee_params")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="oee_params"?C.blue:C.panel,color:activeList==="oee_params"?"#fff":C.muted,outline:activeList==="oee_params"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>⚙ OEE Parameters</button>
           <button onClick={()=>setActiveList("approval_settings")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="approval_settings"?C.blue:C.panel,color:activeList==="approval_settings"?"#fff":C.muted,outline:activeList==="approval_settings"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>✔ Approval Settings</button>
+          <button onClick={()=>setActiveList("iso_settings")} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList==="iso_settings"?C.blue:C.panel,color:activeList==="iso_settings"?"#fff":C.muted,outline:activeList==="iso_settings"?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>📋 ISO Document Settings</button>
           {allListKeys.map(k=>(
             <button key={k} onClick={()=>setActiveList(k)} style={{padding:"6px 14px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:activeList===k?C.accent:C.panel,color:activeList===k?"#fff":C.muted,outline:activeList===k?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>{LIST_LABELS[k]}</button>
           ))}
@@ -2830,8 +2899,84 @@
           <div style={{color:C.muted,fontSize:11,marginTop:8}}>Changes take effect immediately — new records saved after this change will follow the new settings.</div>
         </div>}
 
+        {/* ── ISO Document Settings editor ── */}
+        {isIsoSettings&&<div>
+          <SC title="ISO Document Settings">
+            {/* Global settings */}
+            <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:10}}>GLOBAL (ALL DOCUMENTS)</div>
+            <Grid cols={2}>
+              <F label="Company Name"><TI value={isoGlobal.companyName} onChange={v=>setIsoGlobal(p=>({...p,companyName:v}))} /></F>
+              <F label="Manual Title"><TI value={isoGlobal.manualTitle} onChange={v=>setIsoGlobal(p=>({...p,manualTitle:v}))} /></F>
+              <F label="Reviewed By (default)"><TI value={isoGlobal.reviewedBy} onChange={v=>setIsoGlobal(p=>({...p,reviewedBy:v}))} /></F>
+              <F label="Approved By (default)"><TI value={isoGlobal.approvedBy} onChange={v=>setIsoGlobal(p=>({...p,approvedBy:v}))} /></F>
+              <F label="Initial Issue Date"><TI value={isoGlobal.issueDate} onChange={v=>setIsoGlobal(p=>({...p,issueDate:v}))} /></F>
+            </Grid>
+
+            <div style={{height:1,background:C.border,margin:"16px 0"}} />
+
+            {/* Per-document settings */}
+            <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:10}}>PER DOCUMENT</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+              {ISO_DOC_TYPES.map(t=>(
+                <button key={t.id} onClick={()=>setIsoSelected(t.id)} style={{padding:"5px 12px",borderRadius:16,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,
+                  background:isoSelected===t.id?C.accent:C.panel,color:isoSelected===t.id?"#fff":C.muted,
+                  outline:isoSelected===t.id?"none":`1px solid ${C.border}`}}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {(()=>{
+              const doc=isoDocs[isoSelected]||{title:"",docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""};
+              const upd=(k,v)=>setIsoDocs(p=>({...p,[isoSelected]:{...doc,[k]:v}}));
+              const label=ISO_DOC_TYPES.find(t=>t.id===isoSelected)?.label||isoSelected;
+              return <div style={{...S.card,background:C.accent+"08",border:`1px solid ${C.accent}22`}}>
+                <div style={{fontSize:12,fontWeight:700,color:C.accent,marginBottom:12}}>{label}</div>
+                <Grid cols={2}>
+                  <F label="Document Title"><TI value={doc.title} onChange={v=>upd("title",v)} placeholder={`${label} Traceability`} /></F>
+                  <F label="Document No."><TI value={doc.docNo} onChange={v=>upd("docNo",v)} placeholder="e.g. 13.6.2" /></F>
+                  <F label="Revision No."><TI value={doc.revNo} onChange={v=>upd("revNo",v)} placeholder="01" /></F>
+                  <F label="Revised Date"><TI value={doc.revisedDate} onChange={v=>upd("revisedDate",v)} placeholder="dd/mm/yyyy" /></F>
+                  <F label="Reviewed By (override)"><TI value={doc.reviewedBy} onChange={v=>upd("reviewedBy",v)} placeholder={`Leave blank to use default`} /></F>
+                  <F label="Approved By (override)"><TI value={doc.approvedBy} onChange={v=>upd("approvedBy",v)} placeholder={`Leave blank to use default`} /></F>
+                </Grid>
+                {/* Preview */}
+                <div style={{marginTop:12,padding:"10px 14px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`,fontSize:11}}>
+                  <div style={{fontWeight:700,color:C.muted,marginBottom:6}}>PREVIEW</div>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <tbody>
+                      <tr>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.muted}} rowSpan={3}>{isoGlobal.companyName}</td>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.muted}} colSpan={2}>{isoGlobal.manualTitle}</td>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.muted}}>Document No: {doc.docNo||"—"}</td>
+                      </tr>
+                      <tr>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.text,fontWeight:700}} colSpan={2}>Document title: {doc.title||label}</td>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.muted}}>Revision No: {doc.revNo||"01"}</td>
+                      </tr>
+                      <tr>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.muted}}>Reviewed by: {doc.reviewedBy||isoGlobal.reviewedBy}</td>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.muted}}>Approved by: {doc.approvedBy||isoGlobal.approvedBy}</td>
+                        <td style={{border:`1px solid ${C.border}`,padding:"4px 8px",color:C.muted}}>Revised Date: {doc.revisedDate||"—"}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>;
+            })()}
+          </SC>
+          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{
+            setSaving(true);
+            await dbUpsertList("iso_global",JSON.stringify(isoGlobal));
+            await dbUpsertList("iso_docs",JSON.stringify(isoDocs));
+            await reload();
+            flash("ISO document settings saved!");
+            setSaving(false);
+          }} disabled={saving}>{saving?"Saving…":"💾 Save ISO Settings"}</button>
+          <div style={{color:C.muted,fontSize:11,marginTop:8}}>All future Excel exports will use these settings in the document header.</div>
+        </div>}
+
         {/* ── Regular list editor ── */}
-        {!isCustomerProducts&&!isProductInkCodes&&!isProductSpeeds&&!isShiftTimes&&!isOeeParams&&!isApprovalSettings&&<div>
+        {!isCustomerProducts&&!isProductInkCodes&&!isProductSpeeds&&!isShiftTimes&&!isOeeParams&&!isApprovalSettings&&!isIsoSettings&&<div>
           <SC title={LIST_LABELS[activeList]}>
             {items.length===0&&<div style={{color:C.muted,fontSize:12,marginBottom:12}}>No items yet — add some below.</div>}
             {items.map((item,i)=>(
