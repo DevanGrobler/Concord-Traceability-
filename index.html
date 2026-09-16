@@ -640,8 +640,17 @@
         const now=new Date();
         const rec=records.find(r=>r.id===id); if(!rec) return;
         const history=[...(rec.approval_history||[]),{action:"approved",by:approverName,date:now.toISOString().split("T")[0],time:now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}];
-        await sb.from("records").update({approval_status:"approved",approved_by:approverName,approved_at:now.toISOString(),approval_history:history}).eq("id",id);
-        await reload(); flash("✔ Record approved!");
+        await sb.from("records").update({
+          approval_status:"approved",
+          approved_by:approverName,
+          approved_at:now.toISOString(),
+          rejected_by:null,
+          rejected_at:null,
+          rejection_reason:null,
+          approval_history:history
+        }).eq("id",id);
+        await reload();
+        flash("✔ Record approved by "+approverName+"!");
       };
       const rejectRecord = async (id, approverName, reason) => {
         const now=new Date();
@@ -1840,6 +1849,7 @@
           const h=r.data?.header||{};
           const submittedDate=new Date(r.created_at);
           const approvedAt=r.approved_at?new Date(r.approved_at):null;
+          console.log("Export record:",r.id,"approved_by:",r.approved_by,"approved_at:",r.approved_at,"status:",r.approval_status);
           rows.push([
             r.created_by,
             submittedDate.toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}),
@@ -4305,7 +4315,13 @@
       const saveShiftSummary=async(shiftDate,shift,shiftReadings,oeeParams)=>{
         if(!shiftReadings||shiftReadings.length===0) return;
         const runningR=shiftReadings.filter(r=>r.running&&r.speed>0);
-        const totalMeters=shiftReadings.length>0?Math.max(...shiftReadings.map(r=>parseFloat(r.meters_shift||0))):0;
+        const sorted=[...shiftReadings].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+        let totalMeters=sorted.length>0?parseFloat(sorted[0].meters_shift||0):0;
+        for(let i=1;i<sorted.length;i++){
+          const prev=parseFloat(sorted[i-1].meters_shift||0);
+          const curr=parseFloat(sorted[i].meters_shift||0);
+          if(curr>prev) totalMeters+=curr-prev;
+        }
         const avgSpd=runningR.length>0?runningR.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningR.length:0;
 
         // Downtime
@@ -4371,11 +4387,19 @@
 
           const shiftReadings=data.filter(r=>new Date(r.created_at)>=shiftStartTime);
 
-          // Meters — calculate from Supabase readings not Opta counter
-          // Use max meters_shift in current shift (Opta accumulates, app trusts Supabase)
+          // Meters — sum increments between consecutive readings to handle Opta restarts
+          // Each time meters_shift goes UP we add the increment, resets are ignored
           if(shiftReadings.length>0){
-            const maxMeters=Math.max(...shiftReadings.map(r=>parseFloat(r.meters_shift||0)));
-            setShiftMeters(maxMeters);
+            let totalMeters=0;
+            const sorted=[...shiftReadings].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+            for(let i=1;i<sorted.length;i++){
+              const prev=parseFloat(sorted[i-1].meters_shift||0);
+              const curr=parseFloat(sorted[i].meters_shift||0);
+              if(curr>prev) totalMeters+=curr-prev; // only add increases
+            }
+            // Also add meters from first reading
+            if(sorted.length>0) totalMeters+=parseFloat(sorted[0].meters_shift||0);
+            setShiftMeters(totalMeters);
           } else {
             setShiftMeters(0);
           }
