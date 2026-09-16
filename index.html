@@ -556,6 +556,7 @@
       {id:"approval_instant", label:"Instant Approve",       icon:"⚡", hidden:true},
       {id:"rejected",      label:"Rejected",                 icon:"✕"},
       {id:"printinglive",  label:"Printing Live",            icon:"📡"},
+      {id:"printingoee",   label:"Printing OEE",             icon:"📊"},
       {id:"production",    label:"Daily Production Printing",icon:"◤"},
       {id:"viscosity",     label:"Viscosity QC",             icon:"◉"},
       {id:"printingqc",    label:"Printing QC",              icon:"✔"},
@@ -712,7 +713,8 @@
           <div style={{display:tab==="dashboard"    ?"block":"none"}}><Dashboard records={records} session={session} /></div>
           <div style={{display:tab==="approval"    ?"block":"none"}}><PendingApproval records={records} session={session} onApprove={approveRecord} onReject={rejectRecord} onSave={saveRecord} users={users} appLists={appLists} canInstant={getTabs(session).some(t=>t.id==="approval_instant")} /></div>
           <div style={{display:tab==="rejected"    ?"block":"none"}}><RejectedRecords records={records} session={session} onResubmit={resubmitRecord} onSave={saveRecord} users={users} appLists={appLists} /></div>
-          <div style={{display:tab==="printinglive"?"block":"none"}}><PrintingLive session={session} /></div>
+          <div style={{display:tab==="printinglive"?"block":"none"}}><PrintingLive session={session} appLists={appLists} /></div>
+          <div style={{display:tab==="printingoee" ?"block":"none"}}><PrintingOEE appLists={appLists} /></div>
           <div style={{display:tab==="production"   ?"block":"none"}}><ProductionForm   key={getTabKey("production")}   onReset={()=>resetTab("production")}   onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="viscosity"    ?"block":"none"}}><ViscosityForm    key={getTabKey("viscosity")}    onReset={()=>resetTab("viscosity")}    onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="printingqc"   ?"block":"none"}}><PrintingQCForm   key={getTabKey("printingqc")}   onReset={()=>resetTab("printingqc")}   onSave={addRecord} users={users} lists={appLists} /></div>
@@ -2354,7 +2356,8 @@
       {id:"approval",label:"⏳ Pending Approval"},
       {id:"approval_instant",label:"⚡ Instant Approve / Reject (no PIN)"},
       {id:"rejected",label:"✕ Rejected Records"},
-      {id:"printinglive",label:"📡 Printing Live"},{id:"production",label:"Daily Production Printing"},
+      {id:"printinglive",label:"📡 Printing Live"},
+      {id:"printingoee",label:"📊 Printing OEE"},{id:"production",label:"Daily Production Printing"},
       {id:"viscosity",label:"Viscosity QC"},{id:"printingqc",label:"Printing QC"},
       {id:"lamination",label:"Lamination"},{id:"laminationqc",label:"Lamination QC"},
       {id:"extruder1",label:"Extruder 1"},{id:"extruder1qc",label:"Extruder 1 QC"},
@@ -4256,75 +4259,184 @@
     }
 
     // ── Printing Live Component ───────────────────────────────────────────────
-    function PrintingLive({session}){
+    function PrintingLive({session,appLists={}}){
       const [readings,setReadings]=useState([]);
       const [latest,setLatest]=useState(null);
       const [loading,setLoading]=useState(true);
       const [shiftMeters,setShiftMeters]=useState(0);
       const [avgSpeed,setAvgSpeed]=useState(0);
       const [downtimeEvents,setDowntimeEvents]=useState([]);
-      const [lastRunning,setLastRunning]=useState(null);
+      const [lastShiftSaved,setLastShiftSaved]=useState(null);
 
+      // Get shift times from settings
+      const shiftTimes=appLists.shift_times||{dayStart:"07:00",dayEnd:"19:00",nightStart:"19:00",nightEnd:"07:00"};
+      const parseTime=t=>{ const [h,m]=(t||"00:00").split(":").map(Number); return h*60+m; };
+      const dayStartMins=parseTime(shiftTimes.dayStart||"07:00");
+      const dayEndMins=parseTime(shiftTimes.dayEnd||"19:00");
+
+      const getCurrentShift=()=>{
+        const now=new Date();
+        const mins=now.getHours()*60+now.getMinutes();
+        return (mins>=dayStartMins&&mins<dayEndMins)?"Day Shift":"Night Shift";
+      };
+
+      const getShiftDate=(dt=new Date())=>{
+        // Night shift belongs to the day it started
+        const mins=dt.getHours()*60+dt.getMinutes();
+        if(mins<dayStartMins){
+          const d=new Date(dt); d.setDate(d.getDate()-1);
+          return d.toISOString().split("T")[0];
+        }
+        return dt.toISOString().split("T")[0];
+      };
+
+      // ── Auto-delete raw readings older than 7 days ──────────────────────────
+      const cleanOldReadings=async()=>{
+        const cutoff=new Date();
+        cutoff.setDate(cutoff.getDate()-7);
+        await sb.from("machine_readings").delete().lt("created_at",cutoff.toISOString());
+      };
+
+      // ── Save shift summary ──────────────────────────────────────────────────
+      const saveShiftSummary=async(shiftDate,shift,shiftReadings,oeeParams)=>{
+        if(!shiftReadings||shiftReadings.length===0) return;
+        const runningR=shiftReadings.filter(r=>r.running&&r.speed>0);
+        const totalMeters=shiftReadings.length>0?Math.max(...shiftReadings.map(r=>parseFloat(r.meters_shift||0))):0;
+        const avgSpd=runningR.length>0?runningR.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningR.length:0;
+
+        // Downtime
+        let downtimeMins=0,stopCount=0;
+        for(let i=0;i<shiftReadings.length-1;i++){
+          if(!shiftReadings[i].running&&shiftReadings[i+1].running){
+            const dur=Math.round((new Date(shiftReadings[i].created_at)-new Date(shiftReadings[i+1].created_at))/60000);
+            if(dur>0){ downtimeMins+=dur; stopCount++; }
+          }
+        }
+
+        // OEE
+        const shiftMins=shift==="Night Shift"?(parseTime(shiftTimes.nightEnd||"07:00")+1440-parseTime(shiftTimes.nightStart||"19:00"))%1440||720:(dayEndMins-dayStartMins);
+        const oeeSpeed=Math.round((oeeParams?.maxSpeed||200)*((oeeParams?.loadingFactor||70)/100));
+        const oeeAvail=(100-(oeeParams?.downtimeProvision||20))/100;
+        const available=Math.round(oeeSpeed*shiftMins*oeeAvail);
+        const oee=available>0?Math.min(Math.round((totalMeters/available)*100),999):0;
+
+        await sb.from("shift_summaries").upsert({
+          shift_date:shiftDate,
+          shift,
+          total_meters:Math.round(totalMeters),
+          avg_speed:Math.round(avgSpd*10)/10,
+          downtime_mins:downtimeMins,
+          stop_count:stopCount,
+          oee_percent:oee,
+        },{onConflict:"shift_date,shift"});
+
+        setLastShiftSaved(`${shift} ${shiftDate} saved`);
+      };
+
+      // ── Fetch readings and calculate shift stats ────────────────────────────
       const fetchReadings=async()=>{
+        // Delete old readings on every fetch cycle (runs silently)
+        cleanOldReadings();
+
+        // Fetch last 200 readings (enough for a full shift + history)
         const {data}=await sb.from("machine_readings")
           .select("*")
           .order("created_at",{ascending:false})
-          .limit(50);
+          .limit(200);
+
         if(data&&data.length>0){
           setLatest(data[0]);
-          setReadings(data);
+          setReadings(data.slice(0,10));
 
-          // Calculate shift stats from today's readings
-          const today=new Date().toISOString().split("T")[0];
-          const todayReadings=data.filter(r=>r.created_at.startsWith(today));
+          // Filter to current shift only
+          const currentShift=getCurrentShift();
+          const currentShiftDate=getShiftDate();
+          const now=new Date();
+          const nowMins=now.getHours()*60+now.getMinutes();
 
-          // Shift meters = max meters_shift value today
-          if(todayReadings.length>0){
-            setShiftMeters(Math.max(...todayReadings.map(r=>parseFloat(r.meters_shift||0))));
+          // Determine shift start time
+          let shiftStartTime=new Date();
+          if(currentShift==="Day Shift"){
+            shiftStartTime.setHours(Math.floor(dayStartMins/60),dayStartMins%60,0,0);
+          } else {
+            const nightStartMins=parseTime(shiftTimes.nightStart||"19:00");
+            shiftStartTime.setHours(Math.floor(nightStartMins/60),nightStartMins%60,0,0);
+            // If night shift started yesterday
+            if(nowMins<dayStartMins) shiftStartTime.setDate(shiftStartTime.getDate()-1);
           }
 
-          // Average speed (only when running)
-          const runningReadings=todayReadings.filter(r=>r.running&&r.speed>0);
-          if(runningReadings.length>0){
-            const avg=runningReadings.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningReadings.length;
-            setAvgSpeed(avg);
+          const shiftReadings=data.filter(r=>new Date(r.created_at)>=shiftStartTime);
+
+          // Meters — calculate from Supabase readings not Opta counter
+          // Use max meters_shift in current shift (Opta accumulates, app trusts Supabase)
+          if(shiftReadings.length>0){
+            const maxMeters=Math.max(...shiftReadings.map(r=>parseFloat(r.meters_shift||0)));
+            setShiftMeters(maxMeters);
+          } else {
+            setShiftMeters(0);
           }
 
-          // Detect downtime events (transitions from running to stopped)
+          // Average speed
+          const runningR=shiftReadings.filter(r=>r.running&&r.speed>0);
+          if(runningR.length>0){
+            setAvgSpeed(runningR.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningR.length);
+          } else {
+            setAvgSpeed(0);
+          }
+
+          // Downtime events
           const events=[];
-          for(let i=0;i<todayReadings.length-1;i++){
-            if(!todayReadings[i].running&&todayReadings[i+1].running){
-              const stopTime=new Date(todayReadings[i+1].created_at);
-              const resumeTime=new Date(todayReadings[i].created_at);
-              const duration=Math.round((resumeTime-stopTime)/60000);
-              if(duration>0) events.push({
-                stopped:todayReadings[i+1].created_at,
-                resumed:todayReadings[i].created_at,
-                duration,
-                active:false
-              });
+          for(let i=0;i<shiftReadings.length-1;i++){
+            if(!shiftReadings[i].running&&shiftReadings[i+1].running){
+              const dur=Math.round((new Date(shiftReadings[i].created_at)-new Date(shiftReadings[i+1].created_at))/60000);
+              if(dur>0) events.push({stopped:shiftReadings[i+1].created_at,resumed:shiftReadings[i].created_at,duration:dur,active:false});
             }
           }
-          // Add current stop if machine is stopped right now
-          const lastReading=todayReadings[0];
-          if(lastReading&&!lastReading.running){
-            // Find when it last stopped (last running reading)
-            const lastRunningIdx=todayReadings.findIndex(r=>r.running);
-            const stopStart=lastRunningIdx>=0?todayReadings[lastRunningIdx-1]?.created_at||todayReadings[lastRunningIdx].created_at:todayReadings[todayReadings.length-1].created_at;
-            const currentDuration=Math.round((Date.now()-new Date(stopStart).getTime())/60000);
-            if(currentDuration>0) events.unshift({
-              stopped:stopStart,
-              resumed:null,
-              duration:currentDuration,
-              active:true
-            });
+          const lastR=shiftReadings[0];
+          if(lastR&&!lastR.running){
+            const lastRunIdx=shiftReadings.findIndex(r=>r.running);
+            const stopStart=lastRunIdx>=0?shiftReadings[lastRunIdx-1]?.created_at||shiftReadings[lastRunIdx].created_at:shiftReadings[shiftReadings.length-1].created_at;
+            const curDur=Math.round((Date.now()-new Date(stopStart).getTime())/60000);
+            if(curDur>0) events.unshift({stopped:stopStart,resumed:null,duration:curDur,active:true});
           }
           setDowntimeEvents(events.slice(0,5));
+
+          // ── Check if shift just ended — save summary ──────────────────────
+          const prevShiftKey=localStorage.getItem("cpk_last_shift_saved");
+          const shiftKey=`${currentShiftDate}_${currentShift}`;
+          // Check if we are within 2 minutes AFTER shift end
+          let justEnded=false;
+          if(currentShift==="Day Shift"){
+            // Night shift just ended at dayStart
+            const minsAfterDayStart=nowMins-dayStartMins;
+            justEnded=minsAfterDayStart>=0&&minsAfterDayStart<3;
+          } else {
+            // Day shift just ended at dayEnd
+            const nightStartMins=parseTime(shiftTimes.nightStart||"19:00");
+            const minsAfterNightStart=nowMins-nightStartMins;
+            justEnded=minsAfterNightStart>=0&&minsAfterNightStart<3;
+          }
+
+          if(justEnded){
+            // Determine which shift just ended
+            const endedShift=currentShift==="Day Shift"?"Night Shift":"Day Shift";
+            const endedDate=currentShift==="Day Shift"?getShiftDate(new Date(Date.now()-3600000)):currentShiftDate;
+            const endedKey=`${endedDate}_${endedShift}`;
+            if(prevShiftKey!==endedKey){
+              const endedReadings=data.filter(r=>{
+                const d=new Date(r.created_at);
+                return d<shiftStartTime&&d>(new Date(shiftStartTime.getTime()-12*3600000));
+              });
+              if(endedReadings.length>0){
+                await saveShiftSummary(endedDate,endedShift,endedReadings,appLists.oee_params);
+                localStorage.setItem("cpk_last_shift_saved",endedKey);
+              }
+            }
+          }
         }
         setLoading(false);
       };
 
-      // Poll every 10 seconds
       React.useEffect(()=>{
         fetchReadings();
         const interval=setInterval(fetchReadings,10000);
@@ -4335,37 +4447,35 @@
       const speed=parseFloat(latest?.speed||0);
       const lastSeen=latest?new Date(latest.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"—";
       const totalDowntime=downtimeEvents.reduce((a,e)=>a+e.duration,0);
-
-      // Speed colour
-      const TARGET_SPEED=130; // default — will use product speed later
+      const TARGET_SPEED=130;
       const speedColor=speed>=TARGET_SPEED*0.9?C.success:speed>=TARGET_SPEED*0.7?C.warn:speed>0?C.danger:C.muted;
 
       return <div>
         <PH title="Printing Live" sub="Live machine data from Arduino Opta — updates every 10 seconds" />
+        {lastShiftSaved&&<div style={{fontSize:10,color:C.success,textAlign:"right",marginBottom:8}}>✔ Shift summary saved: {lastShiftSaved}</div>}
 
         {loading
           ?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>Loading live data…</div>
           :<div>
-
             {/* ── Status banner ── */}
             <div style={{...S.card,marginBottom:16,padding:20,background:isRunning?C.success+"11":C.danger+"11",border:`1px solid ${isRunning?C.success:C.danger}44`,display:"flex",alignItems:"center",gap:16}}>
               <div style={{width:16,height:16,borderRadius:"50%",background:isRunning?C.success:C.danger,boxShadow:`0 0 12px ${isRunning?C.success:C.danger}`,flexShrink:0}} />
               <div style={{flex:1}}>
                 <div style={{fontSize:18,fontWeight:800,color:isRunning?C.success:C.danger}}>{isRunning?"▶ MACHINE RUNNING":"■ MACHINE STOPPED"}</div>
-                <div style={{fontSize:11,color:C.muted,marginTop:2}}>Last reading: {lastSeen}</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>Last reading: {lastSeen} · Shift: {getCurrentShift()}</div>
               </div>
               {!isRunning&&latest&&<div style={{fontSize:12,color:C.danger,fontWeight:600}}>
                 Stopped for {Math.round((Date.now()-new Date(latest.created_at).getTime())/60000)} min
               </div>}
             </div>
 
-            {/* ── Live stats cards ── */}
+            {/* ── Stats cards ── */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
               {[
                 {label:"CURRENT SPEED",    value:isRunning?speed.toFixed(1)+" m/min":"0 m/min",    color:speedColor,     sub:`Target: ${TARGET_SPEED} m/min`},
                 {label:"AVERAGE SPEED",    value:avgSpeed>0?avgSpeed.toFixed(1)+" m/min":"—",       color:C.blue,         sub:"Running time only"},
                 {label:"METERS THIS SHIFT",value:shiftMeters>0?Math.round(shiftMeters).toLocaleString()+" m":"0 m", color:C.accent, sub:"Since shift start"},
-                {label:"DOWNTIME TODAY",   value:totalDowntime>0?totalDowntime+" min":"0 min", color:totalDowntime>60?C.danger:totalDowntime>0?C.warn:C.muted, sub:`${downtimeEvents.length} stop${downtimeEvents.length!==1?"s":""} today`},
+                {label:"DOWNTIME TODAY",   value:totalDowntime>0?totalDowntime+" min":"0 min",       color:totalDowntime>60?C.danger:totalDowntime>0?C.warn:C.muted, sub:`${downtimeEvents.length} stop${downtimeEvents.length!==1?"s":""}  this shift`},
               ].map(({label,value,color,sub})=>(
                 <div key={label} style={{...S.card,textAlign:"center",padding:16,marginBottom:0}}>
                   <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
@@ -4375,7 +4485,7 @@
               ))}
             </div>
 
-            {/* ── Speed gauge bar ── */}
+            {/* ── Speed gauge ── */}
             {isRunning&&<div style={{...S.card,marginBottom:16,padding:14}}>
               <div style={{display:"flex",alignItems:"center",gap:14}}>
                 <div style={{fontSize:11,color:C.muted,fontWeight:600,flexShrink:0,width:100}}>SPEED</div>
@@ -4384,9 +4494,8 @@
                     {speed>20&&<span style={{fontSize:11,fontWeight:700,color:"#fff"}}>{speed.toFixed(1)}</span>}
                   </div>
                 </div>
-                <div style={{fontSize:11,color:C.muted,flexShrink:0,minWidth:60,textAlign:"right"}}>max 200</div>
+                <div style={{fontSize:11,color:C.muted,flexShrink:0}}>max 200</div>
               </div>
-              {/* Target line indicator */}
               <div style={{fontSize:10,color:C.muted,marginTop:8,display:"flex",gap:16}}>
                 <span><span style={{color:C.success}}>■</span> ≥{Math.round(TARGET_SPEED*0.9)} m/min good</span>
                 <span><span style={{color:C.warn}}>■</span> ≥{Math.round(TARGET_SPEED*0.7)} m/min low</span>
@@ -4396,7 +4505,7 @@
 
             {/* ── Downtime events ── */}
             {downtimeEvents.length>0&&<div style={{...S.card,marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>DOWNTIME EVENTS TODAY</div>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>DOWNTIME EVENTS THIS SHIFT</div>
               {downtimeEvents.map((e,i)=>(
                 <div key={i} style={{display:"flex",gap:12,padding:"8px 0",borderTop:i>0?`1px solid ${C.border}`:"none",alignItems:"center"}}>
                   <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:C.danger+"22",color:C.danger,fontWeight:700,whiteSpace:"nowrap"}}>
@@ -4425,7 +4534,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  {readings.slice(0,10).map((r,i)=>(
+                  {readings.map((r,i)=>(
                     <tr key={r.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
                       <td style={{padding:"6px 10px",color:C.muted,whiteSpace:"nowrap"}}>{new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})}</td>
                       <td style={{padding:"6px 10px",color:C.muted,whiteSpace:"nowrap"}}>{new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}</td>
@@ -4440,9 +4549,146 @@
                   ))}
                 </tbody>
               </table>
-              <div style={{fontSize:10,color:C.muted,marginTop:8,textAlign:"right"}}>Auto-refreshes every 10 seconds</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:8,textAlign:"right"}}>Auto-refreshes every 10 seconds · Raw data auto-deleted after 7 days</div>
             </div>
           </div>
+        }
+      </div>;
+    }
+
+
+    // ── Printing OEE Component ────────────────────────────────────────────────
+    function PrintingOEE({appLists={}}){
+      const [summaries,setSummaries]=useState([]);
+      const [loading,setLoading]=useState(true);
+      const [filterMonth,setFilterMonth]=useState("all");
+      const [filterYear,setFilterYear]=useState("all");
+
+      const oeeParams=appLists.oee_params||{maxSpeed:200,loadingFactor:70,downtimeProvision:20};
+      const shiftTimes=appLists.shift_times||{dayStart:"07:00",dayEnd:"19:00"};
+      const parseTime=t=>{ const [h,m]=(t||"00:00").split(":").map(Number); return h*60+m; };
+      const dayMins=(parseTime(shiftTimes.dayEnd||"19:00")-parseTime(shiftTimes.dayStart||"07:00"));
+      const nightMins=1440-dayMins;
+      const oeeSpeed=Math.round((oeeParams.maxSpeed||200)*((oeeParams.loadingFactor||70)/100));
+      const oeeAvail=(100-(oeeParams.downtimeProvision||20))/100;
+
+      const fetchSummaries=async()=>{
+        const {data}=await sb.from("shift_summaries")
+          .select("*")
+          .order("shift_date",{ascending:false})
+          .limit(200);
+        setSummaries(data||[]);
+        setLoading(false);
+      };
+
+      React.useEffect(()=>{ fetchSummaries(); },[]);
+
+      const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const allYears=[...new Set(summaries.map(s=>s.shift_date?.substring(0,4)).filter(Boolean))].sort().reverse();
+
+      const filtered=summaries.filter(s=>{
+        if(filterYear!=="all"&&!s.shift_date?.startsWith(filterYear)) return false;
+        if(filterMonth!=="all"&&s.shift_date?.substring(5,7)!==filterMonth) return false;
+        return true;
+      });
+
+      const totalMeters=filtered.reduce((a,s)=>a+parseFloat(s.total_meters||0),0);
+      const avgSpeedAll=filtered.filter(s=>s.avg_speed>0).length>0
+        ?filtered.filter(s=>s.avg_speed>0).reduce((a,s)=>a+parseFloat(s.avg_speed||0),0)/filtered.filter(s=>s.avg_speed>0).length:0;
+      const totalDowntime=filtered.reduce((a,s)=>a+parseInt(s.downtime_mins||0),0);
+      const totalAvailable=filtered.reduce((a,s)=>{
+        const mins=s.shift==="Night Shift"?nightMins:dayMins;
+        return a+Math.round(oeeSpeed*mins*oeeAvail);
+      },0);
+      const overallOEE=totalAvailable>0?Math.min(Math.round((totalMeters/totalAvailable)*100),999):0;
+      const effColor=e=>e>=90?C.success:e>=70?C.warn:C.danger;
+
+      return <div>
+        <PH title="Printing OEE" sub="Shift summaries — automatically saved at end of each shift" />
+        <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+          <select style={{...S.input,width:120}} value={filterYear} onChange={e=>setFilterYear(e.target.value)}>
+            <option value="all">All Years</option>
+            {allYears.map(y=><option key={y} value={y}>{y}</option>)}
+          </select>
+          <select style={{...S.input,width:140}} value={filterMonth} onChange={e=>setFilterMonth(e.target.value)}>
+            <option value="all">All Months</option>
+            {MONTHS.map((m,i)=><option key={i} value={String(i+1).padStart(2,"0")}>{m}</option>)}
+          </select>
+          {(filterYear!=="all"||filterMonth!=="all")&&(
+            <button style={S.btn("ghost",{padding:"6px 12px",fontSize:11})} onClick={()=>{ setFilterYear("all"); setFilterMonth("all"); }}>✕ Clear</button>
+          )}
+          <div style={{flex:1}} />
+          <button style={S.btn("ghost",{padding:"6px 14px",fontSize:11})} onClick={fetchSummaries}>↺ Refresh</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+          {[
+            {label:"SHIFTS",       value:filtered.length,                                  color:C.blue},
+            {label:"TOTAL METERS", value:Math.round(totalMeters).toLocaleString()+" m",    color:C.accent},
+            {label:"AVG SPEED",    value:avgSpeedAll>0?avgSpeedAll.toFixed(1)+" m/min":"—",color:C.text},
+            {label:"OVERALL OEE",  value:overallOEE>0?overallOEE+"%":"—",                  color:effColor(overallOEE)},
+          ].map(({label,value,color})=>(
+            <div key={label} style={{...S.card,textAlign:"center",padding:16,marginBottom:0}}>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
+              <div style={{fontSize:22,fontWeight:800,color}}>{value}</div>
+            </div>
+          ))}
+        </div>
+        {loading
+          ?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>Loading…</div>
+          :filtered.length===0
+            ?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>No shift summaries yet — saved automatically at shift end.</div>
+            :<div style={S.card}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead>
+                  <tr style={{borderBottom:`2px solid ${C.border}`}}>
+                    {["Date","Shift","Total Meters","Avg Speed","Downtime","Stops","Available","OEE"].map(h=>(
+                      <th key={h} style={{padding:"8px 10px",color:C.muted,fontWeight:600,textAlign:h==="Date"||h==="Shift"?"left":"right",fontSize:10}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((s,i)=>{
+                    const shiftMins=s.shift==="Night Shift"?nightMins:dayMins;
+                    const avail=Math.round(oeeSpeed*shiftMins*oeeAvail);
+                    const oee=s.oee_percent||0;
+                    return (
+                    <tr key={s.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"transparent":C.panel+"44"}}>
+                      <td style={{padding:"8px 10px",color:C.text,fontWeight:600}}>{s.shift_date}</td>
+                      <td style={{padding:"8px 10px"}}>
+                        <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:s.shift==="Night Shift"?C.blue+"33":C.accent+"33",color:s.shift==="Night Shift"?C.blue:C.accent,fontWeight:700}}>
+                          {s.shift==="Night Shift"?"🌙 Night":"☀ Day"}
+                        </span>
+                      </td>
+                      <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,textAlign:"right"}}>{Math.round(s.total_meters||0).toLocaleString()} m</td>
+                      <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{parseFloat(s.avg_speed||0).toFixed(1)} m/min</td>
+                      <td style={{padding:"8px 10px",color:s.downtime_mins>60?C.danger:C.warn,textAlign:"right"}}>{s.downtime_mins||0} min</td>
+                      <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{s.stop_count||0}</td>
+                      <td style={{padding:"8px 10px",color:C.blue,textAlign:"right"}}>{avail.toLocaleString()} m</td>
+                      <td style={{padding:"8px 10px",minWidth:100}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end"}}>
+                          <div style={{width:60,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                            <div style={{width:`${Math.min(oee,100)}%`,height:"100%",background:effColor(oee),borderRadius:4}} />
+                          </div>
+                          <span style={{color:effColor(oee),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{oee}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+                {filtered.length>1&&<tfoot>
+                  <tr style={{borderTop:`2px solid ${C.border}`,background:C.bg}}>
+                    <td colSpan={2} style={{padding:"8px 10px",color:C.muted,fontWeight:700}}>TOTALS</td>
+                    <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,textAlign:"right"}}>{Math.round(totalMeters).toLocaleString()} m</td>
+                    <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{avgSpeedAll.toFixed(1)} m/min</td>
+                    <td style={{padding:"8px 10px",color:C.danger,textAlign:"right"}}>{totalDowntime} min</td>
+                    <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{filtered.reduce((a,s)=>a+(s.stop_count||0),0)}</td>
+                    <td style={{padding:"8px 10px",color:C.blue,textAlign:"right"}}>{totalAvailable.toLocaleString()} m</td>
+                    <td style={{padding:"8px 10px"}}><span style={{color:effColor(overallOEE),fontWeight:800,fontSize:13}}>{overallOEE}%</span></td>
+                  </tr>
+                </tfoot>}
+              </table>
+            </div>
         }
       </div>;
     }
