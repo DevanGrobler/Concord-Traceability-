@@ -1834,18 +1834,22 @@
           [],
           ["Concord Packaging — Production Export","","Generated:",new Date().toLocaleString()],
           [],
-          ["Completed By","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks"]
+          ["Completed By","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks","Approval Status","Approved By","Approved Date"]
         ];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
           const submittedDate=new Date(r.created_at);
+          const approvedAt=r.approved_at?new Date(r.approved_at):null;
           rows.push([
             r.created_by,
             submittedDate.toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}),
             submittedDate.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false}),
             h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,
             h.widthA||h.width||"",h.widthB||"",h.lengthA||h.length||"",h.lengthB||"",
-            h.speed,h.operator,h.supervisor,r.data?.remarks||""
+            h.speed,h.operator,h.supervisor,r.data?.remarks||"",
+            r.approval_status||"pending",
+            r.approved_by||"",
+            approvedAt?approvedAt.toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}):"",
           ]);
           if(r.data?.rawIn?.length){
             rows.push([]); rows.push(["  RAW MATERIAL INPUT","Material","Batch No.","Qty","Unit","Signed By","Shift","Date","Time"]);
