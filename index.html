@@ -4235,7 +4235,7 @@
               </div>
               {exp===r.id&&<div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginTop:4}}>
                 {editing===r.id
-                  ?<EditProd r={r} onSave={async(id,data)=>{ await onSave(id,data); setEditing(null); }} onCancel={()=>setEditing(null)} appLists={appLists} users={users} />
+                  ?<RecEdit r={r} onSave={async(id,data)=>{ await onSave(id,data); setEditing(null); }} onCancel={()=>setEditing(null)} />
                   :<div>
                       <RecDetail r={r} createdBy={r.created_by} />
                       <ApprovalHistory record={r} />
