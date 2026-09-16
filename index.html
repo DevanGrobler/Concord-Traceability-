@@ -1760,25 +1760,80 @@
       const isoG=appLists.iso_global||{companyName:"Golden Tree Holdings (Pty) Ltd t/a Concord Packaging",manualTitle:"Food Safety Management Manual",reviewedBy:"Food Safety Officer",approvedBy:"Managing Director",issueDate:"02 March 2021"};
       const isoD=appLists.iso_docs||{};
 
-      const makeIsoHeader=(type)=>{
+      // ── Build ISO header with borders using aoa_to_sheet + cell styles ────────
+      const makeIsoHeader=(type,ws,rowOffset=0)=>{
         const doc=isoD[type]||{title:"",docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""};
-        return [
-          [isoG.companyName,"","",isoG.manualTitle,"","","Document No:","",doc.docNo||""],
-          ["","","","Document title:","",doc.title||type,"Revision No:","",doc.revNo||"01"],
-          ["","","",`Reviewed by: ${doc.reviewedBy||isoG.reviewedBy}`,"",`Approved by: ${doc.approvedBy||isoG.approvedBy}`,"Revised Date:","",doc.revisedDate||""],
-          [`Initial Issue Date: ${isoG.issueDate}`,"","","","","","","",""],
-          [],
-        ];
+        const border={style:"thin",color:{rgb:"000000"}};
+        const bAll={top:border,bottom:border,left:border,right:border};
+        const bold={bold:true};
+
+        // Helper to set a cell with style
+        const sc=(r,c,v,s={})=>{
+          const addr=XLSX.utils.encode_cell({r:rowOffset+r,c});
+          if(!ws[addr]) ws[addr]={t:"s",v:""};
+          ws[addr]={t:typeof v==="number"?"n":"s",v,s:{border:bAll,...s}};
+        };
+
+        // Row 0: Company | Manual Title | Doc No
+        sc(0,0,isoG.companyName,{font:{bold:true},alignment:{wrapText:true,vertical:"center"}});
+        sc(0,3,isoG.manualTitle,{font:{bold:true},alignment:{horizontal:"center",vertical:"center"}});
+        sc(0,6,"Document No:",{font:{bold:true}});
+        sc(0,7,doc.docNo||"");
+
+        // Row 1: (company cont) | Doc Title | Rev No
+        sc(1,0,"");
+        sc(1,3,"Document title:",{font:{bold:true}});
+        sc(1,4,(doc.title||type).toUpperCase(),{font:{bold:true,sz:12},alignment:{horizontal:"center",vertical:"center"}});
+        sc(1,6,"Revision No:",{font:{bold:true}});
+        sc(1,7,doc.revNo||"01");
+
+        // Row 2: (company cont) | Reviewed | Approved | Revised Date
+        sc(2,0,"");
+        sc(2,3,`Reviewed by: ${doc.reviewedBy||isoG.reviewedBy}`,{font:{bold:true}});
+        sc(2,5,`Approved by: ${doc.approvedBy||isoG.approvedBy}`,{font:{bold:true}});
+        sc(2,6,"Revised Date:",{font:{bold:true}});
+        sc(2,7,doc.revisedDate||"");
+
+        // Row 3: Issue date | Page
+        sc(3,0,`Initial Issue Date: ${isoG.issueDate}`);
+        sc(3,6,"Page 1 of 1",{alignment:{horizontal:"center"}});
+
+        // Set merges
+        if(!ws["!merges"]) ws["!merges"]=[];
+        ws["!merges"].push(
+          {s:{r:rowOffset+0,c:0},e:{r:rowOffset+2,c:2}}, // Company name spans 3 rows
+          {s:{r:rowOffset+0,c:3},e:{r:rowOffset+0,c:5}}, // Manual title
+          {s:{r:rowOffset+0,c:6},e:{r:rowOffset+0,c:6}}, // Doc No label
+          {s:{r:rowOffset+0,c:7},e:{r:rowOffset+0,c:8}}, // Doc No value
+          {s:{r:rowOffset+1,c:3},e:{r:rowOffset+1,c:3}}, // Doc title label
+          {s:{r:rowOffset+1,c:4},e:{r:rowOffset+1,c:5}}, // Doc title value
+          {s:{r:rowOffset+1,c:7},e:{r:rowOffset+1,c:8}}, // Rev No value
+          {s:{r:rowOffset+2,c:3},e:{r:rowOffset+2,c:4}}, // Reviewed by
+          {s:{r:rowOffset+2,c:5},e:{r:rowOffset+2,c:5}}, // Approved by
+          {s:{r:rowOffset+2,c:7},e:{r:rowOffset+2,c:8}}, // Revised date
+          {s:{r:rowOffset+3,c:0},e:{r:rowOffset+3,c:5}}, // Issue date
+          {s:{r:rowOffset+3,c:6},e:{r:rowOffset+3,c:8}}, // Page
+        );
+
+        // Set row heights for header
+        if(!ws["!rows"]) ws["!rows"]=[];
+        ws["!rows"][rowOffset]=  {hpt:30};
+        ws["!rows"][rowOffset+1]={hpt:30};
+        ws["!rows"][rowOffset+2]={hpt:25};
+        ws["!rows"][rowOffset+3]={hpt:20};
+
+        return 5; // rows used (4 header + 1 blank)
       };
 
       const prodRecs=records.filter(r=>r.type==="production");
       if(prodRecs.length){
-        const isoHeader=makeIsoHeader("production");
         const rows=[
-          ...isoHeader,
-          ["Concord Packaging Traceability — Production Export"],
-          ["Generated:",new Date().toLocaleString()],
-          ["Total Records:",prodRecs.length],
+          ["","","","","","","","",""], // placeholder for ISO header (5 rows)
+          ["","","","","","","","",""],
+          ["","","","","","","","",""],
+          ["","","","","","","","",""],
+          [],
+          ["Concord Packaging — Production Export","","Generated:",new Date().toLocaleString()],
           [],
           ["Completed By","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks"]
         ];
@@ -1829,7 +1884,11 @@
           }
           rows.push(["---"]);
         });
-        XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rows),"Production");
+        const prodWs=XLSX.utils.aoa_to_sheet(rows);
+        makeIsoHeader("production",prodWs,0);
+        // Set column widths
+        prodWs["!cols"]=[{wch:15},{wch:14},{wch:10},{wch:12},{wch:12},{wch:16},{wch:18},{wch:22},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:8},{wch:14},{wch:18},{wch:20}];
+        XLSX.utils.book_append_sheet(wb,prodWs,"Production");
       }
 
       const viscRecs=records.filter(r=>r.type==="viscosity");
