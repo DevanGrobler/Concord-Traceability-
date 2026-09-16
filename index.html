@@ -1760,69 +1760,66 @@
       const isoG=appLists.iso_global||{companyName:"Golden Tree Holdings (Pty) Ltd t/a Concord Packaging",manualTitle:"Food Safety Management Manual",reviewedBy:"Food Safety Officer",approvedBy:"Managing Director",issueDate:"02 March 2021"};
       const isoD=appLists.iso_docs||{};
 
-      // ── Build ISO header with borders using aoa_to_sheet + cell styles ────────
+      // ── Build ISO header with full borders on every cell ─────────────────────
       const makeIsoHeader=(type,ws,rowOffset=0)=>{
         const doc=isoD[type]||{title:"",docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""};
         const border={style:"thin",color:{rgb:"000000"}};
         const bAll={top:border,bottom:border,left:border,right:border};
-        const bold={bold:true};
 
-        // Helper to set a cell with style
+        // Helper — set cell with border + optional extra style
         const sc=(r,c,v,s={})=>{
           const addr=XLSX.utils.encode_cell({r:rowOffset+r,c});
-          if(!ws[addr]) ws[addr]={t:"s",v:""};
-          ws[addr]={t:typeof v==="number"?"n":"s",v,s:{border:bAll,...s}};
+          ws[addr]={t:typeof v==="number"?"n":"s",v:v||"",s:{border:bAll,...s}};
         };
 
-        // Row 0: Company | Manual Title | Doc No
-        sc(0,0,isoG.companyName,{font:{bold:true},alignment:{wrapText:true,vertical:"center"}});
-        sc(0,3,isoG.manualTitle,{font:{bold:true},alignment:{horizontal:"center",vertical:"center"}});
+        // Fill ALL cells in the 4-row × 9-col block with borders first
+        for(let r=0;r<4;r++) for(let c=0;c<9;c++) sc(r,c,"");
+
+        // Row 0
+        sc(0,0,isoG.companyName,{font:{bold:true,sz:11},alignment:{wrapText:true,vertical:"center",horizontal:"center"}});
+        sc(0,3,isoG.manualTitle,{font:{bold:true,sz:11},alignment:{horizontal:"center",vertical:"center",wrapText:true}});
         sc(0,6,"Document No:",{font:{bold:true}});
-        sc(0,7,doc.docNo||"");
+        sc(0,7,doc.docNo||"",{alignment:{horizontal:"center"}});
 
-        // Row 1: (company cont) | Doc Title | Rev No
-        sc(1,0,"");
+        // Row 1
         sc(1,3,"Document title:",{font:{bold:true}});
-        sc(1,4,(doc.title||type).toUpperCase(),{font:{bold:true,sz:12},alignment:{horizontal:"center",vertical:"center"}});
+        sc(1,4,(doc.title||type).toUpperCase(),{font:{bold:true,sz:12},alignment:{horizontal:"center",vertical:"center",wrapText:true}});
         sc(1,6,"Revision No:",{font:{bold:true}});
-        sc(1,7,doc.revNo||"01");
+        sc(1,7,doc.revNo||"01",{alignment:{horizontal:"center"}});
 
-        // Row 2: (company cont) | Reviewed | Approved | Revised Date
-        sc(2,0,"");
+        // Row 2
         sc(2,3,`Reviewed by: ${doc.reviewedBy||isoG.reviewedBy}`,{font:{bold:true}});
         sc(2,5,`Approved by: ${doc.approvedBy||isoG.approvedBy}`,{font:{bold:true}});
         sc(2,6,"Revised Date:",{font:{bold:true}});
-        sc(2,7,doc.revisedDate||"");
+        sc(2,7,doc.revisedDate||"",{alignment:{horizontal:"center"}});
 
-        // Row 3: Issue date | Page
-        sc(3,0,`Initial Issue Date: ${isoG.issueDate}`);
+        // Row 3
+        sc(3,0,`Initial Issue Date: ${isoG.issueDate}`,{font:{italic:true}});
         sc(3,6,"Page 1 of 1",{alignment:{horizontal:"center"}});
 
-        // Set merges
+        // Merges
         if(!ws["!merges"]) ws["!merges"]=[];
         ws["!merges"].push(
-          {s:{r:rowOffset+0,c:0},e:{r:rowOffset+2,c:2}}, // Company name spans 3 rows
+          {s:{r:rowOffset+0,c:0},e:{r:rowOffset+2,c:2}}, // Company (3 rows × 3 cols)
           {s:{r:rowOffset+0,c:3},e:{r:rowOffset+0,c:5}}, // Manual title
-          {s:{r:rowOffset+0,c:6},e:{r:rowOffset+0,c:6}}, // Doc No label
           {s:{r:rowOffset+0,c:7},e:{r:rowOffset+0,c:8}}, // Doc No value
           {s:{r:rowOffset+1,c:3},e:{r:rowOffset+1,c:3}}, // Doc title label
           {s:{r:rowOffset+1,c:4},e:{r:rowOffset+1,c:5}}, // Doc title value
           {s:{r:rowOffset+1,c:7},e:{r:rowOffset+1,c:8}}, // Rev No value
           {s:{r:rowOffset+2,c:3},e:{r:rowOffset+2,c:4}}, // Reviewed by
-          {s:{r:rowOffset+2,c:5},e:{r:rowOffset+2,c:5}}, // Approved by
           {s:{r:rowOffset+2,c:7},e:{r:rowOffset+2,c:8}}, // Revised date
           {s:{r:rowOffset+3,c:0},e:{r:rowOffset+3,c:5}}, // Issue date
           {s:{r:rowOffset+3,c:6},e:{r:rowOffset+3,c:8}}, // Page
         );
 
-        // Set row heights for header
+        // Row heights
         if(!ws["!rows"]) ws["!rows"]=[];
-        ws["!rows"][rowOffset]=  {hpt:30};
-        ws["!rows"][rowOffset+1]={hpt:30};
+        ws["!rows"][rowOffset+0]={hpt:35};
+        ws["!rows"][rowOffset+1]={hpt:35};
         ws["!rows"][rowOffset+2]={hpt:25};
         ws["!rows"][rowOffset+3]={hpt:20};
 
-        return 5; // rows used (4 header + 1 blank)
+        return 5;
       };
 
       const prodRecs=records.filter(r=>r.type==="production");
