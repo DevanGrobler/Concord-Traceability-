@@ -1776,7 +1776,7 @@
         for(let r=0;r<4;r++) for(let c=0;c<9;c++) sc(r,c,"");
 
         // Row 0
-        sc(0,0,isoG.companyName,{font:{bold:true,sz:11},alignment:{wrapText:true,vertical:"center",horizontal:"center"}});
+        sc(0,0,isoG.companyName,{font:{bold:true,sz:11},alignment:{wrapText:true,vertical:"center",horizontal:"center",shrinkToFit:false}});
         sc(0,3,isoG.manualTitle,{font:{bold:true,sz:11},alignment:{horizontal:"center",vertical:"center",wrapText:true}});
         sc(0,6,"Document No:",{font:{bold:true}});
         sc(0,7,doc.docNo||"",{alignment:{horizontal:"center"}});
@@ -1814,9 +1814,9 @@
 
         // Row heights
         if(!ws["!rows"]) ws["!rows"]=[];
-        ws["!rows"][rowOffset+0]={hpt:35};
-        ws["!rows"][rowOffset+1]={hpt:35};
-        ws["!rows"][rowOffset+2]={hpt:25};
+        ws["!rows"][rowOffset+0]={hpt:45};
+        ws["!rows"][rowOffset+1]={hpt:45};
+        ws["!rows"][rowOffset+2]={hpt:30};
         ws["!rows"][rowOffset+3]={hpt:20};
 
         return 5;
@@ -1884,7 +1884,7 @@
         const prodWs=XLSX.utils.aoa_to_sheet(rows);
         makeIsoHeader("production",prodWs,0);
         // Set column widths
-        prodWs["!cols"]=[{wch:15},{wch:14},{wch:10},{wch:12},{wch:12},{wch:16},{wch:18},{wch:22},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10},{wch:8},{wch:14},{wch:18},{wch:20}];
+        prodWs["!cols"]=[{wch:18},{wch:18},{wch:18},{wch:20},{wch:20},{wch:20},{wch:14},{wch:14},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:8},{wch:14},{wch:18},{wch:20}];
         XLSX.utils.book_append_sheet(wb,prodWs,"Production");
       }
 
