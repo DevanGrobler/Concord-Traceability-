@@ -4526,7 +4526,7 @@
             {/* ── Stats cards ── */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
               {[
-                {label:"CURRENT SPEED",    value:isRunning?speed.toFixed(1)+" m/min":"0 m/min",    color:speedColor,     sub:`Target: ${TARGET_SPEED} m/min`},
+                {label:"CURRENT SPEED",    value:isRunning?speed.toFixed(1)+" m/min":"0 m/min",    color:speedColor},
                 {label:"AVERAGE SPEED",    value:avgSpeed>0?avgSpeed.toFixed(1)+" m/min":"—",       color:C.blue,         sub:"Running time only"},
                 {label:"METERS THIS SHIFT",value:shiftMeters>0?Math.round(shiftMeters).toLocaleString()+" m":"0 m", color:C.accent, sub:"Since shift start"},
                 {label:"DOWNTIME TODAY",   value:shiftDowntimeMins>0?Math.round(shiftDowntimeMins)+" min":"0 min", color:shiftDowntimeMins>60?C.danger:shiftDowntimeMins>0?C.warn:C.muted, sub:`${downtimeEvents.length} recent stop${downtimeEvents.length!==1?"s":""} shown below`},
