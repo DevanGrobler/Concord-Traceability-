@@ -4281,6 +4281,7 @@
       const [avgSpeed,setAvgSpeed]=useState(0);
       const [downtimeEvents,setDowntimeEvents]=useState([]);
       const [lastShiftSaved,setLastShiftSaved]=useState(null);
+      const [shiftDowntimeMins,setShiftDowntimeMins]=useState(0);
 
       // Get shift times from settings
       const shiftTimes=appLists.shift_times||{dayStart:"07:00",dayEnd:"19:00",nightStart:"19:00",nightEnd:"07:00"};
@@ -4311,8 +4312,25 @@
         await sb.from("machine_readings").delete().lt("created_at",cutoff.toISOString());
       };
 
+      // ── Sum stopped time across a set of ascending-sorted readings ──────────
+      // For each reading marked not-running, adds the time up to the NEXT
+      // reading; the last reading (if still stopped) is closed out at endMs
+      // (either "now" for the live view, or the shift boundary when saving a
+      // finished shift's summary). Adds across the whole set — not capped —
+      // so a shift with many stoppages still totals correctly.
+      const sumDowntimeMinutes=(sortedAsc,endMs)=>{
+        let mins=0;
+        for(let i=0;i<sortedAsc.length;i++){
+          if(sortedAsc[i].running) continue;
+          const startMs=new Date(sortedAsc[i].created_at).getTime();
+          const nextMs=(i+1<sortedAsc.length)?new Date(sortedAsc[i+1].created_at).getTime():endMs;
+          if(nextMs>startMs) mins+=(nextMs-startMs)/60000;
+        }
+        return mins;
+      };
+
       // ── Save shift summary ──────────────────────────────────────────────────
-      const saveShiftSummary=async(shiftDate,shift,shiftReadings,oeeParams)=>{
+      const saveShiftSummary=async(shiftDate,shift,shiftReadings,oeeParams,shiftEndMs)=>{
         if(!shiftReadings||shiftReadings.length===0) return;
         const runningR=shiftReadings.filter(r=>r.running&&r.speed>0);
         const sorted=[...shiftReadings].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
@@ -4324,13 +4342,14 @@
         }
         const avgSpd=runningR.length>0?runningR.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningR.length:0;
 
-        // Downtime
-        let downtimeMins=0,stopCount=0;
+        // Downtime — sum of actual stopped time between readings across the
+        // whole shift, closed out at the shift boundary (shiftEndMs) rather
+        // than left open, so a stoppage still running at handover is counted
+        // up to the end of this shift.
+        const downtimeMins=Math.round(sumDowntimeMinutes(sorted,shiftEndMs||Date.now()));
+        let stopCount=0;
         for(let i=0;i<shiftReadings.length-1;i++){
-          if(!shiftReadings[i].running&&shiftReadings[i+1].running){
-            const dur=Math.round((new Date(shiftReadings[i].created_at)-new Date(shiftReadings[i+1].created_at))/60000);
-            if(dur>0){ downtimeMins+=dur; stopCount++; }
-          }
+          if(!shiftReadings[i].running&&shiftReadings[i+1].running) stopCount++;
         }
 
         // OEE
@@ -4397,11 +4416,18 @@
               const curr=parseFloat(sorted[i].meters_shift||0);
               if(curr>prev) totalMeters+=curr-prev; // only add increases
             }
-            // Also add meters from first reading
-            if(sorted.length>0) totalMeters+=parseFloat(sorted[0].meters_shift||0);
+            totalMeters+=parseFloat(sorted[0].meters_shift||0);
             setShiftMeters(totalMeters);
+
+            // Downtime — sum the actual stopped time between readings: for each
+            // reading marked not-running, add the time until the next reading
+            // (or, for the most recent reading, until now if it's still stopped).
+            // This adds up across the whole shift instead of only the last few
+            // events, and needs nothing extra from the firmware.
+            setShiftDowntimeMins(sumDowntimeMinutes(sorted,Date.now()));
           } else {
             setShiftMeters(0);
+            setShiftDowntimeMins(0);
           }
 
           // Average speed
@@ -4456,7 +4482,7 @@
                 return d<shiftStartTime&&d>(new Date(shiftStartTime.getTime()-12*3600000));
               });
               if(endedReadings.length>0){
-                await saveShiftSummary(endedDate,endedShift,endedReadings,appLists.oee_params);
+                await saveShiftSummary(endedDate,endedShift,endedReadings,appLists.oee_params,shiftStartTime.getTime());
                 localStorage.setItem("cpk_last_shift_saved",endedKey);
               }
             }
@@ -4503,7 +4529,7 @@
                 {label:"CURRENT SPEED",    value:isRunning?speed.toFixed(1)+" m/min":"0 m/min",    color:speedColor,     sub:`Target: ${TARGET_SPEED} m/min`},
                 {label:"AVERAGE SPEED",    value:avgSpeed>0?avgSpeed.toFixed(1)+" m/min":"—",       color:C.blue,         sub:"Running time only"},
                 {label:"METERS THIS SHIFT",value:shiftMeters>0?Math.round(shiftMeters).toLocaleString()+" m":"0 m", color:C.accent, sub:"Since shift start"},
-                {label:"DOWNTIME TODAY",   value:totalDowntime>0?totalDowntime+" min":"0 min",       color:totalDowntime>60?C.danger:totalDowntime>0?C.warn:C.muted, sub:`${downtimeEvents.length} stop${downtimeEvents.length!==1?"s":""}  this shift`},
+                {label:"DOWNTIME TODAY",   value:shiftDowntimeMins>0?Math.round(shiftDowntimeMins)+" min":"0 min", color:shiftDowntimeMins>60?C.danger:shiftDowntimeMins>0?C.warn:C.muted, sub:`${downtimeEvents.length} recent stop${downtimeEvents.length!==1?"s":""} shown below`},
               ].map(({label,value,color,sub})=>(
                 <div key={label} style={{...S.card,textAlign:"center",padding:16,marginBottom:0}}>
                   <div style={{fontSize:9,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>{label}</div>
@@ -4533,7 +4559,7 @@
 
             {/* ── Downtime events ── */}
             {downtimeEvents.length>0&&<div style={{...S.card,marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>DOWNTIME EVENTS THIS SHIFT</div>
+              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:12}}>MOST RECENT STOPPAGES THIS SHIFT</div>
               {downtimeEvents.map((e,i)=>(
                 <div key={i} style={{display:"flex",gap:12,padding:"8px 0",borderTop:i>0?`1px solid ${C.border}`:"none",alignItems:"center"}}>
                   <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:C.danger+"22",color:C.danger,fontWeight:700,whiteSpace:"nowrap"}}>
@@ -4546,7 +4572,7 @@
                 </div>
               ))}
               <div style={{fontSize:10,color:C.muted,marginTop:8,borderTop:`1px solid ${C.border}`,paddingTop:8}}>
-                Total downtime: <strong style={{color:C.danger}}>{totalDowntime} min</strong>
+                Total downtime this shift: <strong style={{color:C.danger}}>{Math.round(shiftDowntimeMins)} min</strong> (list above shows only the {downtimeEvents.length} most recent)
               </div>
             </div>}
 
