@@ -1847,7 +1847,7 @@
           [],
           ["Concord Packaging — Production Export","","Generated:",new Date().toLocaleString()],
           [],
-          ["Completed By","Closed By","Closed Date","Closed Time","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks","Approval Status","Approved By","Approved Date"]
+          ["Completed By","Closed By","Closed Date","Closed Time","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate"]
         ];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
@@ -1861,6 +1861,11 @@
             submittedDate.toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}),
             submittedDate.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false}),
             h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,
+          ]);
+          rows.push([]);
+          rows.push(["JOB DETAILS"]);
+          rows.push(["Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks","Approval Status","Approved By","Approved Date"]);
+          rows.push([
             h.widthA||h.width||"",h.widthB||"",h.lengthA||h.length||"",h.lengthB||"",
             h.speed,h.operator,h.supervisor,r.data?.remarks||"",
             r.approval_status||"pending",
@@ -1906,7 +1911,7 @@
         const prodWs=XLSX.utils.aoa_to_sheet(rows);
         makeIsoHeader("production",prodWs,0);
         // Set column widths
-        prodWs["!cols"]=[{wch:18},{wch:18},{wch:14},{wch:12},{wch:18},{wch:18},{wch:20},{wch:20},{wch:20},{wch:14},{wch:14},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:8},{wch:14},{wch:18},{wch:20}];
+        prodWs["!cols"]=[{wch:22.1},{wch:23.7},{wch:14.1},{wch:14.6},{wch:15.6},{wch:29},{wch:15.3},{wch:12},{wch:16},{wch:16},{wch:28},{wch:10}];
         XLSX.utils.book_append_sheet(wb,prodWs,"Production");
       }
 
