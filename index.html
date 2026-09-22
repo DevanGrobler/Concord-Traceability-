@@ -975,13 +975,14 @@
       const asSign=(fn,i,sig)=>fn(a=>a.map((r,x)=>x===i?{...r,...sig}:r));
       const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
       if(saved) return <Done label="Production Sheet" reset={()=>{ clearDraft(); onReset(); }} />;
-      const save=async()=>{
+      const save=async(closeSig)=>{
         if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},customer:{value:hdr.customer,label:"Customer"},substrate:{value:hdr.substrate,label:"Substrate"},operator:{value:hdr.operator,label:"Operator"}})) return;
         const now=new Date();
         const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
         const finalRawOut=rawOut.map((row,xi)=>xi===rawOut.length-1&&!row.time?{...row,time:timeStr}:row);
         const normBopp=boppWaste.map(r=>({...r,printingBopp:r.printingBopp===""?"0":r.printingBopp,rawBopp:r.rawBopp===""?"0":r.rawBopp}));
-        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,returnBopp,boppWaste:normBopp,inks,solvents,remarks}});
+        await onSave({type:"production",title:`Production · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,rawIn,rawOut:finalRawOut,returnBopp,boppWaste:normBopp,inks,solvents,remarks,
+          closedBy:closeSig.signedBy,closedAt:closeSig.signedAt,closedDate:closeSig.signedDate,closedShift:closeSig.signedShift}});
         clearDraft();
         setSaved(true);
       };
@@ -1181,7 +1182,10 @@
           <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setSolv(a=>[...a,eSv()])}>+ Add Row</button>
         </SC>
         <SC title="Remarks"><textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} /></SC>
-        <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={save}>Save Production Sheet</button>
+        <SC title="Close & Sign Off Sheet">
+          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Sign off here to close and save this production sheet. This name is recorded separately from whoever is logged in, so the record shows exactly who closed it out.</div>
+          <PinPrompt label="Close & Save Sheet" onConfirm={sig=>save(sig)} />
+        </SC>
       </div>;
     }
 
@@ -1843,15 +1847,17 @@
           [],
           ["Concord Packaging — Production Export","","Generated:",new Date().toLocaleString()],
           [],
-          ["Completed By","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks","Approval Status","Approved By","Approved Date"]
+          ["Completed By","Closed By","Closed Date","Closed Time","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate","Width A (mm)","Width B (mm)","Length A (m)","Length B (m)","Speed","Operator","Supervisor","Remarks","Approval Status","Approved By","Approved Date"]
         ];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
           const submittedDate=new Date(r.created_at);
           const approvedAt=r.approved_at?new Date(r.approved_at):null;
-          console.log("Export record:",r.id,"approved_by:",r.approved_by,"approved_at:",r.approved_at,"status:",r.approval_status);
           rows.push([
             r.created_by,
+            r.data?.closedBy||"",
+            r.data?.closedDate||"",
+            r.data?.closedAt||"",
             submittedDate.toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"}),
             submittedDate.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false}),
             h.date,h.shift,h.jobNo,h.customer,h.productName||"",h.substrate,
@@ -1900,7 +1906,7 @@
         const prodWs=XLSX.utils.aoa_to_sheet(rows);
         makeIsoHeader("production",prodWs,0);
         // Set column widths
-        prodWs["!cols"]=[{wch:18},{wch:18},{wch:18},{wch:20},{wch:20},{wch:20},{wch:14},{wch:14},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:8},{wch:14},{wch:18},{wch:20}];
+        prodWs["!cols"]=[{wch:18},{wch:18},{wch:14},{wch:12},{wch:18},{wch:18},{wch:20},{wch:20},{wch:20},{wch:14},{wch:14},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:8},{wch:14},{wch:18},{wch:20}];
         XLSX.utils.book_append_sheet(wb,prodWs,"Production");
       }
 
@@ -2074,6 +2080,9 @@
                 <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
                 <div style={{fontSize:11,color:C.muted,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
                   <span>📋 Completed by: <span style={{color:C.accent,fontWeight:700}}>{r.created_by}</span></span>
+                  {r.data?.closedBy&&(
+                    <span>✔ Closed by: <span style={{color:C.success,fontWeight:700}}>{r.data.closedBy}</span></span>
+                  )}
                   {(r.data?.header?.customer||r.data?.header?.customerProduct)&&(
                     <span>🏢 <span style={{color:C.text}}>{r.data.header.customer||r.data.header.customerProduct}</span></span>
                   )}
@@ -2108,6 +2117,10 @@
         <div style={{marginBottom:12,padding:"8px 12px",background:C.bg,borderRadius:6,display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{color:C.muted}}>Completed by: </span><span style={{color:C.accent,fontWeight:700}}>{createdBy}</span>
           <span style={{color:C.muted}}>on {new Date(r.created_at).toLocaleString()}</span>
+          {d.closedBy&&<>
+            <span style={{color:C.muted}}>· Closed by: </span><span style={{color:C.success,fontWeight:700}}>{d.closedBy}</span>
+            {d.closedDate&&<span style={{color:C.muted}}>· {d.closedDate} {d.closedAt}</span>}
+          </>}
           <ApprovalBadge record={r} />
         </div>
         {r.type==="production"?<ProdD d={d}/>:r.type==="viscosity"?<ViscD d={d}/>:r.type.endsWith("qc")?<QCD d={d}/>:<GenericD d={d}/>}
