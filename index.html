@@ -1775,6 +1775,21 @@
       const isoG=appLists.iso_global||{companyName:"Golden Tree Holdings (Pty) Ltd t/a Concord Packaging",manualTitle:"Food Safety Management Manual",reviewedBy:"Food Safety Officer",approvedBy:"Managing Director",issueDate:"02 March 2021"};
       const isoD=appLists.iso_docs||{};
 
+      // ── Apply a thin border grid to a rectangular block of cells, filling in
+      // any blank cells so the whole block reads as a proper bordered table
+      // (not just the ones that already had content written to them).
+      const addGridBorders=(ws,r1,r2,c1,c2)=>{
+        const gBorder={style:"thin",color:{rgb:"000000"}};
+        const gAll={top:gBorder,bottom:gBorder,left:gBorder,right:gBorder};
+        for(let r=r1;r<=r2;r++){
+          for(let c=c1;c<=c2;c++){
+            const addr=XLSX.utils.encode_cell({r,c});
+            if(!ws[addr]) ws[addr]={t:"s",v:""};
+            ws[addr].s={...(ws[addr].s||{}),border:gAll};
+          }
+        }
+      };
+
       // ── Build ISO header with full borders on every cell ─────────────────────
       const makeIsoHeader=(type,ws,rowOffset=0)=>{
         const doc=isoD[type]||{title:"",docNo:"",revNo:"01",revisedDate:"",reviewedBy:"",approvedBy:""};
@@ -4347,31 +4362,81 @@
         return mins;
       };
 
+      // ── Shift helpers ───────────────────────────────────────────────────────
+      const PUSH_MINS=5;               // Opta pushes a reading every 5 minutes
+      const MIN_COVERAGE=0.5;          // need at least half a shift's readings to save a summary
+      const REF_MAX_MS=15*60000;       // reference reading must be within 15 min of shift start
+      const DOWNTIME_TAIL_MS=10*60000; // don't count more than 10 min of stop after the last reading
+
+      const localDateStr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+
+      const shiftLenMins=(shift)=>shift==="Night Shift"
+        ?((parseTime(shiftTimes.nightEnd||"07:00")+1440-parseTime(shiftTimes.nightStart||"19:00"))%1440||720)
+        :(dayEndMins-dayStartMins);
+
+      // Meters made across a set of ascending readings. meters_shift is a
+      // running counter on the Opta that only resets when the board reboots
+      // (not at shift change), so a reading's absolute value includes whatever
+      // was counted before the shift began. Only the INCREASE between readings
+      // belongs to the shift. refReading is the last reading before the shift
+      // started, so the first interval isn't lost. If the counter drops, the
+      // board rebooted and restarted from 0, so the new value is the meters
+      // made since that reboot.
+      const sumShiftMeters=(sortedAsc,refReading)=>{
+        const pts=refReading?[refReading,...sortedAsc]:sortedAsc;
+        let total=0;
+        for(let i=1;i<pts.length;i++){
+          const prev=parseFloat(pts[i-1].meters_shift||0);
+          const curr=parseFloat(pts[i].meters_shift||0);
+          total+= curr>=prev ? curr-prev : curr;
+        }
+        return total;
+      };
+
+      // Last reading before startMs, as long as it's recent enough to trust.
+      const findRefReading=(ascAll,startMs)=>{
+        for(let i=ascAll.length-1;i>=0;i--){
+          const t=new Date(ascAll[i].created_at).getTime();
+          if(t<startMs) return (startMs-t<=REF_MAX_MS)?ascAll[i]:null;
+        }
+        return null;
+      };
+
+      const readingsForShift=(ascAll,startMs,endMs)=>({
+        list:ascAll.filter(r=>{ const t=new Date(r.created_at).getTime(); return t>=startMs&&t<endMs; }),
+        ref:findRefReading(ascAll,startMs),
+      });
+
+      // A shift only gets a summary if the Opta reported for at least half of
+      // it. Otherwise the row would be built from a handful of readings and
+      // would be misleading (e.g. a board that only came back online at the
+      // very end of the shift).
+      const hasEnoughReadings=(list,shiftMins)=>list.length>=Math.floor((shiftMins/PUSH_MINS)*MIN_COVERAGE);
+
       // ── Save shift summary ──────────────────────────────────────────────────
-      const saveShiftSummary=async(shiftDate,shift,shiftReadings,oeeParams,shiftEndMs)=>{
+      const saveShiftSummary=async(shiftDate,shift,shiftReadings,oeeParams,shiftEndMs,refReading)=>{
         if(!shiftReadings||shiftReadings.length===0) return;
         const runningR=shiftReadings.filter(r=>r.running&&r.speed>0);
         const sorted=[...shiftReadings].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-        let totalMeters=sorted.length>0?parseFloat(sorted[0].meters_shift||0):0;
-        for(let i=1;i<sorted.length;i++){
-          const prev=parseFloat(sorted[i-1].meters_shift||0);
-          const curr=parseFloat(sorted[i].meters_shift||0);
-          if(curr>prev) totalMeters+=curr-prev;
-        }
+        const totalMeters=sumShiftMeters(sorted,refReading);
         const avgSpd=runningR.length>0?runningR.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningR.length:0;
 
         // Downtime — sum of actual stopped time between readings across the
         // whole shift, closed out at the shift boundary (shiftEndMs) rather
         // than left open, so a stoppage still running at handover is counted
-        // up to the end of this shift.
-        const downtimeMins=Math.round(sumDowntimeMinutes(sorted,shiftEndMs||Date.now()));
+        // up to the end of this shift. The tail is capped so that if the Opta
+        // went offline part-way through, the missing hours aren't counted as
+        // downtime.
+        const lastMs=new Date(sorted[sorted.length-1].created_at).getTime();
+        const endMs=Math.min(shiftEndMs||Date.now(),lastMs+DOWNTIME_TAIL_MS);
+        const downtimeMins=Math.round(sumDowntimeMinutes(sorted,endMs));
         let stopCount=0;
-        for(let i=0;i<shiftReadings.length-1;i++){
-          if(!shiftReadings[i].running&&shiftReadings[i+1].running) stopCount++;
+        for(let i=0;i<sorted.length-1;i++){
+          if(sorted[i].running&&!sorted[i+1].running) stopCount++;
         }
 
         // OEE
-        const shiftMins=shift==="Night Shift"?(parseTime(shiftTimes.nightEnd||"07:00")+1440-parseTime(shiftTimes.nightStart||"19:00"))%1440||720:(dayEndMins-dayStartMins);
+        const shiftMins=shiftLenMins(shift);
         const oeeSpeed=Math.round((oeeParams?.maxSpeed||200)*((oeeParams?.loadingFactor||70)/100));
         const oeeAvail=(100-(oeeParams?.downtimeProvision||20))/100;
         const available=Math.round(oeeSpeed*shiftMins*oeeAvail);
@@ -4424,18 +4489,11 @@
 
           const shiftReadings=data.filter(r=>new Date(r.created_at)>=shiftStartTime);
 
-          // Meters — sum increments between consecutive readings to handle Opta restarts
-          // Each time meters_shift goes UP we add the increment, resets are ignored
+          // Meters — only the increase since the shift began (see sumShiftMeters)
+          const ascAll=[...data].reverse(); // data arrives newest-first
           if(shiftReadings.length>0){
-            let totalMeters=0;
             const sorted=[...shiftReadings].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-            for(let i=1;i<sorted.length;i++){
-              const prev=parseFloat(sorted[i-1].meters_shift||0);
-              const curr=parseFloat(sorted[i].meters_shift||0);
-              if(curr>prev) totalMeters+=curr-prev; // only add increases
-            }
-            totalMeters+=parseFloat(sorted[0].meters_shift||0);
-            setShiftMeters(totalMeters);
+            setShiftMeters(sumShiftMeters(sorted,findRefReading(ascAll,shiftStartTime.getTime())));
 
             // Downtime — sum the actual stopped time between readings: for each
             // reading marked not-running, add the time until the next reading
@@ -4495,12 +4553,10 @@
             const endedDate=currentShift==="Day Shift"?getShiftDate(new Date(Date.now()-3600000)):currentShiftDate;
             const endedKey=`${endedDate}_${endedShift}`;
             if(prevShiftKey!==endedKey){
-              const endedReadings=data.filter(r=>{
-                const d=new Date(r.created_at);
-                return d<shiftStartTime&&d>(new Date(shiftStartTime.getTime()-12*3600000));
-              });
-              if(endedReadings.length>0){
-                await saveShiftSummary(endedDate,endedShift,endedReadings,appLists.oee_params,shiftStartTime.getTime());
+              const endedLen=shiftLenMins(endedShift);
+              const {list:endedReadings,ref:endedRef}=readingsForShift(ascAll,shiftStartTime.getTime()-endedLen*60000,shiftStartTime.getTime());
+              if(hasEnoughReadings(endedReadings,endedLen)){
+                await saveShiftSummary(endedDate,endedShift,endedReadings,appLists.oee_params,shiftStartTime.getTime(),endedRef);
                 localStorage.setItem("cpk_last_shift_saved",endedKey);
               }
             }
@@ -4509,10 +4565,67 @@
         setLoading(false);
       };
 
+      // ── Catch up on shifts that never got a summary ─────────────────────────
+      // Summaries used to be written only if someone had the app open during
+      // the 3 minutes after a shift change. This runs when the page loads (and
+      // hourly) and saves any finished shift in the last 7 days (the raw
+      // readings are deleted after 7) that has readings but no summary row.
+      const backfillShifts=async()=>{
+        try{
+          const cutoffMs=Date.now()-7*24*3600*1000;
+          const nStartMins=parseTime(shiftTimes.nightStart||"19:00");
+          const nEndMins=parseTime(shiftTimes.nightEnd||"07:00");
+          const setAt=(base,mins,addDays=0)=>{ const d=new Date(base); d.setDate(d.getDate()+addDays); d.setHours(Math.floor(mins/60),mins%60,0,0); return d; };
+
+          // Every day/night shift window in the last 8 days that has already finished
+          const today=new Date(); today.setHours(0,0,0,0);
+          const wins=[];
+          for(let i=8;i>=0;i--){
+            const day=new Date(today); day.setDate(day.getDate()-i);
+            wins.push({date:localDateStr(day),shift:"Day Shift",start:setAt(day,dayStartMins),end:setAt(day,dayEndMins)});
+            wins.push({date:localDateStr(day),shift:"Night Shift",start:setAt(day,nStartMins),end:setAt(day,nEndMins,1)});
+          }
+          const candidates=wins.filter(w=>w.start.getTime()>=cutoffMs&&w.end.getTime()<=Date.now());
+          if(candidates.length===0) return;
+
+          const {data:existing,error:exErr}=await sb.from("shift_summaries").select("shift_date,shift").gte("shift_date",candidates[0].date);
+          if(exErr) return;
+          const have=new Set((existing||[]).map(s=>`${s.shift_date}_${s.shift}`));
+          const missing=candidates.filter(w=>!have.has(`${w.date}_${w.shift}`));
+          if(missing.length===0) return;
+
+          // Pull the readings (in pages — the API returns at most 1000 rows per request)
+          const fromIso=new Date(missing[0].start.getTime()-REF_MAX_MS).toISOString();
+          let all=[]; let from=0; const PAGE=1000;
+          while(true){
+            const {data:page,error}=await sb.from("machine_readings").select("*").gte("created_at",fromIso).order("created_at",{ascending:true}).range(from,from+PAGE-1);
+            if(error||!page) return;
+            all=all.concat(page);
+            if(page.length<PAGE) break;
+            from+=PAGE;
+          }
+
+          let saved=0;
+          for(const w of missing){
+            const {list,ref}=readingsForShift(all,w.start.getTime(),w.end.getTime());
+            if(!hasEnoughReadings(list,shiftLenMins(w.shift))) continue;
+            await saveShiftSummary(w.date,w.shift,list,appLists.oee_params,w.end.getTime(),ref);
+            saved++;
+          }
+          if(saved>0) setLastShiftSaved(`${saved} missed shift${saved>1?"s":""} recovered`);
+        }catch(e){ /* silent — it will try again on the next load */ }
+      };
+
       React.useEffect(()=>{
         fetchReadings();
         const interval=setInterval(fetchReadings,10000);
         return ()=>clearInterval(interval);
+      },[]);
+
+      React.useEffect(()=>{
+        backfillShifts();
+        const iv=setInterval(backfillShifts,60*60*1000);
+        return ()=>clearInterval(iv);
       },[]);
 
       const isRunning=latest?.running===true;
