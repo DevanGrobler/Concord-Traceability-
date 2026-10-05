@@ -203,6 +203,47 @@
       workDays:["Monday","Tuesday","Wednesday","Thursday","Friday"]
     };
 
+    // ── Shift schedule ───────────────────────────────────────────────────────
+    // Day and Night each have their own working days, and every working day has
+    // its own start and end time (so a Friday can finish early). A shift belongs
+    // to the date it STARTS on: a Friday night shift that runs 19:00 → 01:00 is
+    // "Friday". Older saved settings (one shared workDays list) still work — they
+    // are expanded into a schedule on the fly.
+    const WEEKDAYS=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]; // index = Date.getDay()
+    const WEEKDAYS_MON_FIRST=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+
+    function getShiftSchedule(shiftTimes){
+      const st=(shiftTimes&&typeof shiftTimes==="object"&&!Array.isArray(shiftTimes))?shiftTimes:DEFAULT_SHIFT_TIMES;
+      const legacy=Array.isArray(st.workDays)?st.workDays:DEFAULT_SHIFT_TIMES.workDays;
+      const out={"Day Shift":{},"Night Shift":{}};
+      [["Day Shift","daySchedule",st.dayStart||"07:00",st.dayEnd||"19:00"],
+       ["Night Shift","nightSchedule",st.nightStart||"19:00",st.nightEnd||"07:00"]].forEach(([shift,key,ds,de])=>{
+        WEEKDAYS.forEach(day=>{
+          const e=st[key]&&st[key][day];
+          out[shift][day]=e?{on:!!e.on,start:e.start||ds,end:e.end||de}:{on:legacy.includes(day),start:ds,end:de};
+        });
+      });
+      return out;
+    }
+
+    // The scheduled window for one shift. dateStr = the date the shift STARTS (YYYY-MM-DD).
+    // Returns {on:false} when that shift isn't worked that day (or has no length).
+    function getShiftWindow(shiftTimes,dateStr,shift){
+      const [y,m,d]=String(dateStr).substring(0,10).split("-").map(Number);
+      if(!y||!m||!d) return {on:false,mins:0,start:null,end:null};
+      const dayName=WEEKDAYS[new Date(y,m-1,d).getDay()];
+      const e=getShiftSchedule(shiftTimes)[shift]?.[dayName];
+      if(!e||!e.on) return {on:false,mins:0,start:null,end:null};
+      const [sh,sm]=e.start.split(":").map(Number), [eh,em]=e.end.split(":").map(Number);
+      let len=(eh*60+em)-(sh*60+sm);
+      if(len<0) len+=1440;                       // finishes after midnight
+      if(len===0) return {on:false,mins:0,start:null,end:null};
+      const start=new Date(y,m-1,d,sh,sm,0,0);
+      return {on:true,mins:len,start,end:new Date(start.getTime()+len*60000)};
+    }
+
+    const fmtMins=m=>`${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m`;
+
     const DEFAULT_PRODUCT_SPEEDS = [
       {customer:"KEYSTONE MILLING",product:"5 KG KEYSTONE POWER",runSpeed:130,downtime:1.2},
       {customer:"KEYSTONE MILLING",product:"10 KG KEYSTONE POWER",runSpeed:130,downtime:1.2},
@@ -2539,7 +2580,16 @@
       const [psSearch,setPsSearch]=useState("");
 
       // Shift Times state
-      const [stTimes,setStTimes]=useState({...DEFAULT_SHIFT_TIMES});
+      const [stTimes,setStTimes]=useState(()=>{ const sch=getShiftSchedule(DEFAULT_SHIFT_TIMES); return {...DEFAULT_SHIFT_TIMES,daySchedule:sch["Day Shift"],nightSchedule:sch["Night Shift"]}; });
+      const setSched=(key,day,patch)=>setStTimes(p=>({...p,[key]:{...p[key],[day]:{...p[key][day],...patch}}}));
+      // Changing a shift's default start/end also moves every day that was still on the old default
+      const setDefaultTime=(sh,which,v)=>setStTimes(p=>{
+        const field=sh+(which==="start"?"Start":"End");
+        const key=sh+"Schedule";
+        const old=p[field];
+        const next=Object.fromEntries(Object.entries(p[key]).map(([d,e])=>[d,e[which]===old?{...e,[which]:v}:e]));
+        return {...p,[field]:v,[key]:next};
+      });
 
       // OEE Parameters state
       const [oeeParams,setOeeParams]=useState({maxSpeed:200,loadingFactor:70,downtimeProvision:20});
@@ -2579,7 +2629,9 @@
         }
         if(isShiftTimes){
           const raw=appLists.shift_times||DEFAULT_SHIFT_TIMES;
-          setStTimes({...DEFAULT_SHIFT_TIMES,...(typeof raw==="object"&&!Array.isArray(raw)?raw:{})});
+          const merged={...DEFAULT_SHIFT_TIMES,...(typeof raw==="object"&&!Array.isArray(raw)?raw:{})};
+          const sch=getShiftSchedule(merged);
+          setStTimes({...merged,daySchedule:sch["Day Shift"],nightSchedule:sch["Night Shift"]});
           return;
         }
         if(isOeeParams){
@@ -2874,50 +2926,51 @@
 
         {/* ── Shift Times editor ── */}
         {isShiftTimes&&<div>
-          <SC title="Shift Times (Monday – Friday)">
-            <div style={{fontSize:12,color:C.muted,marginBottom:16,padding:"8px 12px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`}}>
-              Shift times are used to calculate target meters per shift. The press runs for the full shift duration minus downtime.
+          <SC title="Shift Times & Working Days">
+            <div style={{fontSize:12,color:C.muted,marginBottom:16,padding:"8px 12px",background:C.bg,borderRadius:6,border:`1px solid ${C.border}`,lineHeight:1.7}}>
+              Set the working days for the Day and Night shift <strong style={{color:C.text}}>separately</strong>, and a start and end time for each day
+              (so a Friday can finish early). Printing OEE uses these to work out each shift's scheduled length — available meters follow it,
+              and downtime is only counted inside it. A night shift belongs to the day it <strong style={{color:C.text}}>starts</strong> on.
             </div>
             <Grid cols={2}>
-              <div style={S.card}>
-                <div style={{fontSize:11,fontWeight:700,color:C.accent,letterSpacing:"0.08em",marginBottom:12}}>DAY SHIFT</div>
-                <F label="Start Time">
-                  <input type="time" style={S.input} value={stTimes.dayStart||"07:00"} onChange={e=>setStTimes(p=>({...p,dayStart:e.target.value}))} />
-                </F>
-                <div style={{marginTop:10}}><F label="End Time">
-                  <input type="time" style={S.input} value={stTimes.dayEnd||"19:00"} onChange={e=>setStTimes(p=>({...p,dayEnd:e.target.value}))} />
-                </F></div>
-                <div style={{marginTop:10,fontSize:11,color:C.muted}}>
-                  Duration: <strong style={{color:C.text}}>{(()=>{ const s=stTimes.dayStart||"07:00",e=stTimes.dayEnd||"19:00"; const sm=parseInt(s)*60+parseInt(s.split(":")[1]||0),em=parseInt(e)*60+parseInt(e.split(":")[1]||0); const d=em-sm; return d>0?`${Math.floor(d/60)}h ${d%60}m`:"—"; })()}</strong>
-                </div>
-              </div>
-              <div style={S.card}>
-                <div style={{fontSize:11,fontWeight:700,color:C.blue,letterSpacing:"0.08em",marginBottom:12}}>NIGHT SHIFT</div>
-                <F label="Start Time">
-                  <input type="time" style={S.input} value={stTimes.nightStart||"19:00"} onChange={e=>setStTimes(p=>({...p,nightStart:e.target.value}))} />
-                </F>
-                <div style={{marginTop:10}}><F label="End Time">
-                  <input type="time" style={S.input} value={stTimes.nightEnd||"07:00"} onChange={e=>setStTimes(p=>({...p,nightEnd:e.target.value}))} />
-                </F></div>
-                <div style={{marginTop:10,fontSize:11,color:C.muted}}>
-                  Duration: <strong style={{color:C.text}}>12h 0m (overnight)</strong>
-                </div>
-              </div>
+              {[["day","Day Shift","daySchedule",C.accent],["night","Night Shift","nightSchedule",C.blue]].map(([sh,label,key,color])=>{
+                const sched=stTimes[key]||{};
+                const defS=stTimes[sh+"Start"]||(sh==="day"?"07:00":"19:00");
+                const defE=stTimes[sh+"End"]||(sh==="day"?"19:00":"07:00");
+                const lenOf=(st,en)=>{ const [a,b]=st.split(":").map(Number),[c,d]=en.split(":").map(Number); let l=(c*60+d)-(a*60+b); if(l<0) l+=1440; return l; };
+                return <div key={sh} style={S.card}>
+                  <div style={{fontSize:11,fontWeight:700,color,letterSpacing:"0.08em",marginBottom:12}}>{label.toUpperCase()}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:6}}>
+                    <F label="Default start"><input type="time" style={S.input} value={defS} onChange={e=>setDefaultTime(sh,"start",e.target.value)} /></F>
+                    <F label="Default end"><input type="time" style={S.input} value={defE} onChange={e=>setDefaultTime(sh,"end",e.target.value)} /></F>
+                  </div>
+                  <div style={{fontSize:10,color:C.muted,marginBottom:14}}>Days still on the default follow it when you change it. Edit a day below to override just that day.</div>
+                  <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>WORKING DAYS</div>
+                  {WEEKDAYS_MON_FIRST.map(day=>{
+                    const e=sched[day]||{on:false,start:defS,end:defE};
+                    const len=lenOf(e.start,e.end);
+                    return <div key={day} style={{display:"grid",gridTemplateColumns:"96px 1fr 14px 1fr 86px",gap:6,alignItems:"center",marginBottom:6,opacity:e.on?1:0.55}}>
+                      <button onClick={()=>setSched(key,day,{on:!e.on})}
+                        style={{padding:"6px 8px",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,textAlign:"left",
+                        background:e.on?color:C.panel,color:e.on?"#fff":C.muted,outline:e.on?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>{e.on?"✔ ":""}{day.slice(0,3)}</button>
+                      <input type="time" disabled={!e.on} style={{...S.input,padding:"5px 8px"}} value={e.start} onChange={ev=>setSched(key,day,{start:ev.target.value})} />
+                      <span style={{color:C.muted,fontSize:12,textAlign:"center"}}>→</span>
+                      <input type="time" disabled={!e.on} style={{...S.input,padding:"5px 8px"}} value={e.end} onChange={ev=>setSched(key,day,{end:ev.target.value})} />
+                      <span style={{fontSize:11,color:e.on?(len>0?C.text:C.danger):C.muted}}>{e.on?(len>0?fmtMins(len):"no length"):"off"}</span>
+                    </div>;
+                  })}
+                  <div style={{fontSize:10,color:C.muted,marginTop:8}}>An end time earlier than the start means the shift finishes the next day.</div>
+                </div>;
+              })}
             </Grid>
-            <div style={{marginTop:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:10}}>WORKING DAYS</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map(day=>{
-                  const active=(stTimes.workDays||["Monday","Tuesday","Wednesday","Thursday","Friday"]).includes(day);
-                  return <button key={day} onClick={()=>setStTimes(p=>({...p,workDays:active?p.workDays.filter(d=>d!==day):[...(p.workDays||[]),day]}))}
-                    style={{padding:"6px 14px",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,
-                    background:active?C.accent:C.panel,color:active?"#fff":C.muted,
-                    outline:active?"none":`1px solid ${C.border}`,transition:"all 0.1s"}}>{day.slice(0,3)}</button>;
-                })}
-              </div>
-            </div>
           </SC>
-          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{ setSaving(true); await dbUpsertList("shift_times",JSON.stringify(stTimes)); await reload(); flash("Shift times saved!"); setSaving(false); }} disabled={saving}>{saving?"Saving…":"💾 Save Shift Times"}</button>
+          <button style={{...S.btn("accent"),padding:"12px 32px",fontSize:14}} onClick={async()=>{
+            setSaving(true);
+            // Keep the old combined list in sync (the Efficiency Report still reads it): a day counts if either shift runs
+            const workDays=WEEKDAYS_MON_FIRST.filter(d=>stTimes.daySchedule?.[d]?.on||stTimes.nightSchedule?.[d]?.on);
+            await dbUpsertList("shift_times",JSON.stringify({...stTimes,workDays}));
+            await reload(); flash("Shift times saved!"); setSaving(false);
+          }} disabled={saving}>{saving?"Saving…":"💾 Save Shift Times"}</button>
         </div>}
 
         {/* ── OEE Parameters editor ── */}
@@ -4328,27 +4381,35 @@
       const [downtimeEvents,setDowntimeEvents]=useState([]);
       const [lastShiftSaved,setLastShiftSaved]=useState(null);
       const [shiftDowntimeMins,setShiftDowntimeMins]=useState(0);
+      const [liveWin,setLiveWin]=useState(null);
 
       // Get shift times from settings
       const shiftTimes=appLists.shift_times||{dayStart:"07:00",dayEnd:"19:00",nightStart:"19:00",nightEnd:"07:00"};
       const parseTime=t=>{ const [h,m]=(t||"00:00").split(":").map(Number); return h*60+m; };
-      const dayStartMins=parseTime(shiftTimes.dayStart||"07:00");
-      const dayEndMins=parseTime(shiftTimes.dayEnd||"19:00");
+      const localDateStr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const hhmm=ms=>new Date(ms).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false});
 
-      const getCurrentShift=()=>{
-        const now=new Date();
-        const mins=now.getHours()*60+now.getMinutes();
-        return (mins>=dayStartMins&&mins<dayEndMins)?"Day Shift":"Night Shift";
-      };
-
-      const getShiftDate=(dt=new Date())=>{
-        // Night shift belongs to the day it started
-        const mins=dt.getHours()*60+dt.getMinutes();
-        if(mins<dayStartMins){
-          const d=new Date(dt); d.setDate(d.getDate()-1);
-          return d.toISOString().split("T")[0];
+      // The scheduled shift this tab reports on: the one running right now or,
+      // outside scheduled hours (e.g. after an early Friday finish), the most
+      // recent one that has started — frozen at its scheduled end, so nothing
+      // after the stop is counted as downtime. Follows the working days and
+      // per-day times set in Lists / Settings → Shift Times.
+      const findLiveWindow=()=>{
+        const nowMs=Date.now();
+        const today=new Date(); today.setHours(0,0,0,0);
+        let best=null;
+        for(let i=3;i>=0;i--){
+          const day=new Date(today); day.setDate(day.getDate()-i);
+          const date=localDateStr(day);
+          ["Day Shift","Night Shift"].forEach(shift=>{
+            const w=getShiftWindow(shiftTimes,date,shift);
+            if(!w.on) return;
+            const st=w.start.getTime();
+            if(st<=nowMs&&(!best||st>best.start.getTime())) best={...w,shift,date};
+          });
         }
-        return dt.toISOString().split("T")[0];
+        if(best) best.active=nowMs<best.end.getTime();
+        return best;
       };
 
       // ── Auto-delete raw readings older than 7 days ──────────────────────────
@@ -4380,12 +4441,6 @@
       const MIN_COVERAGE=0.5;          // need at least half a shift's readings to save a summary
       const REF_MAX_MS=15*60000;       // reference reading must be within 15 min of shift start
       const DOWNTIME_TAIL_MS=10*60000; // don't count more than 10 min of stop after the last reading
-
-      const localDateStr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-
-      const shiftLenMins=(shift)=>shift==="Night Shift"
-        ?((parseTime(shiftTimes.nightEnd||"07:00")+1440-parseTime(shiftTimes.nightStart||"19:00"))%1440||720)
-        :(dayEndMins-dayStartMins);
 
       // Meters made across a set of ascending readings. meters_shift is a
       // running counter on the Opta that only resets when the board reboots
@@ -4434,14 +4489,17 @@
         const totalMeters=sumShiftMeters(sorted,refReading);
         const avgSpd=runningR.length>0?runningR.reduce((a,r)=>a+parseFloat(r.speed||0),0)/runningR.length:0;
 
-        // Downtime — sum of actual stopped time between readings across the
-        // whole shift, closed out at the shift boundary (shiftEndMs) rather
-        // than left open, so a stoppage still running at handover is counted
-        // up to the end of this shift. The tail is capped so that if the Opta
-        // went offline part-way through, the missing hours aren't counted as
-        // downtime.
+        // The scheduled window for this date + shift (from Lists / Settings).
+        // A shift that isn't scheduled gets no summary.
+        const win=getShiftWindow(shiftTimes,shiftDate,shift);
+        if(!win.on) return;
+
+        // Downtime — sum of actual stopped time between readings, closed out at
+        // the scheduled END of the shift (shiftEndMs) so nothing after a planned
+        // stop is counted. The tail is capped so that if the Opta went offline
+        // part-way through, the missing hours aren't counted as downtime.
         const lastMs=new Date(sorted[sorted.length-1].created_at).getTime();
-        const endMs=Math.min(shiftEndMs||Date.now(),lastMs+DOWNTIME_TAIL_MS);
+        const endMs=Math.min(shiftEndMs||win.end.getTime(),win.end.getTime(),lastMs+DOWNTIME_TAIL_MS);
         const downtimeMins=Math.round(sumDowntimeMinutes(sorted,endMs));
         let stopCount=0;
         for(let i=0;i<sorted.length-1;i++){
@@ -4449,7 +4507,7 @@
         }
 
         // OEE
-        const shiftMins=shiftLenMins(shift);
+        const shiftMins=win.mins;   // scheduled length, not a fixed 12 h
         const oeeSpeed=Math.round((oeeParams?.maxSpeed||200)*((oeeParams?.loadingFactor||70)/100));
         const oeeAvail=(100-(oeeParams?.downtimeProvision||20))/100;
         const available=Math.round(oeeSpeed*shiftMins*oeeAvail);
@@ -4483,37 +4541,25 @@
           setLatest(data[0]);
           setReadings(data.slice(0,10));
 
-          // Filter to current shift only
-          const currentShift=getCurrentShift();
-          const currentShiftDate=getShiftDate();
-          const now=new Date();
-          const nowMins=now.getHours()*60+now.getMinutes();
-
-          // Determine shift start time
-          let shiftStartTime=new Date();
-          if(currentShift==="Day Shift"){
-            shiftStartTime.setHours(Math.floor(dayStartMins/60),dayStartMins%60,0,0);
-          } else {
-            const nightStartMins=parseTime(shiftTimes.nightStart||"19:00");
-            shiftStartTime.setHours(Math.floor(nightStartMins/60),nightStartMins%60,0,0);
-            // If night shift started yesterday
-            if(nowMins<dayStartMins) shiftStartTime.setDate(shiftStartTime.getDate()-1);
-          }
-
-          const shiftReadings=data.filter(r=>new Date(r.created_at)>=shiftStartTime);
+          // Which scheduled shift are we reporting on? (see findLiveWindow)
+          const lw=findLiveWindow();
+          setLiveWin(lw?{shift:lw.shift,date:lw.date,active:lw.active,start:lw.start.getTime(),end:lw.end.getTime()}:null);
+          const winStartMs=lw?lw.start.getTime():0;
+          const winEndMs=lw?(lw.active?Infinity:lw.end.getTime()):0;
+          const closeMs=lw?(lw.active?Date.now():lw.end.getTime()):0;
+          const shiftReadings=lw?data.filter(r=>{ const t=new Date(r.created_at).getTime(); return t>=winStartMs&&t<winEndMs; }):[];
 
           // Meters — only the increase since the shift began (see sumShiftMeters)
           const ascAll=[...data].reverse(); // data arrives newest-first
           if(shiftReadings.length>0){
             const sorted=[...shiftReadings].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-            setShiftMeters(sumShiftMeters(sorted,findRefReading(ascAll,shiftStartTime.getTime())));
+            setShiftMeters(sumShiftMeters(sorted,findRefReading(ascAll,winStartMs)));
 
-            // Downtime — sum the actual stopped time between readings: for each
-            // reading marked not-running, add the time until the next reading
-            // (or, for the most recent reading, until now if it's still stopped).
-            // This adds up across the whole shift instead of only the last few
-            // events, and needs nothing extra from the firmware.
-            setShiftDowntimeMins(sumDowntimeMinutes(sorted,Date.now()));
+            // Downtime — the actual stopped time between readings, only inside the
+            // scheduled shift: it runs up to now while the shift is on, and is
+            // closed at the scheduled end afterwards (so an early finish isn't
+            // counted as downtime).
+            setShiftDowntimeMins(sumDowntimeMinutes(sorted,closeMs));
           } else {
             setShiftMeters(0);
             setShiftDowntimeMins(0);
@@ -4536,75 +4582,50 @@
             }
           }
           const lastR=shiftReadings[0];
-          if(lastR&&!lastR.running){
+          if(lw&&lw.active&&lastR&&!lastR.running){
             const lastRunIdx=shiftReadings.findIndex(r=>r.running);
             const stopStart=lastRunIdx>=0?shiftReadings[lastRunIdx-1]?.created_at||shiftReadings[lastRunIdx].created_at:shiftReadings[shiftReadings.length-1].created_at;
             const curDur=Math.round((Date.now()-new Date(stopStart).getTime())/60000);
             if(curDur>0) events.unshift({stopped:stopStart,resumed:null,duration:curDur,active:true});
           }
           setDowntimeEvents(events.slice(0,5));
-
-          // ── Check if shift just ended — save summary ──────────────────────
-          const prevShiftKey=localStorage.getItem("cpk_last_shift_saved");
-          const shiftKey=`${currentShiftDate}_${currentShift}`;
-          // Check if we are within 2 minutes AFTER shift end
-          let justEnded=false;
-          if(currentShift==="Day Shift"){
-            // Night shift just ended at dayStart
-            const minsAfterDayStart=nowMins-dayStartMins;
-            justEnded=minsAfterDayStart>=0&&minsAfterDayStart<3;
-          } else {
-            // Day shift just ended at dayEnd
-            const nightStartMins=parseTime(shiftTimes.nightStart||"19:00");
-            const minsAfterNightStart=nowMins-nightStartMins;
-            justEnded=minsAfterNightStart>=0&&minsAfterNightStart<3;
-          }
-
-          if(justEnded){
-            // Determine which shift just ended
-            const endedShift=currentShift==="Day Shift"?"Night Shift":"Day Shift";
-            const endedDate=currentShift==="Day Shift"?getShiftDate(new Date(Date.now()-3600000)):currentShiftDate;
-            const endedKey=`${endedDate}_${endedShift}`;
-            if(prevShiftKey!==endedKey){
-              const endedLen=shiftLenMins(endedShift);
-              const {list:endedReadings,ref:endedRef}=readingsForShift(ascAll,shiftStartTime.getTime()-endedLen*60000,shiftStartTime.getTime());
-              if(hasEnoughReadings(endedReadings,endedLen)){
-                await saveShiftSummary(endedDate,endedShift,endedReadings,appLists.oee_params,shiftStartTime.getTime(),endedRef);
-                localStorage.setItem("cpk_last_shift_saved",endedKey);
-              }
-            }
-          }
         }
         setLoading(false);
       };
 
-      // ── Catch up on shifts that never got a summary ─────────────────────────
-      // Summaries used to be written only if someone had the app open during
-      // the 3 minutes after a shift change. This runs when the page loads (and
-      // hourly) and saves any finished shift in the last 7 days (the raw
-      // readings are deleted after 7) that has readings but no summary row.
+      // ── Save finished shifts (and catch up on any that were missed) ─────────
+      // Saves every finished, SCHEDULED shift from the last 7 days (the raw
+      // readings are deleted after 7) that has enough readings but no summary
+      // row. It runs when the page loads and every 10 minutes while the app is
+      // open, so a shift is saved shortly after it ends — whichever screen is
+      // up — and one that was missed gets recovered the next time anyone opens
+      // the app. Unscheduled shifts (non-working days) never get a row.
+      const SETTLE_MS=10*60000;   // give the shift's last reading time to arrive
+      const skippedRef=React.useRef(new Set());
       const backfillShifts=async()=>{
         try{
-          const cutoffMs=Date.now()-7*24*3600*1000;
-          const nStartMins=parseTime(shiftTimes.nightStart||"19:00");
-          const nEndMins=parseTime(shiftTimes.nightEnd||"07:00");
-          const setAt=(base,mins,addDays=0)=>{ const d=new Date(base); d.setDate(d.getDate()+addDays); d.setHours(Math.floor(mins/60),mins%60,0,0); return d; };
-
-          // Every day/night shift window in the last 8 days that has already finished
+          const nowMs=Date.now();
+          const cutoffMs=nowMs-7*24*3600*1000;
           const today=new Date(); today.setHours(0,0,0,0);
-          const wins=[];
+          const candidates=[];
           for(let i=8;i>=0;i--){
             const day=new Date(today); day.setDate(day.getDate()-i);
-            wins.push({date:localDateStr(day),shift:"Day Shift",start:setAt(day,dayStartMins),end:setAt(day,dayEndMins)});
-            wins.push({date:localDateStr(day),shift:"Night Shift",start:setAt(day,nStartMins),end:setAt(day,nEndMins,1)});
+            const date=localDateStr(day);
+            ["Day Shift","Night Shift"].forEach(shift=>{
+              const w=getShiftWindow(shiftTimes,date,shift);
+              if(!w.on) return;
+              if(w.start.getTime()<cutoffMs||w.end.getTime()+SETTLE_MS>nowMs) return;
+              candidates.push({date,shift,start:w.start,end:w.end,mins:w.mins});
+            });
           }
-          const candidates=wins.filter(w=>w.start.getTime()>=cutoffMs&&w.end.getTime()<=Date.now());
+          candidates.sort((a,b)=>a.start-b.start);
           if(candidates.length===0) return;
 
           const {data:existing,error:exErr}=await sb.from("shift_summaries").select("shift_date,shift").gte("shift_date",candidates[0].date);
           if(exErr) return;
-          const have=new Set((existing||[]).map(s=>`${s.shift_date}_${s.shift}`));
-          const missing=candidates.filter(w=>!have.has(`${w.date}_${w.shift}`));
+          const have=new Set((existing||[]).map(s=>`${String(s.shift_date).substring(0,10)}_${s.shift}`));
+          const keyOf=w=>`${w.date}_${w.shift}_${w.start.getTime()}_${w.end.getTime()}`;
+          const missing=candidates.filter(w=>!have.has(`${w.date}_${w.shift}`)&&!skippedRef.current.has(keyOf(w)));
           if(missing.length===0) return;
 
           // Pull the readings (in pages — the API returns at most 1000 rows per request)
@@ -4621,23 +4642,28 @@
           let saved=0;
           for(const w of missing){
             const {list,ref}=readingsForShift(all,w.start.getTime(),w.end.getTime());
-            if(!hasEnoughReadings(list,shiftLenMins(w.shift))) continue;
+            if(!hasEnoughReadings(list,w.mins)){ skippedRef.current.add(keyOf(w)); continue; }
             await saveShiftSummary(w.date,w.shift,list,appLists.oee_params,w.end.getTime(),ref);
             saved++;
           }
-          if(saved>0) setLastShiftSaved(`${saved} missed shift${saved>1?"s":""} recovered`);
-        }catch(e){ /* silent — it will try again on the next load */ }
+          if(saved>0) setLastShiftSaved(`${saved} shift${saved>1?"s":""} saved`);
+        }catch(e){ /* silent — it will try again on the next pass */ }
       };
 
+      // Always run the latest version of each function (so a settings change
+      // takes effect without a page reload)
+      const fetchRef=React.useRef(); fetchRef.current=fetchReadings;
+      const backfillRef=React.useRef(); backfillRef.current=backfillShifts;
+
       React.useEffect(()=>{
-        fetchReadings();
-        const interval=setInterval(fetchReadings,10000);
+        fetchRef.current();
+        const interval=setInterval(()=>fetchRef.current(),10000);
         return ()=>clearInterval(interval);
       },[]);
 
       React.useEffect(()=>{
-        backfillShifts();
-        const iv=setInterval(backfillShifts,60*60*1000);
+        backfillRef.current();
+        const iv=setInterval(()=>backfillRef.current(),10*60*1000);
         return ()=>clearInterval(iv);
       },[]);
 
@@ -4660,7 +4686,8 @@
               <div style={{width:16,height:16,borderRadius:"50%",background:isRunning?C.success:C.danger,boxShadow:`0 0 12px ${isRunning?C.success:C.danger}`,flexShrink:0}} />
               <div style={{flex:1}}>
                 <div style={{fontSize:18,fontWeight:800,color:isRunning?C.success:C.danger}}>{isRunning?"▶ MACHINE RUNNING":"■ MACHINE STOPPED"}</div>
-                <div style={{fontSize:11,color:C.muted,marginTop:2}}>Last reading: {lastSeen} · Shift: {getCurrentShift()}</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>Last reading: {lastSeen} · Shift: {liveWin?(liveWin.shift+(liveWin.active?"":" (finished "+hhmm(liveWin.end)+")")):"none scheduled"}</div>
+                {liveWin&&!liveWin.active&&<div style={{fontSize:10,color:C.warn,marginTop:3}}>Outside scheduled hours — showing the last scheduled shift. Nothing after its end counts as downtime.</div>}
               </div>
               {!isRunning&&latest&&<div style={{fontSize:12,color:C.danger,fontWeight:600}}>
                 Stopped for {Math.round((Date.now()-new Date(latest.created_at).getTime())/60000)} min
@@ -4771,8 +4798,6 @@
       const oeeParams=appLists.oee_params||{maxSpeed:200,loadingFactor:70,downtimeProvision:20};
       const shiftTimes=appLists.shift_times||{dayStart:"07:00",dayEnd:"19:00"};
       const parseTime=t=>{ const [h,m]=(t||"00:00").split(":").map(Number); return h*60+m; };
-      const dayMins=(parseTime(shiftTimes.dayEnd||"19:00")-parseTime(shiftTimes.dayStart||"07:00"));
-      const nightMins=1440-dayMins;
       const oeeSpeed=Math.round((oeeParams.maxSpeed||200)*((oeeParams.loadingFactor||70)/100));
       const oeeAvail=(100-(oeeParams.downtimeProvision||20))/100;
 
@@ -4797,15 +4822,34 @@
         return true;
       });
 
-      const totalMeters=filtered.reduce((a,s)=>a+parseFloat(s.total_meters||0),0);
-      const avgSpeedAll=filtered.filter(s=>s.avg_speed>0).length>0
-        ?filtered.filter(s=>s.avg_speed>0).reduce((a,s)=>a+parseFloat(s.avg_speed||0),0)/filtered.filter(s=>s.avg_speed>0).length:0;
-      const totalDowntime=filtered.reduce((a,s)=>a+parseInt(s.downtime_mins||0),0);
-      const totalAvailable=filtered.reduce((a,s)=>{
-        const mins=s.shift==="Night Shift"?nightMins:dayMins;
-        return a+Math.round(oeeSpeed*mins*oeeAvail);
-      },0);
-      const overallOEE=totalAvailable>0?Math.min(Math.round((totalMeters/totalAvailable)*100),999):0;
+      // Each row is measured against the shift that was SCHEDULED for its date
+      // (working days + per-day times from Lists / Settings → Shift Times), not a
+      // fixed 12 hours. A shift that wasn't scheduled has no available time, so it
+      // is flagged "Unscheduled" and left out of the OEE figures.
+      const rowCalc=(s)=>{
+        const w=getShiftWindow(shiftTimes,s.shift_date,s.shift);
+        const avail=w.on?Math.round(oeeSpeed*w.mins*oeeAvail):0;
+        const meters=parseFloat(s.total_meters||0);
+        return {scheduled:w.on,mins:w.mins,avail,meters,oee:avail>0?Math.min(Math.round((meters/avail)*100),999):null};
+      };
+      const totalsFor=(list)=>{
+        const calcs=list.map(rowCalc);
+        const sched=calcs.filter(c=>c.avail>0);
+        const availT=sched.reduce((a,c)=>a+c.avail,0);
+        const schedMeters=sched.reduce((a,c)=>a+c.meters,0);
+        const withSpeed=list.filter(s=>s.avg_speed>0);
+        return {
+          totalMeters:list.reduce((a,s)=>a+parseFloat(s.total_meters||0),0),
+          avgSpeedAll:withSpeed.length>0?withSpeed.reduce((a,s)=>a+parseFloat(s.avg_speed||0),0)/withSpeed.length:0,
+          totalDowntime:list.reduce((a,s)=>a+parseInt(s.downtime_mins||0),0),
+          totalStops:list.reduce((a,s)=>a+(s.stop_count||0),0),
+          totalAvailable:availT,
+          scheduledMins:sched.reduce((a,c)=>a+c.mins,0),
+          unscheduledCount:calcs.length-sched.length,
+          overallOEE:availT>0?Math.min(Math.round((schedMeters/availT)*100),999):0,
+        };
+      };
+      const {totalMeters,avgSpeedAll,totalDowntime,totalStops,totalAvailable,scheduledMins,unscheduledCount,overallOEE}=totalsFor(filtered);
       const effColor=e=>e>=90?C.success:e>=70?C.warn:C.danger;
 
       const allSelected=filtered.length>0&&filtered.every(s=>selected.has(s.id));
@@ -4828,25 +4872,26 @@
 
       const exportToExcel=()=>{
         const rows=(selected.size>0?filtered.filter(s=>selected.has(s.id)):filtered);
+        const T=totalsFor(rows);
         const wb=XLSX.utils.book_new();
-        const data=[["Date","Shift","Total Meters","Avg Speed (m/min)","Downtime (min)","Stops","Available (m)","OEE (%)"]];
+        const data=[["Date","Shift","Total Meters","Avg Speed (m/min)","Downtime (min)","Stops","Scheduled (min)","Available (m)","OEE (%)"]];
         rows.forEach(s=>{
-          const shiftMins=s.shift==="Night Shift"?nightMins:dayMins;
-          const avail=Math.round(oeeSpeed*shiftMins*oeeAvail);
+          const c=rowCalc(s);
           data.push([
             s.shift_date, s.shift,
             Math.round(s.total_meters||0),
             Math.round((parseFloat(s.avg_speed||0))*10)/10,
             s.downtime_mins||0,
             s.stop_count||0,
-            avail,
-            s.oee_percent||0,
+            c.scheduled?c.mins:0,
+            c.avail,
+            c.oee===null?"Unscheduled":c.oee,
           ]);
         });
         data.push([]);
-        data.push(["TOTALS","",Math.round(totalMeters),Math.round(avgSpeedAll*10)/10,totalDowntime,rows.reduce((a,s)=>a+(s.stop_count||0),0),totalAvailable,overallOEE]);
+        data.push(["TOTALS","",Math.round(T.totalMeters),Math.round(T.avgSpeedAll*10)/10,T.totalDowntime,T.totalStops,T.scheduledMins,T.totalAvailable,T.overallOEE]);
         const ws=XLSX.utils.aoa_to_sheet(data);
-        ws["!cols"]=[{wch:14},{wch:12},{wch:14},{wch:16},{wch:14},{wch:8},{wch:14},{wch:10}];
+        ws["!cols"]=[{wch:14},{wch:12},{wch:14},{wch:16},{wch:14},{wch:8},{wch:16},{wch:14},{wch:12}];
         XLSX.utils.book_append_sheet(wb,ws,"Printing OEE");
         XLSX.writeFile(wb,`Printing-OEE-${todayStr()}.xlsx`);
       };
@@ -4911,16 +4956,16 @@
                 <thead>
                   <tr style={{borderBottom:`2px solid ${C.border}`}}>
                     {canEditRows&&<th style={{padding:"8px 10px",width:32}}></th>}
-                    {["Date","Shift","Total Meters","Avg Speed","Downtime","Stops","Available","OEE"].map(h=>(
+                    {["Date","Shift","Total Meters","Avg Speed","Downtime","Stops","Scheduled","Available","OEE"].map(h=>(
                       <th key={h} style={{padding:"8px 10px",color:C.muted,fontWeight:600,textAlign:h==="Date"||h==="Shift"?"left":"right",fontSize:10}}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((s,i)=>{
-                    const shiftMins=s.shift==="Night Shift"?nightMins:dayMins;
-                    const avail=Math.round(oeeSpeed*shiftMins*oeeAvail);
-                    const oee=s.oee_percent||0;
+                    const c=rowCalc(s);
+                    const avail=c.avail;
+                    const oee=c.oee;
                     return (
                     <tr key={s.id} style={{borderBottom:`1px solid ${C.border}`,background:selected.has(s.id)?C.success+"11":i%2===0?"transparent":C.panel+"44"}} onClick={canEditRows?(e)=>toggleSel(e,s.id):undefined}>
                       {canEditRows&&<td style={{padding:"8px 10px"}}>
@@ -4938,14 +4983,17 @@
                       <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{parseFloat(s.avg_speed||0).toFixed(1)} m/min</td>
                       <td style={{padding:"8px 10px",color:s.downtime_mins>60?C.danger:C.warn,textAlign:"right"}}>{s.downtime_mins||0} min</td>
                       <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{s.stop_count||0}</td>
-                      <td style={{padding:"8px 10px",color:C.blue,textAlign:"right"}}>{avail.toLocaleString()} m</td>
+                      <td style={{padding:"8px 10px",color:c.scheduled?C.text:C.muted,textAlign:"right"}}>{c.scheduled?fmtMins(c.mins):"—"}</td>
+                      <td style={{padding:"8px 10px",color:C.blue,textAlign:"right"}}>{c.scheduled?avail.toLocaleString()+" m":"—"}</td>
                       <td style={{padding:"8px 10px",minWidth:100}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end"}}>
-                          <div style={{width:60,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
-                            <div style={{width:`${Math.min(oee,100)}%`,height:"100%",background:effColor(oee),borderRadius:4}} />
-                          </div>
-                          <span style={{color:effColor(oee),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{oee}%</span>
-                        </div>
+                        {oee===null
+                          ?<div style={{textAlign:"right"}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:C.muted+"22",color:C.muted,fontWeight:700}}>Unscheduled</span></div>
+                          :<div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"flex-end"}}>
+                            <div style={{width:60,height:8,background:C.border,borderRadius:4,overflow:"hidden"}}>
+                              <div style={{width:`${Math.min(oee,100)}%`,height:"100%",background:effColor(oee),borderRadius:4}} />
+                            </div>
+                            <span style={{color:effColor(oee),fontWeight:800,fontSize:12,minWidth:40,textAlign:"right"}}>{oee}%</span>
+                          </div>}
                       </td>
                     </tr>
                     );
@@ -4957,12 +5005,16 @@
                     <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,textAlign:"right"}}>{Math.round(totalMeters).toLocaleString()} m</td>
                     <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{avgSpeedAll.toFixed(1)} m/min</td>
                     <td style={{padding:"8px 10px",color:C.danger,textAlign:"right"}}>{totalDowntime} min</td>
-                    <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{filtered.reduce((a,s)=>a+(s.stop_count||0),0)}</td>
+                    <td style={{padding:"8px 10px",color:C.muted,textAlign:"right"}}>{totalStops}</td>
+                    <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{scheduledMins>0?fmtMins(scheduledMins):"—"}</td>
                     <td style={{padding:"8px 10px",color:C.blue,textAlign:"right"}}>{totalAvailable.toLocaleString()} m</td>
                     <td style={{padding:"8px 10px"}}><span style={{color:effColor(overallOEE),fontWeight:800,fontSize:13}}>{overallOEE}%</span></td>
                   </tr>
                 </tfoot>}
               </table>
+              {unscheduledCount>0&&<div style={{fontSize:10,color:C.muted,marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}>
+                {unscheduledCount} shift{unscheduledCount>1?"s":""} in this list {unscheduledCount>1?"fall":"falls"} on a day that isn't a working day in Lists / Settings → Shift Times. {unscheduledCount>1?"They're":"It's"} shown as Unscheduled and left out of the OEE figures.
+              </div>}
             </div>
         }
       </div>;
