@@ -244,6 +244,22 @@
 
     const fmtMins=m=>`${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m`;
 
+    // A PIN sign-off stores the date as a UTC date (toISOString) but the time as the
+    // LOCAL time of day. Between midnight and 02:00 in South Africa those two are on
+    // different calendar days, so rebuild the real moment: the local date is whichever
+    // neighbouring day gives back the stored UTC date. Returns ms, or null if unreadable.
+    function signedMs(signedDate,signedAt){
+      const ds=String(signedDate||"").substring(0,10);
+      const [y,m,d]=ds.split("-").map(Number);
+      const [hh,mi,ss]=String(signedAt||"").split(":").map(Number);
+      if(!y||!m||!d||isNaN(hh)||isNaN(mi)) return null;
+      for(const off of [0,1,-1]){
+        const dt=new Date(y,m-1,d+off,hh%24,mi,ss||0,0);
+        if(dt.toISOString().substring(0,10)===ds) return dt.getTime();
+      }
+      return null;
+    }
+
     const DEFAULT_PRODUCT_SPEEDS = [
       {customer:"KEYSTONE MILLING",product:"5 KG KEYSTONE POWER",runSpeed:130,downtime:1.2},
       {customer:"KEYSTONE MILLING",product:"10 KG KEYSTONE POWER",runSpeed:130,downtime:1.2},
@@ -765,7 +781,7 @@
           <div style={{display:tab==="approval"    ?"block":"none"}}><PendingApproval records={records} session={session} onApprove={approveRecord} onReject={rejectRecord} onSave={saveRecord} users={users} appLists={appLists} canInstant={getTabs(session).some(t=>t.id==="approval_instant")} /></div>
           <div style={{display:tab==="rejected"    ?"block":"none"}}><RejectedRecords records={records} session={session} onResubmit={resubmitRecord} onSave={saveRecord} users={users} appLists={appLists} /></div>
           <div style={{display:tab==="printinglive"?"block":"none"}}><PrintingLive session={session} appLists={appLists} /></div>
-          <div style={{display:tab==="printingoee" ?"block":"none"}}><PrintingOEE appLists={appLists} session={session} canEdit={getTabs(session).some(t=>t.id==="printingoee_edit")} /></div>
+          <div style={{display:tab==="printingoee" ?"block":"none"}}><PrintingOEE appLists={appLists} session={session} records={records} canEdit={getTabs(session).some(t=>t.id==="printingoee_edit")} /></div>
           <div style={{display:tab==="production"   ?"block":"none"}}><ProductionForm   key={getTabKey("production")}   onReset={()=>resetTab("production")}   onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="viscosity"    ?"block":"none"}}><ViscosityForm    key={getTabKey("viscosity")}    onReset={()=>resetTab("viscosity")}    onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="printingqc"   ?"block":"none"}}><PrintingQCForm   key={getTabKey("printingqc")}   onReset={()=>resetTab("printingqc")}   onSave={addRecord} users={users} lists={appLists} /></div>
@@ -4783,12 +4799,13 @@
 
 
     // ── Printing OEE Component ────────────────────────────────────────────────
-    function PrintingOEE({appLists={},session,canEdit=false}){
+    function PrintingOEE({appLists={},session,canEdit=false,records=[]}){
       const [summaries,setSummaries]=useState([]);
       const [loading,setLoading]=useState(true);
       const [filterMonth,setFilterMonth]=useState("all");
       const [filterYear,setFilterYear]=useState("all");
       const [filterShift,setFilterShift]=useState("all");
+      const [filterOperator,setFilterOperator]=useState("all");
       const [selected,setSelected]=useState(new Set());
       const [deleting,setDeleting]=useState(false);
       // "View & edit" permission (set per user in User Mgmt → Edit Permissions).
@@ -4815,10 +4832,46 @@
       const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
       const allYears=[...new Set(summaries.map(s=>s.shift_date?.substring(0,4)).filter(Boolean))].sort().reverse();
 
+      // ── Who ran each shift ───────────────────────────────────────────────────
+      // Names come from the PIN sign-offs on the printing reels in the Production
+      // sheets (the same source the Efficiency Report's per-operator view uses),
+      // matched by the exact moment of each sign-off to the shift's scheduled window.
+      // They are looked up here, not stored, so a long job's names appear for every
+      // shift as soon as its sheet is closed. Until then the cell shows a dash.
+      const signOffs=React.useMemo(()=>{
+        const ev=[];
+        (records||[]).forEach(r=>{
+          if(r.type!=="production") return;
+          (r.data?.rawOut||[]).forEach(x=>{
+            if(!x.signedBy) return;
+            const ms=signedMs(x.signedDate,x.signedAt);
+            if(ms) ev.push({ms,name:x.signedBy});
+          });
+        });
+        return ev.sort((a,b)=>a.ms-b.ms);
+      },[records]);
+
+      const opsById=React.useMemo(()=>{
+        const map=new Map();
+        summaries.forEach(s=>{
+          const w=getShiftWindow(shiftTimes,s.shift_date,s.shift);
+          const names=[];
+          if(w.on){
+            const a=w.start.getTime(), b=w.end.getTime();
+            for(const e of signOffs){ if(e.ms>=a&&e.ms<b&&!names.includes(e.name)) names.push(e.name); }
+          }
+          map.set(s.id,names);
+        });
+        return map;
+      },[summaries,signOffs,shiftTimes]);
+
+      const allOperators=[...new Set([].concat(...opsById.values()))].sort((a,b)=>a.localeCompare(b));
+
       const filtered=summaries.filter(s=>{
         if(filterYear!=="all"&&!s.shift_date?.startsWith(filterYear)) return false;
         if(filterMonth!=="all"&&s.shift_date?.substring(5,7)!==filterMonth) return false;
         if(filterShift!=="all"&&s.shift!==filterShift) return false;
+        if(filterOperator!=="all"&&!(opsById.get(s.id)||[]).includes(filterOperator)) return false;
         return true;
       });
 
@@ -4874,11 +4927,12 @@
         const rows=(selected.size>0?filtered.filter(s=>selected.has(s.id)):filtered);
         const T=totalsFor(rows);
         const wb=XLSX.utils.book_new();
-        const data=[["Date","Shift","Total Meters","Avg Speed (m/min)","Downtime (min)","Stops","Scheduled (min)","Available (m)","OEE (%)"]];
+        const data=[["Date","Shift","Operator(s)","Total Meters","Avg Speed (m/min)","Downtime (min)","Stops","Scheduled (min)","Available (m)","OEE (%)"]];
         rows.forEach(s=>{
           const c=rowCalc(s);
           data.push([
             s.shift_date, s.shift,
+            (opsById.get(s.id)||[]).join(", "),
             Math.round(s.total_meters||0),
             Math.round((parseFloat(s.avg_speed||0))*10)/10,
             s.downtime_mins||0,
@@ -4889,9 +4943,9 @@
           ]);
         });
         data.push([]);
-        data.push(["TOTALS","",Math.round(T.totalMeters),Math.round(T.avgSpeedAll*10)/10,T.totalDowntime,T.totalStops,T.scheduledMins,T.totalAvailable,T.overallOEE]);
+        data.push(["TOTALS","","",Math.round(T.totalMeters),Math.round(T.avgSpeedAll*10)/10,T.totalDowntime,T.totalStops,T.scheduledMins,T.totalAvailable,T.overallOEE]);
         const ws=XLSX.utils.aoa_to_sheet(data);
-        ws["!cols"]=[{wch:14},{wch:12},{wch:14},{wch:16},{wch:14},{wch:8},{wch:16},{wch:14},{wch:12}];
+        ws["!cols"]=[{wch:14},{wch:12},{wch:28},{wch:14},{wch:16},{wch:14},{wch:8},{wch:16},{wch:14},{wch:12}];
         XLSX.utils.book_append_sheet(wb,ws,"Printing OEE");
         XLSX.writeFile(wb,`Printing-OEE-${todayStr()}.xlsx`);
       };
@@ -4912,8 +4966,12 @@
             <option value="Day Shift">☀ Day Shift</option>
             <option value="Night Shift">🌙 Night Shift</option>
           </select>
-          {(filterYear!=="all"||filterMonth!=="all"||filterShift!=="all")&&(
-            <button style={S.btn("ghost",{padding:"6px 12px",fontSize:11})} onClick={()=>{ setFilterYear("all"); setFilterMonth("all"); setFilterShift("all"); setSelected(new Set()); }}>✕ Clear</button>
+          <select style={{...S.input,width:170}} value={filterOperator} onChange={e=>{ setFilterOperator(e.target.value); setSelected(new Set()); }}>
+            <option value="all">All Operators</option>
+            {allOperators.map(o=><option key={o} value={o}>{o}</option>)}
+          </select>
+          {(filterYear!=="all"||filterMonth!=="all"||filterShift!=="all"||filterOperator!=="all")&&(
+            <button style={S.btn("ghost",{padding:"6px 12px",fontSize:11})} onClick={()=>{ setFilterYear("all"); setFilterMonth("all"); setFilterShift("all"); setFilterOperator("all"); setSelected(new Set()); }}>✕ Clear</button>
           )}
           <div style={{flex:1}} />
           {canEditRows&&filtered.length>0&&<div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -4956,8 +5014,8 @@
                 <thead>
                   <tr style={{borderBottom:`2px solid ${C.border}`}}>
                     {canEditRows&&<th style={{padding:"8px 10px",width:32}}></th>}
-                    {["Date","Shift","Total Meters","Avg Speed","Downtime","Stops","Scheduled","Available","OEE"].map(h=>(
-                      <th key={h} style={{padding:"8px 10px",color:C.muted,fontWeight:600,textAlign:h==="Date"||h==="Shift"?"left":"right",fontSize:10}}>{h}</th>
+                    {["Date","Shift","Operator(s)","Total Meters","Avg Speed","Downtime","Stops","Scheduled","Available","OEE"].map(h=>(
+                      <th key={h} style={{padding:"8px 10px",color:C.muted,fontWeight:600,textAlign:h==="Date"||h==="Shift"||h==="Operator(s)"?"left":"right",fontSize:10}}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -4979,6 +5037,7 @@
                           {s.shift==="Night Shift"?"🌙 Night":"☀ Day"}
                         </span>
                       </td>
+                      <td style={{padding:"8px 10px",color:(opsById.get(s.id)||[]).length?C.success:C.muted,fontWeight:600,maxWidth:200}}>{(opsById.get(s.id)||[]).join(", ")||"—"}</td>
                       <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,textAlign:"right"}}>{Math.round(s.total_meters||0).toLocaleString()} m</td>
                       <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{parseFloat(s.avg_speed||0).toFixed(1)} m/min</td>
                       <td style={{padding:"8px 10px",color:s.downtime_mins>60?C.danger:C.warn,textAlign:"right"}}>{s.downtime_mins||0} min</td>
@@ -5001,7 +5060,7 @@
                 </tbody>
                 {filtered.length>1&&<tfoot>
                   <tr style={{borderTop:`2px solid ${C.border}`,background:C.bg}}>
-                    <td colSpan={canEditRows?3:2} style={{padding:"8px 10px",color:C.muted,fontWeight:700}}>TOTALS</td>
+                    <td colSpan={canEditRows?4:3} style={{padding:"8px 10px",color:C.muted,fontWeight:700}}>TOTALS</td>
                     <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,textAlign:"right"}}>{Math.round(totalMeters).toLocaleString()} m</td>
                     <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{avgSpeedAll.toFixed(1)} m/min</td>
                     <td style={{padding:"8px 10px",color:C.danger,textAlign:"right"}}>{totalDowntime} min</td>
