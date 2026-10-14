@@ -691,7 +691,20 @@
       };
       const restoreRecord = async rec => { await dbRestoreRec(rec); await reload(); flash("Record restored."); };
       const permDelete    = async id  => { await dbEmptyTrash(id);  await reload(); flash("Permanently deleted."); };
-      const saveRecord    = async (id,data) => { await sb.from("records").update({data}).eq("id",id); await reload(); flash("Record updated."); };
+      const saveRecord    = async (id,data) => {
+        // Rebuild the title ("Type · JobNo · Date") from the edited header so the list header follows the edit
+        const rec=records.find(r=>r.id===id); const upd={data};
+        if(rec&&rec.title&&data?.header){
+          const parts=rec.title.split(" · ");
+          if(parts.length>=3){
+            const hdr=data.header; const fallbackDate=/^(production|viscosity|printingqc)$/.test(rec.type)||/qc$/.test(rec.type);
+            parts[1]=hdr.jobNo||(fallbackDate?"(no job)":(hdr.date||"(no job)"));
+            if(hdr.date) parts[2]=hdr.date;
+            upd.title=parts.slice(0,3).join(" · ");
+          }
+        }
+        await sb.from("records").update(upd).eq("id",id); await reload(); flash("Record updated.");
+      };
 
       // ── Approval functions ────────────────────────────────────────────────────
       const approveRecord = async (id, approverName) => {
@@ -804,7 +817,7 @@
           <div style={{display:tab==="bagmaking4"   ?"block":"none"}}><BagMakingForm    key={getTabKey("bagmaking4")}   onReset={()=>resetTab("bagmaking4")}   onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
           <div style={{display:tab==="bagmaking4qc" ?"block":"none"}}><BagMakingQCForm  key={getTabKey("bagmaking4qc")} onReset={()=>resetTab("bagmaking4qc")} onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
           <div style={{display:tab==="efficiency"?"block":"none"}}><EfficiencyReport records={records} appLists={appLists} /></div>
-          <div style={{display:tab==="records"  ?"block":"none"}}><Records    records={records} session={session} onDelete={delRecord} onSave={saveRecord} appLists={appLists} /></div>
+          <div style={{display:tab==="records"  ?"block":"none"}}><Records    records={records} session={session} onDelete={delRecord} onSave={saveRecord} onReject={rejectRecord} appLists={appLists} /></div>
           <div style={{display:tab==="users"    ?"block":"none"}}><UserMgmt   users={users} session={session} reload={reload} flash={flash} /></div>
           <div style={{display:tab==="trash"    ?"block":"none"}}><TrashBin   trashed={trashed} onRestore={restoreRecord} onPermDelete={permDelete} /></div>
           <div style={{display:tab==="loginlog" ?"block":"none"}}><LoginLog   loginLog={loginLog} /></div>
@@ -2066,7 +2079,7 @@
     }
 
     // ── Records ───────────────────────────────────────────────────────────────
-    function Records({records,session,onDelete,onSave,appLists={}}){
+    function Records({records,session,onDelete,onSave,onReject,appLists={}}){
       const [filter,setFilter]=useState("all"); const [search,setSearch]=useState("");
       const [exp,setExp]=useState(null); const [editing,setEditing]=useState(null);
       const [selected,setSelected]=useState(new Set());
@@ -2178,6 +2191,8 @@
               {isAdmin&&<>
                 <button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
                   onClick={e=>{ e.stopPropagation(); setExp(r.id); setEditing(isEdit?null:r.id); }}>{isEdit?"Cancel Edit":"✎ Edit"}</button>
+                {r.approval_status&&r.approval_status!=="rejected"&&<button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
+                  onClick={async e=>{ e.stopPropagation(); const reason=window.prompt("Reason for sending back to the operator (required):"); if(reason&&reason.trim()) await onReject(r.id,session.name,reason.trim()); }}>↩ Reject</button>}
                 <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})}
                   onClick={e=>{ e.stopPropagation(); if(window.confirm("Delete this record?")) onDelete(r.id); }}>Delete</button>
               </>}
