@@ -4546,7 +4546,10 @@
         const available=Math.round(oeeSpeed*shiftMins*oeeAvail);
         const oee=available>0?Math.min(Math.round((totalMeters/available)*100),999):0;
 
-        await sb.from("shift_summaries").upsert({
+        // scheduled_mins freezes the scheduled length as it was when the report was
+        // saved, so later changes to Shift Times never rewrite history. If the column
+        // hasn't been added to Supabase yet, save without it so nothing breaks.
+        const row={
           shift_date:shiftDate,
           shift,
           total_meters:Math.round(totalMeters),
@@ -4554,7 +4557,9 @@
           downtime_mins:downtimeMins,
           stop_count:stopCount,
           oee_percent:oee,
-        },{onConflict:"shift_date,shift"});
+        };
+        let up=await sb.from("shift_summaries").upsert({...row,scheduled_mins:shiftMins},{onConflict:"shift_date,shift"});
+        if(up.error&&/scheduled_mins/i.test(up.error.message||"")) up=await sb.from("shift_summaries").upsert(row,{onConflict:"shift_date,shift"});
 
         setLastShiftSaved(`${shift} ${shiftDate} saved`);
       };
@@ -4840,7 +4845,20 @@
           .select("*")
           .order("shift_date",{ascending:false})
           .limit(200);
-        setSummaries(data||[]);
+        let rows=data||[];
+        // One-time freeze: rows saved before scheduled_mins existed get the schedule
+        // that applies right now. (Only when the column exists in Supabase.)
+        if(rows.length>0&&("scheduled_mins" in rows[0])){
+          const unstamped=rows.filter(r=>r.scheduled_mins===null||r.scheduled_mins===undefined);
+          if(unstamped.length>0){
+            await Promise.all(unstamped.map(r=>{
+              const w=getShiftWindow(shiftTimes,r.shift_date,r.shift);
+              r.scheduled_mins=w.on?w.mins:0;
+              return sb.from("shift_summaries").update({scheduled_mins:r.scheduled_mins}).eq("id",r.id);
+            }));
+          }
+        }
+        setSummaries(rows);
         setLoading(false);
       };
 
@@ -4897,7 +4915,10 @@
       // fixed 12 hours. A shift that wasn't scheduled has no available time, so it
       // is flagged "Unscheduled" and left out of the OEE figures.
       const rowCalc=(s)=>{
-        const w=getShiftWindow(shiftTimes,s.shift_date,s.shift);
+        // Use the scheduled length frozen when the report was saved; only rows
+        // without one fall back to the current Shift Times.
+        const frozen=(s.scheduled_mins!==null&&s.scheduled_mins!==undefined);
+        const w=frozen?{on:s.scheduled_mins>0,mins:s.scheduled_mins}:getShiftWindow(shiftTimes,s.shift_date,s.shift);
         const avail=w.on?Math.round(oeeSpeed*w.mins*oeeAvail):0;
         const meters=parseFloat(s.total_meters||0);
         return {scheduled:w.on,mins:w.mins,avail,meters,oee:avail>0?Math.min(Math.round((meters/avail)*100),999):null};
