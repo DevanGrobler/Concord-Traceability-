@@ -817,7 +817,7 @@
           <div style={{display:tab==="bagmaking4"   ?"block":"none"}}><BagMakingForm    key={getTabKey("bagmaking4")}   onReset={()=>resetTab("bagmaking4")}   onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
           <div style={{display:tab==="bagmaking4qc" ?"block":"none"}}><BagMakingQCForm  key={getTabKey("bagmaking4qc")} onReset={()=>resetTab("bagmaking4qc")} onSave={addRecord} users={users} lists={appLists} machine={4} /></div>
           <div style={{display:tab==="efficiency"?"block":"none"}}><EfficiencyReport records={records} appLists={appLists} /></div>
-          <div style={{display:tab==="records"  ?"block":"none"}}><Records    records={records} session={session} onDelete={delRecord} onSave={saveRecord} onReject={rejectRecord} appLists={appLists} /></div>
+          <div style={{display:tab==="records"  ?"block":"none"}}><Records    records={records} session={session} onDelete={delRecord} onSave={saveRecord} onReject={rejectRecord} onApprove={approveRecord} appLists={appLists} /></div>
           <div style={{display:tab==="users"    ?"block":"none"}}><UserMgmt   users={users} session={session} reload={reload} flash={flash} /></div>
           <div style={{display:tab==="trash"    ?"block":"none"}}><TrashBin   trashed={trashed} onRestore={restoreRecord} onPermDelete={permDelete} /></div>
           <div style={{display:tab==="loginlog" ?"block":"none"}}><LoginLog   loginLog={loginLog} /></div>
@@ -2079,7 +2079,7 @@
     }
 
     // ── Records ───────────────────────────────────────────────────────────────
-    function Records({records,session,onDelete,onSave,onReject,appLists={}}){
+    function Records({records,session,onDelete,onSave,onReject,onApprove,appLists={}}){
       const [filter,setFilter]=useState("all"); const [search,setSearch]=useState("");
       const [exp,setExp]=useState(null); const [editing,setEditing]=useState(null);
       const [selected,setSelected]=useState(new Set());
@@ -2191,7 +2191,9 @@
               {isAdmin&&<>
                 <button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
                   onClick={e=>{ e.stopPropagation(); setExp(r.id); setEditing(isEdit?null:r.id); }}>{isEdit?"Cancel Edit":"✎ Edit"}</button>
-                {r.approval_status&&r.approval_status!=="rejected"&&<button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
+                {(appLists?.approval_settings||{production:true})[r.type]!==true&&r.approval_status==="rejected"&&<button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.success,outline:`1px solid ${C.success}`})}
+                  onClick={async e=>{ e.stopPropagation(); if(window.confirm("Master approve this record? (it is stuck in rejected)")) await onApprove(r.id,session.name); }}>✔ Approve</button>}
+                {(appLists?.approval_settings||{production:true})[r.type]===true&&r.approval_status&&r.approval_status!=="rejected"&&<button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
                   onClick={async e=>{ e.stopPropagation(); const reason=window.prompt("Reason for sending back to the operator (required):"); if(reason&&reason.trim()) await onReject(r.id,session.name,reason.trim()); }}>↩ Reject</button>}
                 <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})}
                   onClick={e=>{ e.stopPropagation(); if(window.confirm("Delete this record?")) onDelete(r.id); }}>Delete</button>
