@@ -730,10 +730,13 @@
         await sb.from("records").update({approval_status:"rejected",rejection_reason:reason,rejected_by:approverName,rejected_at:now.toISOString(),approval_history:history}).eq("id",id);
         await reload(); flash("Record rejected.","danger");
       };
-      const resubmitRecord = async (id, operatorName) => {
+      const resubmitRecord = async (id, operatorName, note) => {
         const now=new Date();
         const rec=records.find(r=>r.id===id); if(!rec) return;
-        const history=[...(rec.approval_history||[]),{action:"resubmitted",by:operatorName,date:now.toISOString().split("T")[0],time:now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})}];
+        const prev=[...(rec.approval_history||[])];
+        // keep the rejection comment in the history even for older rejections that only stored it on the record
+        for(let i=prev.length-1;i>=0;i--){ if(prev[i].action==="rejected"){ if(!prev[i].reason&&rec.rejection_reason) prev[i]={...prev[i],reason:rec.rejection_reason}; break; } }
+        const history=[...prev,{action:"resubmitted",by:operatorName,date:now.toISOString().split("T")[0],time:now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}),note:(note||"").trim()||undefined}];
         await sb.from("records").update({approval_status:"pending",rejection_reason:null,approval_history:history}).eq("id",id);
         await reload(); flash("Record resubmitted for approval.");
       };
@@ -4250,6 +4253,7 @@
               <span style={{color:C.text,fontWeight:600}}>{h.by}</span>
               <span style={{color:C.muted,fontSize:10}}> · {h.date} {h.time}</span>
               {h.reason&&<div style={{color:C.danger,fontSize:11,marginTop:2}}>Reason: {h.reason}</div>}
+              {h.note&&<div style={{color:C.warn,fontSize:11,marginTop:2}}>Note: {h.note}</div>}
             </div>
           </div>;
         })}
@@ -4313,6 +4317,13 @@
                 </div>}
                 <span style={{color:C.muted,fontSize:12,cursor:"pointer"}} onClick={()=>setExp(exp===r.id?null:r.id)}>{exp===r.id?"▲":"▼"}</span>
               </div>
+              {(()=>{ const h=r.approval_history||[]; const rej=[...h].reverse().find(x=>x.action==="rejected"); const res=[...h].reverse().find(x=>x.action==="resubmitted");
+                if(!rej||!res) return null;
+                return <div style={{marginTop:8,padding:"8px 12px",background:C.warn+"11",border:`1px solid ${C.warn}44`,borderRadius:6,fontSize:12}}>
+                  <div style={{color:C.warn,fontWeight:700}}>↩ Resubmitted by {res.by} · {res.date} {res.time}</div>
+                  <div style={{color:C.danger,marginTop:3}}>✕ Rejected by {rej.by}{(rej.reason||r.rejection_reason)?": "+(rej.reason||r.rejection_reason):""}</div>
+                  {res.note&&<div style={{color:C.text,marginTop:3}}>💬 Operator note: {res.note}</div>}
+                </div>; })()}
               {/* Instant reject reason input */}
               {instantRejectId===r.id&&<div style={{marginTop:10,padding:"12px 14px",background:C.danger+"11",border:`1px solid ${C.danger}33`,borderRadius:8}}>
                 <div style={{fontSize:12,fontWeight:700,color:C.danger,marginBottom:8}}>Rejection Reason</div>
@@ -4354,6 +4365,7 @@
     }
     // ── Rejected Records ──────────────────────────────────────────────────────
     function RejectedRecords({records,session,onResubmit,onSave,users,appLists}){
+      const [resubNote,setResubNote]=useState("");
       const [exp,setExp]=useState(null);
       const [editing,setEditing]=useState(null);
       const approvalCfgR=appLists?.approval_settings||{production:true};
@@ -4392,7 +4404,8 @@
                         <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Edit the record to fix the issue, then resubmit for approval:</div>
                         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
                           <button style={S.btn("accent",{padding:"6px 16px",fontSize:12})} onClick={()=>setEditing(r.id)}>✎ Edit Record</button>
-                          <ApprovalPinPrompt label="↩ Resubmit" onConfirm={async(name)=>{ await onResubmit(r.id,name); setExp(null); }} />
+                          <input style={{...S.input,flex:1,minWidth:200}} value={resubNote} onChange={e=>setResubNote(e.target.value)} placeholder="Comment for the approver (optional): what was fixed?" />
+                          <ApprovalPinPrompt label="↩ Resubmit" onConfirm={async(name)=>{ await onResubmit(r.id,name,resubNote); setResubNote(""); setExp(null); }} />
                         </div>
                       </div>
                     </div>
