@@ -615,6 +615,7 @@
       {id:"printinglive",  label:"Printing Live",            icon:"📡"},
       {id:"printingoee",   label:"Printing OEE",             icon:"📊"},
       {id:"printingoee_edit", label:"Printing OEE – Edit",     icon:"✎", hidden:true},
+      {id:"records_reject", label:"All Records – Reject / Approve", icon:"↩", hidden:true},
       {id:"production",    label:"Daily Production Printing",icon:"◤"},
       {id:"viscosity",     label:"Viscosity QC",             icon:"◉"},
       {id:"printingqc",    label:"Printing QC",              icon:"✔"},
@@ -1022,6 +1023,7 @@
       const [boppWaste,setBoppWaste]=useState(()=>draft?.boppWaste||[{printingBopp:"",printingComment:"",rawBopp:"",rawComment:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
       const [remarks,setRemarks]=useState(()=>draft?.remarks||"");
       const [saved,setSaved]=useState(false);
+      const [attempted,setAttempted]=useState(false);
       const [draftRestored,setDraftRestored]=useState(!!draft);
       const [draftTime,setDraftTime]=useState(draft?.savedAt||"");
       const [lastSaved,setLastSaved]=useState("");
@@ -1048,8 +1050,40 @@
       const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
       const asSign=(fn,i,sig)=>fn(a=>a.map((r,x)=>x===i?{...r,...sig}:r));
       const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
+      // ── Completeness check ──────────────────────────────────────────────────
+      // A row that has been started (anything typed, or signed off) must have every
+      // value filled in before the sheet can be closed. A typed 0 counts as filled;
+      // only a blank is refused. Rows left completely empty are ignored.
+      const has=v=>String(v===null||v===undefined?"":v).trim()!=="";
+      const SEC_REQ=[
+        {sec:"rawIn",needOne:true,   title:"Raw Material Input",  rows:rawIn,      f:[["material","Material"],["batchNo","Batch No."],["qty","Qty"],["unit","Unit"]]},
+        {sec:"rawOut",needOne:true,  title:"Raw Material Output", rows:rawOut,     f:[["material","Material"],["batchNo","Batch No."],["qty","Qty"],["unit","Unit"],["meters","Meters"]]},
+        {sec:"retBopp", title:"Return Raw BOPP",     rows:returnBopp, f:[["material","Material"],["batchNo","Batch No."],["qty","Qty"],["unit","Unit"]]},
+        {sec:"inks",needOne:true,    title:"Ink Input",           rows:inks,       f:[["inkCode","Ink Code"],["inkType","Type"],["batchNo","Batch No."],["supplier","Supplier"],["qty","Qty"],["returned","Returned"]]},
+        {sec:"solvents",needOne:true,title:"Solvent Input",       rows:solvents,   f:[["solvent","Solvent"],["supplier","Supplier"],["batchNo","Batch Code"],["qty","Qty"],["returned","Returned"]]},
+        {sec:"waste",  all:true,title:"BOPP Waste",          rows:boppWaste,  f:[["printingBopp","Printing BOPP waste (kg)"],["rawBopp","Raw BOPP film waste (kg)"]]},
+      ];
+      const incomplete=[];
+      SEC_REQ.forEach(({sec,title,rows,f,all,needOne})=>{
+        let anyStarted=false;
+        rows.forEach((r,i)=>{
+          const started=all||f.some(([k])=>has(r[k]))||has(r.signedBy);
+          if(!started) return;
+          anyStarted=true;
+          const missing=f.filter(([k])=>!has(r[k])).map(([,l])=>l);
+          if(missing.length) incomplete.push({sec,i,title,missing});
+        });
+        // Inputs and outputs: at least one completed row is required
+        if(needOne&&!anyStarted) incomplete.push({sec,i:-1,title,missing:["at least one completed row is required"]});
+      });
+      const bad=(sec,i)=>attempted&&incomplete.some(x=>x.sec===sec&&x.i===i);
       if(saved) return <Done label="Production Sheet" reset={()=>{ clearDraft(); onReset(); }} />;
       const save=async(closeSig)=>{
+        setAttempted(true);
+        if(incomplete.length){
+          setTimeout(()=>{ const el=document.getElementById("prod-missing"); if(el&&el.scrollIntoView) el.scrollIntoView({behavior:"smooth",block:"center"}); },50);
+          return;
+        }
         if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},customer:{value:hdr.customer,label:"Customer"},substrate:{value:hdr.substrate,label:"Substrate"},operator:{value:hdr.operator,label:"Operator"}})) return;
         const now=new Date();
         const timeStr=now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
@@ -1122,7 +1156,7 @@
         <SC title="Raw Material Input">
           <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
           {rawIn.map((r,i)=>(
-            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${bad("rawIn",i)?C.danger:r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
                 <TI value={r.material} onChange={v=>as(setRawIn,i,"material",v)} placeholder="Material" />
                 <TI value={r.batchNo}  onChange={v=>as(setRawIn,i,"batchNo",v)} />
@@ -1138,7 +1172,7 @@
         <SC title="Raw Material Output (Printing Reels)">
           <THead cols={["Material","Batch No.","Qty","Unit","Meters","Time",""]} widths={["2fr","1.5fr","1fr","1fr","1fr","70px","40px"]} />
           {rawOut.map((r,i)=>(
-            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${bad("rawOut",i)?C.danger:r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 1fr 70px 40px",gap:6,marginBottom:6,alignItems:"center"}}>
                 <TI value={r.material} onChange={v=>as(setRawOut,i,"material",v)} placeholder="Material" />
                 <TI value={r.batchNo}  onChange={v=>as(setRawOut,i,"batchNo",v)} />
@@ -1171,7 +1205,7 @@
           </div>
           <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
           {returnBopp.map((r,i)=>(
-            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${bad("retBopp",i)?C.danger:r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
                 <TI value={r.material} onChange={v=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,material:v}:x))} placeholder="Material" />
                 <TI value={r.batchNo}  onChange={v=>setReturnBopp(a=>a.map((x,xi)=>xi===i?{...x,batchNo:v}:x))} />
@@ -1190,7 +1224,7 @@
             <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:"0.06em"}}>RAW BOPP FILM WASTE (KG)</div>
           </div>
           {boppWaste.map((r,i)=>(
-            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${bad("waste",i)?C.danger:r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
                 <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:6}}>
                   <TI type="number" value={r.printingBopp} onChange={v=>setBoppWaste(a=>a.map((x,xi)=>xi===i?{...x,printingBopp:v}:x))} placeholder="0" />
@@ -1210,7 +1244,7 @@
         <SC title="Ink Input">
           <THead cols={["Ink Code","Type","Batch No.","Supplier","Qty (kg)","Returned (kg)",""]} widths={["2.5fr","1fr","1.2fr","1.5fr","1fr","1fr","40px"]} />
           {inks.map((r,i)=>(
-            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${bad("inks",i)?C.danger:r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"2.5fr 1fr 1.2fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
                 <select style={S.input} value={r.inkCode} onChange={e=>{
                   const code=e.target.value;
@@ -1241,7 +1275,7 @@
         <SC title="Solvent Input">
           <THead cols={["Solvent","Supplier","Batch Code","Qty (L)","Returned (L)",""]} widths={["1.5fr","1.5fr","1.5fr","1fr","1fr","40px"]} />
           {solvents.map((r,i)=>(
-            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${r.signedBy?C.success:C.border}`}}>
+            <div key={i} style={{marginBottom:10,padding:"8px 10px",background:C.bg,borderRadius:8,border:`1px solid ${bad("solvents",i)?C.danger:r.signedBy?C.success:C.border}`}}>
               <div style={{display:"grid",gridTemplateColumns:"1.5fr 1.5fr 1.5fr 1fr 1fr 40px",gap:6,marginBottom:6,alignItems:"center"}}>
                 <TS value={r.solvent}  onChange={v=>as(setSolv,i,"solvent",v)}   options={(lists.solvent||[]).map(String).filter(Boolean)} />
                 <TS value={r.supplier} onChange={v=>as(setSolv,i,"supplier",v)}  options={(lists.solvent_supplier||[]).map(String).filter(Boolean)} />
@@ -1256,6 +1290,10 @@
           <button style={S.btn("ghost",{marginTop:6,fontSize:11})} onClick={()=>setSolv(a=>[...a,eSv()])}>+ Add Row</button>
         </SC>
         <SC title="Remarks"><textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={remarks} onChange={e=>setRemarks(e.target.value)} /></SC>
+        {incomplete.length>0&&<div id="prod-missing" style={{marginBottom:14,padding:"12px 16px",background:(attempted?C.danger:C.warn)+"15",border:`1px solid ${attempted?C.danger:C.warn}`,borderRadius:8}}>
+          <div style={{fontSize:13,fontWeight:700,color:attempted?C.danger:C.warn,marginBottom:6}}>{attempted?"✕ Sheet not saved — ":"⚠ "}complete these values before closing the sheet (enter 0 if the value is zero):</div>
+          {incomplete.map((x,k)=><div key={k} style={{fontSize:12,color:C.text,padding:"2px 0"}}>• <b>{x.title}</b>{x.i>=0?`, row ${x.i+1}`:""}: <span style={{color:C.danger}}>{x.missing.join(", ")}</span></div>)}
+        </div>}
         <SC title="Close & Sign Off Sheet">
           <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Sign off here to close and save this production sheet. This name is recorded separately from whoever is logged in, so the record shows exactly who closed it out.</div>
           <PinPrompt label="Close & Save Sheet" onConfirm={sig=>save(sig)} />
@@ -2107,6 +2145,7 @@
       });
 
       const isAdmin=session.role==="admin";
+      const canMaster=isAdmin||getTabs(session).some(t=>t.id==="records_reject");
       const allSelected=filtered.length>0&&filtered.every(r=>selected.has(r.id));
       const toggleSel=(e,id)=>{ e.stopPropagation(); const next=new Set(selected); if(next.has(id)) next.delete(id); else next.add(id); setSelected(next); };
       const toggleAll=()=>{ if(allSelected){ setSelected(new Set()); } else { setSelected(new Set(filtered.map(r=>r.id))); } };
@@ -2194,13 +2233,15 @@
               {isAdmin&&<>
                 <button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.blue,outline:`1px solid ${C.blue}`})}
                   onClick={e=>{ e.stopPropagation(); setExp(r.id); setEditing(isEdit?null:r.id); }}>{isEdit?"Cancel Edit":"✎ Edit"}</button>
+              </>}
+              {canMaster&&<>
                 {(appLists?.approval_settings||{production:true})[r.type]!==true&&r.approval_status==="rejected"&&<button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.success,outline:`1px solid ${C.success}`})}
                   onClick={async e=>{ e.stopPropagation(); if(window.confirm("Master approve this record? (it is stuck in rejected)")) await onApprove(r.id,session.name); }}>✔ Approve</button>}
                 {(appLists?.approval_settings||{production:true})[r.type]===true&&r.approval_status&&r.approval_status!=="rejected"&&<button style={S.btn("ghost",{padding:"4px 10px",fontSize:11,color:C.warn,outline:`1px solid ${C.warn}`})}
                   onClick={async e=>{ e.stopPropagation(); const reason=window.prompt("Reason for sending back to the operator (required):"); if(reason&&reason.trim()) await onReject(r.id,session.name,reason.trim()); }}>↩ Reject</button>}
-                <button style={S.btn("danger",{padding:"4px 10px",fontSize:11})}
-                  onClick={e=>{ e.stopPropagation(); if(window.confirm("Delete this record?")) onDelete(r.id); }}>Delete</button>
               </>}
+              {isAdmin&&<button style={S.btn("danger",{padding:"4px 10px",fontSize:11})}
+                  onClick={e=>{ e.stopPropagation(); if(window.confirm("Delete this record?")) onDelete(r.id); }}>Delete</button>}
             </div>
             {isExp&&!isEdit&&<RecDetail r={r} createdBy={r.created_by} />}
             {isExp&&isEdit&&<RecEdit r={r} onSave={async(data)=>{ await onSave(r.id,data); setEditing(null); }} onCancel={()=>setEditing(null)} />}
@@ -2513,7 +2554,7 @@
       };
       const del=async id=>{ if(id===session.id){ alert("Cannot delete yourself."); return; } await dbDelUser(id); await reload(); flash("User deleted."); };
       const startEdit=(u)=>{ setEditId(u.id); const perms=u.permissions||ROLE_DEFAULTS[u.role]||["dashboard","records"]; setEditPerms(Object.fromEntries(perms.map(p=>[p,true]))); };
-      const savePerms=async(u)=>{ const perms=SHEET_OPTIONS.map(s=>s.id).filter(id=>editPerms[id]); if(editPerms.printingoee&&editPerms.printingoee_edit) perms.push("printingoee_edit"); await sb.from("users").update({permissions:perms}).eq("id",u.id); await reload(); setEditId(null); flash("Permissions updated."); };
+      const savePerms=async(u)=>{ const perms=SHEET_OPTIONS.map(s=>s.id).filter(id=>editPerms[id]); if(editPerms.printingoee&&editPerms.printingoee_edit) perms.push("printingoee_edit"); if(editPerms.records&&editPerms.records_reject) perms.push("records_reject"); await sb.from("users").update({permissions:perms}).eq("id",u.id); await reload(); setEditId(null); flash("Permissions updated."); };
       const doReset=async(u)=>{ if(!resetPw.trim()){ flash("Password cannot be empty.","danger"); return; } await sb.from("users").update({password:resetPw}).eq("id",u.id); setResetId(null); setResetPw(""); await reload(); flash(`Password reset for ${u.name}.`); };
       const togglePerm=(id)=>setEditPerms(p=>({...p,[id]:!p[id]}));
       const rc=r=>r==="admin"?C.accent2:r==="manager"?C.accent:r==="qc"?C.blue:r==="viewer"?C.muted:C.success;
@@ -2571,6 +2612,18 @@
                           return <button key={label} onClick={()=>setEditPerms(p=>({...p,printingoee_edit:val}))} style={{padding:"6px 16px",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,background:on?C.success:C.bg,color:on?"#fff":C.muted,outline:on?"none":`1px solid ${C.border}`,transition:"all 0.12s"}}>{label}</button>;
                         })}
                         <span style={{fontSize:11,color:C.muted}}>View only: see, filter and export. View & edit: also select and delete shift summaries.</span>
+                      </div>
+                    </div>
+                  )}
+                  {editPerms.records&&(
+                    <div style={{marginBottom:14,padding:"10px 12px",background:C.panel,borderRadius:8,border:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>☰ ALL RECORDS: REJECT / APPROVE</div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                        {[[false,"Not allowed"],[true,"Allowed"]].map(([val,label])=>{
+                          const on=!!editPerms.records_reject===val;
+                          return <button key={label} onClick={()=>setEditPerms(p=>({...p,records_reject:val}))} style={{padding:"6px 16px",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,background:on?C.success:C.bg,color:on?"#fff":C.muted,outline:`1px solid ${on?C.success:C.border}`}}>{label}</button>;
+                        })}
+                        <span style={{fontSize:11,color:C.muted}}>Allowed: can send a record back for resubmission (Reject) and master-approve stuck records from All Records. Admins always can.</span>
                       </div>
                     </div>
                   )}
