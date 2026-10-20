@@ -993,6 +993,11 @@
       const [session,setSession] = useState(()=>{ try{ return JSON.parse(sessionStorage.getItem("cpk_sess"))||null; }catch{ return null; } });
       const [status,setStatus]   = useState("loading");
       const [,setRenderTick]     = useState(0);
+      const [lastSync,setLastSync] = useState(null);
+      const [syncTick,setSyncTick] = useState(0);
+      const [syncing,setSyncing]   = useState(false);
+      const lastSyncRef = React.useRef(0);
+      const syncRef     = React.useRef(()=>{});
 
       useEffect(()=>{
         const l=()=>setRenderTick(t=>t+1);
@@ -1000,7 +1005,8 @@
         return ()=>window.removeEventListener("themechange",l);
       },[]);
 
-      const reload = async () => {
+      // silent = background sync: a failed refresh keeps what is on screen instead of replacing the app with an error page
+      const reload = async (silent=false) => {
         if(SUPABASE_URL==="PASTE_YOUR_SUPABASE_URL_HERE"){ setStatus("unconfigured"); return; }
         try {
           const [u,r,l,t,ll] = await Promise.all([dbUsers(),dbRecords(),dbGetLists(),dbGetTrash(),dbGetLoginLog()]);
@@ -1023,10 +1029,24 @@
             if(needsUpdate) dbUpsertList("ink_code",JSON.stringify(lmap.ink_code));
           }
           setAppLists(lmap); setStatus("ok");
-        } catch { setStatus("error"); }
+          lastSyncRef.current=Date.now(); setLastSync(new Date()); setSyncTick(t=>t+1);
+        } catch { if(silent!==true) setStatus("error"); }
       };
 
       useEffect(()=>{ reload(); },[]);
+
+      // ── Sync: the button in the menu, and automatically once an hour ──────────
+      const sync = async () => { if(syncing) return; setSyncing(true); try{ await reload(true); } finally { setSyncing(false); } };
+      syncRef.current = sync;
+      useEffect(()=>{
+        if(!session) return;
+        const HOUR=3600000;
+        const timer=setInterval(()=>{ if(!document.hidden) syncRef.current(); },HOUR);
+        // browsers slow down timers in background tabs, so catch up when the tab comes back
+        const onVis=()=>{ if(!document.hidden&&lastSyncRef.current&&Date.now()-lastSyncRef.current>HOUR) syncRef.current(); };
+        document.addEventListener("visibilitychange",onVis);
+        return ()=>{ clearInterval(timer); document.removeEventListener("visibilitychange",onVis); };
+      },[session]);
 
       const login = u => { setSession(u); sessionStorage.setItem("cpk_sess",JSON.stringify(u)); dbLogLogin(u); };
       const logout = () => { setSession(null); sessionStorage.removeItem("cpk_sess"); };
@@ -1036,7 +1056,8 @@
       if(status==="error")        return <Splash msg="Could not reach database. Check your credentials." />;
       if(!session)                return <Login users={users} onLogin={login} />;
       return <Main session={session} users={users} records={records} trashed={trashed}
-                   loginLog={loginLog} appLists={appLists} onLogout={logout} reload={reload} />;
+                   loginLog={loginLog} appLists={appLists} onLogout={logout} reload={reload}
+                   onSync={sync} syncing={syncing} lastSync={lastSync} syncTick={syncTick} />;
     }
 
     function Splash({msg}){
@@ -1138,7 +1159,7 @@
     }
 
     // ── Main shell ────────────────────────────────────────────────────────────
-    function Main({session,users,records,trashed,loginLog,appLists,onLogout,reload}){
+    function Main({session,users,records,trashed,loginLog,appLists,onLogout,reload,onSync,syncing,lastSync,syncTick}){
       const [tab,setTab]       = useState("dashboard");
       const [saving,setSaving] = useState(false);
       const [tabKeys,setTabKeys] = useState({});
@@ -1260,6 +1281,8 @@
           {/* Bottom user strip */}
           <div style={{padding:"12px 16px",borderTop:`1px solid ${C.border}`,flexShrink:0}}>
             <div style={{fontSize:11,color:C.muted,marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{session.name}</div>
+            <div style={{fontSize:10,color:C.muted,marginBottom:6}}>Synced {lastSync?lastSync.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false}):"—"} · auto every hour</div>
+            <button style={S.btn("ghost",{padding:"5px 8px",fontSize:11,width:"100%",marginBottom:6,color:C.accent,outline:`1px solid ${C.accent}`})} disabled={syncing} onClick={onSync}>{syncing?"⟳ Syncing…":"⟳ Sync now"}</button>
             <div style={{display:"flex",gap:6}}>
               <button style={S.btn("ghost",{padding:"4px 8px",fontSize:10,flex:1})} onClick={window.toggleTheme}>◑ Theme</button>
               <button style={S.btn("ghost",{padding:"4px 8px",fontSize:10,flex:1})} onClick={onLogout}>Sign Out</button>
@@ -1273,7 +1296,7 @@
           <div style={{display:tab==="approval"    ?"block":"none"}}><PendingApproval records={records} session={session} onApprove={approveRecord} onReject={rejectRecord} onSave={saveRecord} users={users} appLists={appLists} canInstant={getTabs(session).some(t=>t.id==="approval_instant")} /></div>
           <div style={{display:tab==="rejected"    ?"block":"none"}}><RejectedRecords records={records} session={session} onResubmit={resubmitRecord} onSave={saveRecord} users={users} appLists={appLists} /></div>
           <div style={{display:tab==="printinglive"?"block":"none"}}><PrintingLive session={session} appLists={appLists} /></div>
-          <div style={{display:tab==="printingoee" ?"block":"none"}}><PrintingOEE appLists={appLists} session={session} records={records} canEdit={getTabs(session).some(t=>t.id==="printingoee_edit")} /></div>
+          <div style={{display:tab==="printingoee" ?"block":"none"}}><PrintingOEE appLists={appLists} session={session} records={records} syncTick={syncTick} canEdit={getTabs(session).some(t=>t.id==="printingoee_edit")} /></div>
           <div style={{display:tab==="production"   ?"block":"none"}}><ProductionForm   key={getTabKey("production")}   onReset={()=>resetTab("production")}   onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="viscosity"    ?"block":"none"}}><ViscosityForm    key={getTabKey("viscosity")}    onReset={()=>resetTab("viscosity")}    onSave={addRecord} users={users} lists={appLists} /></div>
           <div style={{display:tab==="printingqc"   ?"block":"none"}}><PrintingQCForm   key={getTabKey("printingqc")}   onReset={()=>resetTab("printingqc")}   onSave={addRecord} users={users} lists={appLists} /></div>
@@ -5395,7 +5418,7 @@
 
 
     // ── Printing OEE Component ────────────────────────────────────────────────
-    function PrintingOEE({appLists={},session,canEdit=false,records=[]}){
+    function PrintingOEE({appLists={},session,canEdit=false,records=[],syncTick=0}){
       const [summaries,setSummaries]=useState([]);
       const [loading,setLoading]=useState(true);
       const [filterMonth,setFilterMonth]=useState("all");
@@ -5436,7 +5459,7 @@
         setLoading(false);
       };
 
-      React.useEffect(()=>{ fetchSummaries(); },[]);
+      React.useEffect(()=>{ fetchSummaries(); },[syncTick]);
 
       const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
       const allYears=[...new Set(summaries.map(s=>s.shift_date?.substring(0,4)).filter(Boolean))].sort().reverse();
