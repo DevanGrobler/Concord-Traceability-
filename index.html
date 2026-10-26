@@ -1080,6 +1080,21 @@
     }
 
     // ── Login ─────────────────────────────────────────────────────────────────
+    // ── NoFillInput ─ a text box browsers and password managers do not recognise as a login field ──
+    // Used for the login and the PIN sign-off boxes, so a saved or remembered username/PIN is not
+    // filled in for the person. Secret values are masked with CSS instead of type="password"
+    // (a password-type box is what the browser offers saved logins for); where the browser cannot
+    // mask that way it falls back to a normal password box that asks for "new-password".
+    const MASK_OK=(()=>{ try{ return !!(window.CSS&&CSS.supports&&CSS.supports("-webkit-text-security","disc")); }catch{ return false; } })();
+    function NoFillInput({secret=false,style,...rest}){
+      const nm=React.useMemo(()=>"f"+Math.random().toString(36).slice(2,10),[]);
+      const cssMask=secret&&MASK_OK;
+      return <input {...rest} name={nm} type={secret&&!MASK_OK?"password":"text"} autoComplete={secret&&!MASK_OK?"new-password":"off"}
+        autoCapitalize="none" autoCorrect="off" spellCheck={false}
+        data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
+        style={cssMask?{...style,WebkitTextSecurity:"disc"}:style} />;
+    }
+
     function Login({users,onLogin}){
       const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState("");
       const go=()=>{
@@ -1093,9 +1108,9 @@
             <div style={{fontSize:11,color:C.muted,letterSpacing:"0.2em",marginTop:2}}>PACKAGING TRACEABILITY</div>
           </div>
           <label style={S.label}>Username</label>
-          <input style={{...S.input,marginBottom:14}} value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} />
+          <NoFillInput style={{...S.input,marginBottom:14}} value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} />
           <label style={S.label}>Password</label>
-          <input type="password" style={{...S.input,marginBottom:20}} value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} />
+          <NoFillInput secret style={{...S.input,marginBottom:20}} value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} />
           {err&&<div style={{color:C.danger,fontSize:12,marginBottom:12}}>{err}</div>}
           <button style={{...S.btn("accent"),width:"100%",padding:12,fontSize:14}} onClick={go}>Sign In</button>
         </div>
@@ -1514,8 +1529,8 @@
       };
       return <div style={{display:"flex",gap:6,alignItems:"center",padding:"6px 8px",background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,flexWrap:"wrap",marginTop:4}}>
         <span style={{fontSize:10,color:C.muted,fontWeight:600,flexShrink:0}}>✎ {label}</span>
-        <input style={{...S.input,width:120,padding:"4px 7px",fontSize:11}} value={un} onChange={e=>setUn(e.target.value)} placeholder="Username" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
-        <input type="password" style={{...S.input,width:80,padding:"4px 7px",fontSize:11}} value={pin} onChange={e=>setPin(e.target.value)} placeholder="PIN" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
+        <NoFillInput style={{...S.input,width:120,padding:"4px 7px",fontSize:11}} value={un} onChange={e=>setUn(e.target.value)} placeholder="Username" onKeyDown={e=>e.key==="Enter"&&go()} />
+        <NoFillInput secret inputMode="numeric" style={{...S.input,width:80,padding:"4px 7px",fontSize:11}} value={pin} onChange={e=>setPin(e.target.value)} placeholder="PIN" onKeyDown={e=>e.key==="Enter"&&go()} />
         <button style={S.btn("accent",{padding:"4px 12px",fontSize:11})} onClick={go} disabled={busy}>{busy?"…":"✔ Confirm"}</button>
         {err&&<span style={{fontSize:11,color:C.danger,fontWeight:600}}>{err}</span>}
       </div>;
@@ -4857,8 +4872,8 @@
         setUn(""); setPin(""); setErr("");
       };
       return <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
-        <input style={{...S.input,width:130,padding:"5px 8px",fontSize:11}} value={un} onChange={e=>setUn(e.target.value)} placeholder="Username" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
-        <input type="password" style={{...S.input,width:80,padding:"5px 8px",fontSize:11}} value={pin} onChange={e=>setPin(e.target.value)} placeholder="PIN" onKeyDown={e=>e.key==="Enter"&&go()} autoComplete="off" />
+        <NoFillInput style={{...S.input,width:130,padding:"5px 8px",fontSize:11}} value={un} onChange={e=>setUn(e.target.value)} placeholder="Username" onKeyDown={e=>e.key==="Enter"&&go()} />
+        <NoFillInput secret inputMode="numeric" style={{...S.input,width:80,padding:"5px 8px",fontSize:11}} value={pin} onChange={e=>setPin(e.target.value)} placeholder="PIN" onKeyDown={e=>e.key==="Enter"&&go()} />
         <button style={S.btn(btnColor,{padding:"5px 14px",fontSize:11})} onClick={go} disabled={busy}>{busy?"…":label}</button>
         {err&&<span style={{fontSize:11,color:C.danger,fontWeight:600}}>{err}</span>}
       </div>;
