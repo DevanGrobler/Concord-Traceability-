@@ -1536,6 +1536,28 @@
       </div>;
     }
 
+    // ── Opened-by sign-in for the production sheet header (username + PIN) ───
+    function CredPrompt({onConfirm,label="Confirm"}){
+      const [un,setUn]=useState(""); const [pw,setPw]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+      const go=async()=>{
+        if(!un.trim()||!pw.trim()){ setErr("Username and PIN required."); return; }
+        setBusy(true); setErr("");
+        const res=await verifyPin(un.trim(),pw.trim());
+        setBusy(false);
+        if(!res.ok){ setErr(res.msg); return; }
+        const now=new Date();
+        onConfirm({openedBy:res.name,openedAt:now.toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}),openedDate:now.toISOString().split("T")[0],openedShift:getShiftFromTime()});
+        setUn(""); setPw(""); setErr("");
+      };
+      return <div style={{display:"flex",gap:6,alignItems:"center",padding:"6px 8px",background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,flexWrap:"wrap",marginTop:4}}>
+        <span style={{fontSize:10,color:C.muted,fontWeight:600,flexShrink:0}}>✎ {label}</span>
+        <NoFillInput style={{...S.input,width:130,padding:"4px 7px",fontSize:11}} value={un} onChange={e=>setUn(e.target.value)} placeholder="Username" onKeyDown={e=>e.key==="Enter"&&go()} />
+        <NoFillInput secret inputMode="numeric" style={{...S.input,width:80,padding:"4px 7px",fontSize:11}} value={pw} onChange={e=>setPw(e.target.value)} placeholder="PIN" onKeyDown={e=>e.key==="Enter"&&go()} />
+        <button style={S.btn("accent",{padding:"4px 12px",fontSize:11})} onClick={go} disabled={busy}>{busy?"…":"✔ Confirm"}</button>
+        {err&&<span style={{fontSize:11,color:C.danger,fontWeight:600}}>{err}</span>}
+      </div>;
+    }
+
     // ── Signed badge ──────────────────────────────────────────────────────────
     function SignedBadge({row}){
       if(!row?.signedBy) return <div style={{fontSize:10,color:C.muted,fontStyle:"italic",padding:"2px 0"}}>— awaiting sign-off</div>;
@@ -1622,6 +1644,7 @@
         // Inputs and outputs: at least one completed row is required
         if(needOne&&!anyStarted) incomplete.push({sec,i:-1,title,missing:["at least one completed row is required"]});
       });
+      if(!hdr.openedBy) incomplete.unshift({sec:"opened",i:-1,title:"Job Details",missing:["sign in with your username and PIN under Opened By"]});
       const bad=(sec,i)=>attempted&&incomplete.some(x=>x.sec===sec&&x.i===i);
       if(saved) return <Done label="Production Sheet" reset={()=>{ clearDraft(); onReset(); }} />;
       const save=async(closeSig)=>{
@@ -1698,6 +1721,19 @@
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
             <F label="Supervisor"><TS value={hdr.supervisor} onChange={v=>h("supervisor",v)} options={(lists.supervisor||[]).map(String).filter(Boolean)} /></F>
           </Grid>
+          <div style={{marginTop:12,padding:"10px 12px",background:C.bg,borderRadius:8,border:`1px solid ${hdr.openedBy?C.success:(attempted&&!hdr.openedBy?C.danger:C.border)}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.muted,letterSpacing:"0.08em",marginBottom:6}}>OPENED BY (USERNAME + PIN)</div>
+            {hdr.openedBy
+              ?<div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+                  <div style={{fontSize:11,color:C.success,fontWeight:600}}>✔ {hdr.openedBy}<span style={{color:C.muted,fontWeight:400}}> · {hdr.openedShift} · {hdr.openedDate} · {hdr.openedAt}</span></div>
+                  <button style={S.btn("ghost",{padding:"2px 10px",fontSize:10})} onClick={()=>setHdr(p=>({...p,openedBy:"",openedAt:"",openedDate:"",openedShift:""}))}>Change</button>
+                </div>
+              :<div>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:4}}>The person filling in the job details signs in here with their own username and PIN. This is recorded on the sheet.</div>
+                  <CredPrompt label="Sign in to open this sheet (PIN)" onConfirm={sig=>setHdr(p=>({...p,...sig}))} />
+                </div>}
+          </div>
+        
         </SC>
         <SC title="Raw Material Input">
           <THead cols={["Material","Batch No.","Qty","Unit",""]} widths={["2fr","1.5fr","1fr","1fr","40px"]} />
@@ -2520,14 +2556,14 @@
           [],
           ["Concord Packaging — Production Export","","Generated:",new Date().toLocaleString()],
           [],
-          ["Completed By","Closed By","Closed Date","Closed Time","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate"]
+          ["Opened By","Closed By","Closed Date","Closed Time","Date Submitted","Time Submitted","Date","Shift","Job Card Number","Customer","Product Name","Substrate"]
         ];
         prodRecs.forEach(r=>{
           const h=r.data?.header||{};
           const submittedDate=new Date(r.created_at);
           const approvedAt=r.approved_at?new Date(r.approved_at):null;
           rows.push([
-            r.created_by,
+            h.openedBy||r.created_by,
             r.data?.closedBy||"",
             r.data?.closedDate||"",
             r.data?.closedAt||"",
@@ -2758,7 +2794,7 @@
               <div style={{flex:1}}>
                 <div style={{fontSize:13,color:C.text,fontWeight:600}}>{r.title}</div>
                 <div style={{fontSize:11,color:C.muted,marginTop:3,display:"flex",gap:12,flexWrap:"wrap"}}>
-                  <span>📋 Completed by: <span style={{color:C.accent,fontWeight:700}}>{r.created_by}</span></span>
+                  <span>📋 Opened by: <span style={{color:C.accent,fontWeight:700}}>{r.data?.header?.openedBy||r.created_by}</span></span>
                   {r.data?.closedBy&&(
                     <span>✔ Closed by: <span style={{color:C.success,fontWeight:700}}>{r.data.closedBy}</span></span>
                   )}
@@ -2800,8 +2836,10 @@
       const d=r.data||{};
       return <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${C.border}`,fontSize:12}}>
         <div style={{marginBottom:12,padding:"8px 12px",background:C.bg,borderRadius:6,display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
-          <span style={{color:C.muted}}>Completed by: </span><span style={{color:C.accent,fontWeight:700}}>{createdBy}</span>
-          <span style={{color:C.muted}}>on {new Date(r.created_at).toLocaleString()}</span>
+          <span style={{color:C.muted}}>Opened by: </span><span style={{color:C.accent,fontWeight:700}}>{d.header?.openedBy||createdBy}</span>
+          {d.header?.openedBy&&d.header.openedBy!==createdBy&&<span style={{color:C.muted,fontSize:11}}>(logged in as {createdBy})</span>}
+          {d.header?.openedAt&&<span style={{color:C.muted}}>on {d.header.openedDate} {d.header.openedAt}</span>}
+          {!d.header?.openedAt&&<span style={{color:C.muted}}>on {new Date(r.created_at).toLocaleString()}</span>}
           {d.closedBy&&<>
             <span style={{color:C.muted}}>· Closed by: </span><span style={{color:C.success,fontWeight:700}}>{d.closedBy}</span>
             {d.closedDate&&<span style={{color:C.muted}}>· {d.closedDate} {d.closedAt}</span>}
