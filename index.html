@@ -1189,7 +1189,7 @@
         const approvalCfg=appLists.approval_settings||{production:true};
         const needsApproval=approvalCfg[rec.type]===true;
         const now=new Date().toISOString();
-        const history=needsApproval?[{action:"submitted",by:session.name,date:now.split("T")[0],time:now.split("T")[1].substring(0,8)}]:[];
+        const history=needsApproval?[{action:"submitted",by:(rec.data?.closedBy||session.name),date:now.split("T")[0],time:now.split("T")[1].substring(0,8)}]:[];
         const {error} = await dbAddRec({...rec, created_by:session.name, created_at:now, approval_status:needsApproval?"pending":"approved", approval_history:history});
         if(error) flash("Save failed: "+error.message,"danger");
         else { await reload(); flash(needsApproval?"Saved — pending manager approval":"Saved to database!"); setTab("records"); }
@@ -4849,7 +4849,7 @@
             <div style={{flex:1}}>
               <span style={{color:c.color,fontWeight:700,textTransform:"capitalize"}}>{h.action}</span>
               <span style={{color:C.muted}}> by </span>
-              <span style={{color:C.text,fontWeight:600}}>{h.by}</span>
+              <span style={{color:C.text,fontWeight:600}}>{h.action==="submitted"&&record.data?.closedBy?record.data.closedBy:h.by}</span>
               <span style={{color:C.muted,fontSize:10}}> · {h.date} {h.time}</span>
               {h.reason&&<div style={{color:C.danger,fontSize:11,marginTop:2}}>Reason: {h.reason}</div>}
               {h.note&&<div style={{color:C.warn,fontSize:11,marginTop:2}}>Note: {h.note}</div>}
@@ -4904,7 +4904,7 @@
                 <div style={{flex:1,cursor:"pointer"}} onClick={()=>{ if(instantRejectId===r.id) return; setExp(exp===r.id?null:r.id); }}>
                   <div style={{fontWeight:700,color:C.text,fontSize:13}}>{r.title}</div>
                   <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-                    Submitted by <span style={{color:C.blue}}>{r.created_by}</span> · {new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})} {new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
+                    Submitted by <span style={{color:C.blue}}>{r.data?.closedBy||r.created_by}</span>{r.data?.closedBy&&r.data.closedBy!==r.created_by&&<span style={{color:C.muted}}> (logged in as {r.created_by})</span>} · {new Date(r.created_at).toLocaleDateString("en-ZA",{day:"2-digit",month:"short",year:"numeric"})} {new Date(r.created_at).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",hour12:false})}
                     {r.data?.header?.customer&&<span> · {r.data.header.customer}</span>}
                     {r.data?.header?.productName&&<span> · {r.data.header.productName}</span>}
                   </div>
@@ -4983,7 +4983,7 @@
                 <div style={{flex:1}}>
                   <div style={{fontWeight:700,color:C.text,fontSize:13}}>{r.title}</div>
                   <div style={{fontSize:11,color:C.muted,marginTop:2}}>
-                    Submitted by <span style={{color:C.blue}}>{r.created_by}</span>
+                    Submitted by <span style={{color:C.blue}}>{r.data?.closedBy||r.created_by}</span>{r.data?.closedBy&&r.data.closedBy!==r.created_by&&<span style={{color:C.muted}}> (logged in as {r.created_by})</span>}
                     {r.rejected_by&&<span> · Rejected by <span style={{color:C.danger}}>{r.rejected_by}</span></span>}
                   </div>
                   {r.rejection_reason&&<div style={{fontSize:12,color:C.danger,fontWeight:600,marginTop:4,padding:"4px 8px",background:C.danger+"11",borderRadius:4}}>
