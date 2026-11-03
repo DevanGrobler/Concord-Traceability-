@@ -56,7 +56,7 @@
 <li><p><strong>PIN</strong> signs off an entry. Each row of a sheet is signed with the PIN of the person who actually did the work, even when someone else is logged in. Never share your PIN.</p></li>
 </ul>
 <p><strong>Drafts are saved for you</strong></p>
-<p>The production sheet saves a draft on the device every 30 seconds. If the browser closes or the battery dies, reopening the sheet restores the draft and shows a yellow banner with the time. Use <strong>Discard Draft</strong> to start over.</p>
+<p>The production sheet, Viscosity QC and Printing QC save a draft on the device every 30 seconds (the QC forms only once something has been filled in). The shift is also picked automatically from the time of day (Day 07:00 to 18:59, Night 19:00 to 06:59) and can still be changed. If the browser closes or the battery dies, reopening the sheet restores the draft and shows a yellow banner with the time. Use <strong>Discard Draft</strong> to start over.</p>
 <h2 id="man-roles-and-permissions">2. Roles and permissions</h2>
 <p>Each user has a role, and the role sets which tabs they start with. An admin can then add or remove tabs for one person in User Management.</p>
 <table>
@@ -549,6 +549,13 @@
     Object.defineProperty(window,'TH',{ get:()=>({ padding:"6px 8px", textAlign:"left", color:C.muted, fontSize:10, fontWeight:700, letterSpacing:"0.06em", whiteSpace:"nowrap" }) });
     Object.defineProperty(window,'TD',{ get:()=>({ padding:"5px 8px", color:C.text, fontSize:11 }) });
     const todayStr = () => new Date().toISOString().split("T")[0];
+    // Default date for a new form: the date the CURRENT SHIFT started, in local (SA) time.
+    // Night shift runs 19:00 to 06:59 and keeps the date it started on, so before 07:00
+    // the form defaults to yesterday's date (e.g. 3 Nov night shift = "3 Nov" until 07:00 on the 4th).
+    const shiftDateStr = () => {
+      const d=new Date(); if(d.getHours()<7) d.setDate(d.getDate()-1);
+      return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    };
 
     // DB helpers
     const dbUsers     = async () => { const {data} = await sb.from("users").select("*").order("created_at"); return data||[]; };
@@ -1504,6 +1511,45 @@
       return (h>=7&&h<19)?"Day Shift":"Night Shift";
     }
 
+    // ── Form drafts (Viscosity QC, Printing QC) ───────────────────────────────
+    // Saved on this device every 30 seconds, but only once something has been
+    // filled in, so an untouched form never shows a "draft restored" banner.
+    function loadFormDraft(key){
+      try{ const d=localStorage.getItem(key); return d?JSON.parse(d):null; }catch{ return null; }
+    }
+    function clearFormDraft(key){ try{ localStorage.removeItem(key); }catch{} }
+    function useFormDraft(key,state,saved){
+      const stateRef=React.useRef(state); stateRef.current=state;
+      const savedRef=React.useRef(saved); savedRef.current=saved;
+      const startRef=React.useRef(null); if(startRef.current===null) startRef.current=JSON.stringify(state);
+      const [lastSaved,setLastSaved]=useState("");
+      React.useEffect(()=>{
+        const iv=setInterval(()=>{
+          if(savedRef.current) return;
+          const js=JSON.stringify(stateRef.current);
+          if(js===startRef.current) return;
+          const now=new Date().toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+          try{ localStorage.setItem(key,JSON.stringify({...stateRef.current,savedAt:now})); setLastSaved(now); }catch(e){}
+        },30000);
+        return ()=>clearInterval(iv);
+      },[]);
+      return lastSaved;
+    }
+    function DraftBanner({restoredAt,lastSaved,onDiscard}){
+      return <>
+        {restoredAt&&(
+          <div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"12px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,color:C.warn,fontWeight:700}}>⚠ Draft restored from {restoredAt}</span>
+            <span style={{fontSize:12,color:C.muted}}>Your previous session was recovered. Continue where you left off.</span>
+            <button style={{...S.btn("ghost",{padding:"5px 14px",fontSize:12}),color:C.danger,outline:`1px solid ${C.danger}`,marginLeft:"auto"}} onClick={onDiscard}>Discard Draft</button>
+          </div>
+        )}
+        {lastSaved&&!restoredAt&&(
+          <div style={{fontSize:10,color:C.success,textAlign:"right",marginBottom:8}}>✔ Draft auto-saved at {lastSaved}</div>
+        )}
+      </>;
+    }
+
     // ── PIN verification ──────────────────────────────────────────────────────
     async function verifyPin(username,pin){
       const {data}=await sb.from("users").select("id,name,pin").ilike("username",username).single();
@@ -1582,7 +1628,7 @@
       };
       const draft=loadDraft();
 
-      const [hdr,setHdr]=useState(()=>draft?.hdr||{date:todayStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",widthA:"",widthB:"",lengthA:"",lengthB:"",speed:"",operator:"",supervisor:""});
+      const [hdr,setHdr]=useState(()=>draft?.hdr||{date:shiftDateStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",substrate:"",widthA:"",widthB:"",lengthA:"",lengthB:"",speed:"",operator:"",supervisor:""});
       const [rawIn,setRawIn]=useState(()=>draft?.rawIn||[eP()]);
       const [rawOut,setRawOut]=useState(()=>draft?.rawOut||[ePOut()]);
       const [returnBopp,setReturnBopp]=useState(()=>draft?.returnBopp||[{material:"",batchNo:"",qty:"",unit:"",signedBy:"",signedAt:"",signedDate:"",signedShift:""}]);
@@ -1886,10 +1932,13 @@
     // ── Viscosity Form ────────────────────────────────────────────────────────
     const emptyViscRow=(slots)=>({ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries((slots||DAY_SLOTS).map(t=>[t,""]))});
 
+    const VISC_DRAFT_KEY="cpk_viscosity_draft";
     function ViscosityForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",productName:"",press:"8 Color Gravure",operator:"",doneBy:""});
-      const [readings,setReadings]=useState([emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS)]);
-      const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
+      const [draft]=useState(()=>loadFormDraft(VISC_DRAFT_KEY));
+      const [hdr,setHdr]=useState(()=>draft?.hdr||{date:shiftDateStr(),shift:getShiftFromTime(),jobNo:"",productName:"",press:"8 Color Gravure",operator:"",doneBy:""});
+      const [readings,setReadings]=useState(()=>draft?.readings||[1,2,3,4].map(()=>emptyViscRow(getSlotsForShift(getShiftFromTime()))));
+      const [remarks,setRemarks]=useState(()=>draft?.remarks||""); const [saved,setSaved]=useState(false);
+      const draftSavedAt=useFormDraft(VISC_DRAFT_KEY,{hdr,readings,remarks},saved);
       const slots=getSlotsForShift(hdr.shift);
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
       const {errors:fErr,validate,clear:clrErr}=useFormValidation();
@@ -1900,13 +1949,14 @@
       };
       const st=(i,slot,val)=>setReadings(rs=>rs.map((r,x)=>x===i?{...r,times:{...r.times,[slot]:val}}:r));
       const sf=(i,k,val)=>setReadings(rs=>rs.map((r,x)=>x===i?{...r,[k]:val}:r));
-      if(saved) return <Done label="Viscosity QC" reset={onReset} />;
+      if(saved) return <Done label="Viscosity QC" reset={()=>{ clearFormDraft(VISC_DRAFT_KEY); onReset(); }} />;
       const save=async()=>{
         if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},operator:{value:hdr.operator,label:"Operator"},doneBy:{value:hdr.doneBy,label:"Readings Done By"}})) return;
-        await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true);
+        await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); clearFormDraft(VISC_DRAFT_KEY); setSaved(true);
       };
       return <div>
         <PH title="Viscosity QC Form" sub="Add your ink rows below — type in ink name and type freely" />
+        <DraftBanner restoredAt={draft?.savedAt} lastSaved={draftSavedAt} onDiscard={()=>{ clearFormDraft(VISC_DRAFT_KEY); onReset(); }} />
         {Object.keys(fErr).length>0&&<div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>⚠ Please complete all required fields before saving.</div>}
         <SC title="Run Details">
           <Grid cols={5}>
@@ -1946,27 +1996,31 @@
     }
 
     // ── Printing QC Form ──────────────────────────────────────────────────────
+    const PQC_DRAFT_KEY="cpk_printingqc_draft";
     function PrintingQCForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",press:"8 Color Gravure",operator:"",inspector:"",reelNo:""});
+      const [draft]=useState(()=>loadFormDraft(PQC_DRAFT_KEY));
+      const [hdr,setHdr]=useState(()=>draft?.hdr||{date:shiftDateStr(),shift:getShiftFromTime(),jobNo:"",customer:"",productName:"",press:"8 Color Gravure",operator:"",inspector:"",reelNo:""});
       const checkLabels=(lists.printing_qc_checks||DEFAULT_PRINTING_QC_CHECKS).map(String).filter(Boolean);
-      const [checks,setChecks]=useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
-      const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
+      const [checks,setChecks]=useState(()=>draft?.checks||checkLabels.map(label=>({label,result:"",comment:""})));
+      const [overall,setOverall]=useState(()=>draft?.overall||""); const [remarks,setRemarks]=useState(()=>draft?.remarks||""); const [saved,setSaved]=useState(false);
+      const draftSavedAt=useFormDraft(PQC_DRAFT_KEY,{hdr,checks,overall,remarks},saved);
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
       const qcNames=(lists.qc_officer||[]).map(String).filter(Boolean);
       const {errors:fErr,validate,clear:clrErr}=useFormValidation();
       const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
       const sc=(i,k,v)=>setChecks(cs=>cs.map((c,x)=>x===i?{...c,[k]:v}:c));
-      React.useEffect(()=>{ setChecks(checkLabels.map(label=>({label,result:"",comment:""})));  },[checkLabels.join("|")]);
+      React.useEffect(()=>{ setChecks(cs=>checkLabels.map(label=>cs.find(c=>c.label===label)||{label,result:"",comment:""})); },[checkLabels.join("|")]);
       const passC=checks.filter(c=>c.result==="Pass").length;
       const failC=checks.filter(c=>c.result==="Fail").length;
       const naC=checks.filter(c=>c.result==="N/A").length;
-      if(saved) return <Done label="Printing QC" reset={onReset} />;
+      if(saved) return <Done label="Printing QC" reset={()=>{ clearFormDraft(PQC_DRAFT_KEY); onReset(); }} />;
       const save=async()=>{
         if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},customer:{value:hdr.customer,label:"Customer"},operator:{value:hdr.operator,label:"Operator"},inspector:{value:hdr.inspector,label:"Inspector / QC Officer"}})) return;
-        await onSave({type:"printingqc",title:`Printing QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); setSaved(true);
+        await onSave({type:"printingqc",title:`Printing QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,checks,overallResult:overall,remarks}}); clearFormDraft(PQC_DRAFT_KEY); setSaved(true);
       };
       return <div>
         <PH title="Printing QC Form" sub="Complete all check items then set overall result" />
+        <DraftBanner restoredAt={draft?.savedAt} lastSaved={draftSavedAt} onDiscard={()=>{ clearFormDraft(PQC_DRAFT_KEY); onReset(); }} />
         {Object.keys(fErr).length>0&&<div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>⚠ Please complete all required fields before saving.</div>}
         <SC title="Run Details">
           <Grid cols={4}>
@@ -2024,7 +2078,7 @@
     const eLamOutput  = () => ({laminatedRollName:"",laminatedMetryKg:"",filmBatchNo:"",kg:""});
 
     function LaminationForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customerProduct:"",productName:"",operator:"",comments:""});
+      const [hdr,setHdr]=useState({date:shiftDateStr(),shift:"",jobNo:"",customerProduct:"",productName:"",operator:"",comments:""});
       const [filmRows,setFilmRows]=useState([eLamFilm()]);
       const [adhesiveRows,setAdhesiveRows]=useState([eLamAdhesive()]);
       const [outputRows,setOutputRows]=useState([eLamOutput()]);
@@ -2114,7 +2168,7 @@
     // ── Generic QC form factory ────────────────────────────────────────────────
     function GenericQCForm({type,title,productListKey,onSave,onReset,users=[],lists={},machine,checksKey}){
       const checkLabels=(lists[checksKey]||[]).map(String).filter(Boolean);
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
+      const [hdr,setHdr]=useState({date:shiftDateStr(),shift:"",jobNo:"",customer:"",productName:"",operator:"",inspector:""});
       const [checks,setChecks]=useState(()=>checkLabels.map(label=>({label,result:"",comment:""})));
       const [overall,setOverall]=useState(""); const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
@@ -2194,7 +2248,7 @@
     const eExtRoll = () => ({rollNo:"",metres:"",kg:""});
 
     function ExtruderForm({onSave,onReset,users=[],lists={},machine=1}){
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",customer:"",productName:"",materialSpec:"",operator:"",supervisor:""});
+      const [hdr,setHdr]=useState({date:shiftDateStr(),shift:"",jobNo:"",customer:"",productName:"",materialSpec:"",operator:"",supervisor:""});
       const [rmaRows,setRma]=useState([eExtRMA()]); const [rmbRows,setRmb]=useState([eExtRMA()]);
       const [rollRows,setRolls]=useState([eExtRoll(),eExtRoll()]);
       const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
@@ -2263,7 +2317,7 @@
     const eSlitOutput = () => ({palletCode:"",metry:"",kg:""});
 
     function SlittingForm({onSave,onReset,users=[],lists={},machine=1}){
-      const [hdr,setHdr]=useState({date:todayStr(),time:"",shift:"",jobNo:"",customer:"",productName:""});
+      const [hdr,setHdr]=useState({date:shiftDateStr(),time:"",shift:"",jobNo:"",customer:"",productName:""});
       const [inputRows,setInput]=useState([eSlitInput()]); const [paperRows,setPaper]=useState([eSlitPaper()]);
       const [rollRows,setRolls]=useState([eSlitRoll()]); const [outputRows,setOutput]=useState([eSlitOutput()]);
       const [slitRows,setSlit]=useState([{tape:"",waste:"",blades:"",operator:"",sign:""}]);
@@ -2368,7 +2422,7 @@
     const eBagOutput = () => ({palletCode:"",qty:""});
 
     function BagMakingForm({onSave,onReset,users=[],lists={},machine=1}){
-      const [hdr,setHdr]=useState({date:todayStr(),time:"",shift:"",jobNo:"",customer:"",productName:"",pcsPerBox:"",bagMakingBatchCode:"",operator:""});
+      const [hdr,setHdr]=useState({date:shiftDateStr(),time:"",shift:"",jobNo:"",customer:"",productName:"",pcsPerBox:"",bagMakingBatchCode:"",operator:""});
       const [unwindARows,setUnwindA]=useState([eBagUnwind()]); const [unwindBRows,setUnwindB]=useState([eBagUnwind()]);
       const [batchRows,setBatch]=useState([eBagBatch(),eBagBatch(),eBagBatch()]);
       const [openerRows,setOpener]=useState([eBagOpener()]); const [outputRows,setOutput]=useState([eBagOutput()]);
