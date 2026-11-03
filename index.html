@@ -1961,7 +1961,12 @@
         <SC title="Run Details">
           <Grid cols={5}>
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-            <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+            <F label="Shift">
+              <div style={{...S.input,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"default"}}>
+                <span>{hdr.shift}</span>
+                <span style={{fontSize:10,color:C.success}}>⏱ auto</span>
+              </div>
+            </F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
             <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer("",lists,"product_name_printing")} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
@@ -2025,7 +2030,12 @@
         <SC title="Run Details">
           <Grid cols={4}>
             <F label="Date"><TI type="date" value={hdr.date} onChange={v=>h("date",v)} /></F>
-            <F label="Shift"><TS value={hdr.shift} onChange={v=>h("shift",v)} options={["Day Shift","Night Shift"]} /><ErrMsg msg={fErr.shift} /></F>
+            <F label="Shift">
+              <div style={{...S.input,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"default"}}>
+                <span>{hdr.shift}</span>
+                <span style={{fontSize:10,color:C.success}}>⏱ auto</span>
+              </div>
+            </F>
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
             <F label="Customer"><TS value={hdr.customer} onChange={v=>{ clrErr("customer"); setHdr(p=>({...p,customer:v,productName:""})); }} options={(lists.customer||[]).map(String).filter(Boolean)} /><ErrMsg msg={fErr.customer} /></F>
             <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer(hdr.customer,lists,"product_name_printing")} /></F>
