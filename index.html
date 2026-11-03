@@ -154,7 +154,7 @@
 <tr class="odd">
 <td>Viscosity QC</td>
 <td>QC</td>
-<td>Run details (job, date, product) and viscosity readings with remarks</td>
+<td>Run details (job, date, product, who took the readings that day) and viscosity readings with remarks</td>
 </tr>
 <tr class="even">
 <td>Printing QC</td>
@@ -1887,7 +1887,7 @@
     const emptyViscRow=(slots)=>({ink:"",type:"",target:"",unit:"sec",times:Object.fromEntries((slots||DAY_SLOTS).map(t=>[t,""]))});
 
     function ViscosityForm({onSave,onReset,users=[],lists={}}){
-      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",productName:"",press:"8 Color Gravure",operator:""});
+      const [hdr,setHdr]=useState({date:todayStr(),shift:"",jobNo:"",productName:"",press:"8 Color Gravure",operator:"",doneBy:""});
       const [readings,setReadings]=useState([emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS),emptyViscRow(DAY_SLOTS)]);
       const [remarks,setRemarks]=useState(""); const [saved,setSaved]=useState(false);
       const slots=getSlotsForShift(hdr.shift);
@@ -1902,7 +1902,7 @@
       const sf=(i,k,val)=>setReadings(rs=>rs.map((r,x)=>x===i?{...r,[k]:val}:r));
       if(saved) return <Done label="Viscosity QC" reset={onReset} />;
       const save=async()=>{
-        if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},operator:{value:hdr.operator,label:"Operator"}})) return;
+        if(!validate({shift:{value:hdr.shift,label:"Shift"},jobNo:{value:hdr.jobNo,label:"Job Card Number"},operator:{value:hdr.operator,label:"Operator"},doneBy:{value:hdr.doneBy,label:"Readings Done By"}})) return;
         await onSave({type:"viscosity",title:`Viscosity QC · ${hdr.jobNo||"(no job)"} · ${hdr.date}`,data:{header:hdr,readings,remarks}}); setSaved(true);
       };
       return <div>
@@ -1915,6 +1915,7 @@
             <F label="Job Card Number"><TI value={hdr.jobNo} onChange={v=>h("jobNo",v)} /><ErrMsg msg={fErr.jobNo} /></F>
             <F label="Product Name"><TS value={hdr.productName} onChange={v=>h("productName",v)} options={getProductsForCustomer("",lists,"product_name_printing")} /></F>
             <F label="Operator"><TS value={hdr.operator} onChange={v=>h("operator",v)} options={opNames} /><ErrMsg msg={fErr.operator} /></F>
+            <F label="Readings Done By"><TI value={hdr.doneBy} onChange={v=>h("doneBy",v)} placeholder="Name of person taking readings today" /><ErrMsg msg={fErr.doneBy} /></F>
           </Grid>
         </SC>
         <SC title="Viscosity Readings">
@@ -2626,11 +2627,11 @@
 
       const viscRecs=records.filter(r=>r.type==="viscosity");
       if(viscRecs.length){
-        const rows=[["Completed By","Date","Shift","Job Card Number","Press","Operator","Ink Name","Ink Type","Target","Unit","Slots..."]];
+        const rows=[["Completed By","Date","Shift","Job Card Number","Press","Operator","Readings Done By","Ink Name","Ink Type","Target","Unit","Slots..."]];
         viscRecs.forEach(r=>{
           const h=r.data?.header||{}; const rSlots=getSlotsForShift(h.shift);
           (r.data?.readings||[]).forEach((row,i)=>{
-            rows.push([i===0?r.created_by:"",i===0?h.date:"",i===0?h.shift:"",i===0?h.jobNo:"",i===0?h.press:"",i===0?h.operator:"",row.ink,row.type||"",row.target,row.unit,...rSlots.map(t=>row.times?.[t]||"")]);
+            rows.push([i===0?r.created_by:"",i===0?h.date:"",i===0?h.shift:"",i===0?h.jobNo:"",i===0?h.press:"",i===0?h.operator:"",i===0?(h.doneBy||""):"",row.ink,row.type||"",row.target,row.unit,...rSlots.map(t=>row.times?.[t]||"")]);
           });
           rows.push(["---"]);
         });
@@ -2901,7 +2902,7 @@
       const h=data.header||{};
       return <div>
         <Grid cols={5}>
-          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["press","Press","text"],["operator","Operator","text"]].map(([k,label,type])=>(
+          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["press","Press","text"],["operator","Operator","text"],["doneBy","Readings Done By","text"]].map(([k,label,type])=>(
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
@@ -3023,7 +3024,7 @@
       const h=d.header||{};
       return <div>
         <div style={{display:"flex",gap:24,marginBottom:14,flexWrap:"wrap"}}>
-          {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Press",h.press],["Operator",h.operator]].map(([k,v])=>(
+          {[["Date",h.date],["Shift",h.shift],["Job Card Number",h.jobNo],["Press",h.press],["Operator",h.operator],["Readings Done By",h.doneBy]].map(([k,v])=>(
             <div key={k}><div style={{fontSize:10,color:C.muted}}>{k}</div><div style={{color:C.text}}>{v||"—"}</div></div>
           ))}
         </div>
