@@ -1661,6 +1661,29 @@
       const opNames=(lists.operator||[]).length>0?(lists.operator||[]).map(String).filter(Boolean):users.filter(u=>u.role==="operator").map(u=>u.name);
       const {errors:fErr,validate,clear:clrErr}=useFormValidation();
       const h=(k,v)=>{ clrErr(k); setHdr(p=>({...p,[k]:v})); };
+      // ── Possible duplicate warning (warning only, never blocks saving) ─────
+      // Looks for another PRODUCTION sheet with the same job card number, date and
+      // shift. Viscosity QC / Printing QC sheets with the same job number are ignored.
+      const [dupes,setDupes]=useState([]);
+      React.useEffect(()=>{
+        const job=String(hdr.jobNo||"").trim().toLowerCase();
+        if(!job||!hdr.date||!hdr.shift){ setDupes([]); return; }
+        let off=false;
+        const t=setTimeout(async()=>{
+          try{
+            const {data,error}=await sb.from("records").select("id,created_by,created_at,data")
+              .eq("type","production").eq("data->header->>date",hdr.date).eq("data->header->>shift",hdr.shift);
+            if(off||error) return;
+            setDupes((data||[]).filter(r=>String(r.data?.header?.jobNo||"").trim().toLowerCase()===job));
+          }catch(e){}
+        },600);
+        return ()=>{ off=true; clearTimeout(t); };
+      },[hdr.jobNo,hdr.date,hdr.shift]);
+      const dupWarn=dupes.length>0&&<div style={{background:C.warn+"22",border:`1px solid ${C.warn}`,borderRadius:8,padding:"12px 16px",marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.warn,marginBottom:4}}>⚠ Possible duplicate: job {hdr.jobNo} already has {dupes.length===1?"a production sheet":dupes.length+" production sheets"} for {hdr.date} {hdr.shift}</div>
+        {dupes.map(r=><div key={r.id} style={{fontSize:12,color:C.text,padding:"1px 0"}}>• Submitted by <b>{r.data?.closedBy||r.created_by||"unknown"}</b>{r.created_at?" at "+new Date(r.created_at).toLocaleString("en-ZA",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit",hour12:false}):""}</div>)}
+        <div style={{fontSize:11,color:C.muted,marginTop:4}}>If this is a new run (for example a material change), carry on. You can still save this sheet.</div>
+      </div>;
       const as=(fn,i,k,v)=>fn(a=>a.map((r,x)=>x===i?{...r,[k]:v}:r));
       const asSign=(fn,i,sig)=>fn(a=>a.map((r,x)=>x===i?{...r,...sig}:r));
       const ad=(fn,i)=>fn(a=>a.filter((_,x)=>x!==i));
@@ -1725,6 +1748,7 @@
         {lastSaved&&!draftRestored&&(
           <div style={{fontSize:10,color:C.success,textAlign:"right",marginBottom:8}}>✔ Draft auto-saved at {lastSaved}</div>
         )}
+        {dupWarn}
         {Object.keys(fErr).length>0&&<div style={{background:C.danger+"22",border:`1px solid ${C.danger}`,borderRadius:8,padding:"10px 16px",marginBottom:16,fontSize:12,color:C.danger,fontWeight:600}}>⚠ Please complete all required fields before saving.</div>}
         <SC title="Job Details">
           <Grid cols={4}>
@@ -1922,6 +1946,7 @@
           <div style={{fontSize:13,fontWeight:700,color:attempted?C.danger:C.warn,marginBottom:6}}>{attempted?"✕ Sheet not saved — ":"⚠ "}complete these values before closing the sheet (enter 0 if the value is zero):</div>
           {incomplete.map((x,k)=><div key={k} style={{fontSize:12,color:C.text,padding:"2px 0"}}>• <b>{x.title}</b>{x.i>=0?`, row ${x.i+1}`:""}: <span style={{color:C.danger}}>{x.missing.join(", ")}</span></div>)}
         </div>}
+        {dupWarn}
         <SC title="Close & Sign Off Sheet">
           <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Sign off here to close and save this production sheet. This name is recorded separately from whoever is logged in, so the record shows exactly who closed it out.</div>
           <PinPrompt label="Close & Save Sheet" onConfirm={sig=>save(sig)} />
