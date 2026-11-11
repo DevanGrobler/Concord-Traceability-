@@ -318,6 +318,7 @@
 </tr>
 </tbody>
 </table>
+<p><b>Operator head-to-head</b> (switch at the top of the tab): pick a month, a shift and two operators to compare average meters per shift, average downtime per shift (lower is better; the month total is shown too) and average OEE. The better figure gets a green ▲, and each side shows how many of the three it won. The table underneath lists every operator for that month. Each shift counts for its main operator only.</p>
 <p><strong>How OEE is calculated</strong></p>
 <p>\text{Available} = \text{Max speed} \times \text{Loading factor} \times \text{Scheduled minutes} \times (1 - \text{Downtime provision})</p>
 <p>With the standard settings (200 m/min, 70%, 20%) a 12 hour shift has 80,640 m available. OEE can pass 100% when a shift runs faster than the loading factor assumes.</p>
@@ -5196,6 +5197,12 @@
       const [filterOperator,setFilterOperator]=useState("all");
       const [selected,setSelected]=useState(new Set());
       const [deleting,setDeleting]=useState(false);
+      // Operator head-to-head view
+      const [oeeView,setOeeView]=useState("list");
+      const [h2hMonth,setH2hMonth]=useState("");
+      const [h2hShift,setH2hShift]=useState("all");
+      const [h2hA,setH2hA]=useState("");
+      const [h2hB,setH2hB]=useState("");
       // "View & edit" permission (set per user in User Mgmt → Edit Permissions).
       // Admins always have it. View-only users can still filter and export.
       const canEditRows=canEdit||session?.role==="admin";
@@ -5363,8 +5370,148 @@
         XLSX.writeFile(wb,`Printing-OEE-${todayStr()}.xlsx`);
       };
 
+      // ── Operator head-to-head ──────────────────────────────────────────────
+      // Each shift counts for its main operator (most reel sign-offs, as in the list).
+      // Avg OEE = total meters ÷ total available meters over the operator's scheduled
+      // shifts (same formula as the Overall OEE card). Downtime is judged per shift.
+      if(oeeView==="h2h"){
+        const VIOLET="#a371f7";
+        const months=[...new Set(summaries.map(x=>x.shift_date?.substring(0,7)).filter(Boolean))].sort().reverse();
+        const thisMonth=new Date().getFullYear()+"-"+String(new Date().getMonth()+1).padStart(2,"0");
+        const month=h2hMonth&&months.includes(h2hMonth)?h2hMonth:(months.includes(thisMonth)?thisMonth:(months[0]||""));
+        const monthLabel=m=>m?MONTHS[parseInt(m.substring(5,7))-1]+" "+m.substring(0,4):"—";
+        const inScope=summaries.filter(x=>x.shift_date?.startsWith(month)&&(h2hShift==="all"||x.shift===h2hShift));
+        const byOp=new Map();
+        inScope.forEach(x=>{ const op=(opsById.get(x.id)||[])[0]; if(!op) return; if(!byOp.has(op)) byOp.set(op,[]); byOp.get(op).push(x); });
+        const noOp=inScope.filter(x=>!(opsById.get(x.id)||[])[0]).length;
+        const stat=name=>{
+          const list=byOp.get(name)||[]; const n=list.length; const t=totalsFor(list);
+          return {name,n,day:list.filter(x=>x.shift==="Day Shift").length,night:list.filter(x=>x.shift==="Night Shift").length,
+            avgM:n?t.totalMeters/n:0,dtTotal:t.totalDowntime,dtAvg:n?t.totalDowntime/n:0,oee:t.overallOEE,hasAvail:t.totalAvailable>0};
+        };
+        const all=[...byOp.keys()].map(stat).sort((a,b)=>b.oee-a.oee||b.avgM-a.avgM);
+        const byShifts=[...all].sort((a,b)=>b.n-a.n);
+        const names=all.map(x=>x.name);
+        const A=names.includes(h2hA)?h2hA:(byShifts[0]?.name||"");
+        const B=names.includes(h2hB)&&h2hB!==A?h2hB:(byShifts.find(x=>x.name!==A)?.name||"");
+        const sa=A?stat(A):null, sb2=B?stat(B):null;
+        const fmtM=v=>Math.round(v).toLocaleString()+" m";
+        const fmtMin=v=>Math.round(v).toLocaleString()+" min";
+        // winner: 1 = A, 2 = B, 0 = tie / not comparable
+        const win=(a,b,higher)=>Math.round(a)===Math.round(b)?0:((higher?a>b:a<b)?1:2);
+        const metrics=sa&&sb2?[
+          {label:"AVG METERS PER SHIFT",a:sa.avgM,b:sb2.avgM,fmt:fmtM,w:win(sa.avgM,sb2.avgM,true)},
+          {label:"AVG DOWNTIME PER SHIFT · lower is better",a:sa.dtAvg,b:sb2.dtAvg,fmt:fmtMin,w:win(sa.dtAvg,sb2.dtAvg,false),
+            hint:`month total: ${fmtMin(sa.dtTotal)} (${sa.n} shift${sa.n===1?"":"s"}) vs ${fmtMin(sb2.dtTotal)} (${sb2.n} shift${sb2.n===1?"":"s"})`},
+          {label:"AVG OEE",a:sa.oee,b:sb2.oee,fmt:v=>Math.round(v)+"%",w:(sa.hasAvail&&sb2.hasAvail)?win(sa.oee,sb2.oee,true):0},
+        ]:[];
+        const wonA=metrics.filter(m=>m.w===1).length, wonB=metrics.filter(m=>m.w===2).length;
+        const sel={...S.input,width:"auto",minWidth:150};
+        const opCard=(st,color,won,other)=>(
+          <div style={{...S.card,marginBottom:0,flex:"1 1 220px",textAlign:"center",borderTop:`3px solid ${color}`}}>
+            <div style={{fontSize:22,fontWeight:800,color}}>{st.name}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:4}}>{st.n} shift{st.n===1?"":"s"} · {st.night} night / {st.day} day</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:14}}>METRICS WON</div>
+            <div style={{fontSize:30,fontWeight:800,marginTop:2,color:won>other?C.success:C.text}}>{won} of {metrics.length}</div>
+          </div>
+        );
+        return <div>
+          <PH title="Printing OEE" sub="Operator head-to-head — compare operators for a month" />
+        <div style={{display:"inline-flex",border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",marginBottom:16}}>
+          {[["list","📋 Shift list"],["h2h","⚔ Operator head-to-head"]].map(([v,l])=>(
+            <div key={v} onClick={()=>setOeeView(v)} style={{padding:"7px 16px",fontSize:12,cursor:"pointer",background:oeeView===v?C.accent:"transparent",color:oeeView===v?"#000":C.muted,fontWeight:oeeView===v?700:400}}>{l}</div>
+          ))}
+        </div>
+          <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+            <select style={sel} value={month} onChange={e=>setH2hMonth(e.target.value)}>
+              {months.length===0&&<option value="">No shifts yet</option>}
+              {months.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}
+            </select>
+            <select style={sel} value={h2hShift} onChange={e=>setH2hShift(e.target.value)}>
+              <option value="all">All Shifts</option>
+              <option value="Day Shift">☀ Day Shift</option>
+              <option value="Night Shift">🌙 Night Shift</option>
+            </select>
+            <div style={{flex:1}} />
+            {names.length>=2&&<>
+              <select style={{...sel,borderColor:C.blue,color:C.blue,fontWeight:700}} value={A} onChange={e=>{ setH2hA(e.target.value); if(e.target.value===B) setH2hB(A); }}>
+                {names.map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+              <span style={{fontWeight:800,color:C.muted,fontSize:13}}>VS</span>
+              <select style={{...sel,borderColor:VIOLET,color:VIOLET,fontWeight:700}} value={B} onChange={e=>{ setH2hB(e.target.value); if(e.target.value===A) setH2hA(B); }}>
+                {names.map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            </>}
+          </div>
+
+          {loading?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>Loading…</div>
+          :names.length<2?<div style={{...S.card,textAlign:"center",padding:40,color:C.muted}}>
+              {names.length===0?`No shifts with an operator found for ${monthLabel(month)}${h2hShift!=="all"?" ("+h2hShift+")":""}.`:`Only one operator (${names[0]}) ran shifts in ${monthLabel(month)}${h2hShift!=="all"?" ("+h2hShift+")":""}. A head-to-head needs two.`}
+            </div>
+          :<div style={{display:"flex",gap:14,marginBottom:16,flexWrap:"wrap",alignItems:"stretch"}}>
+            {opCard(sa,C.blue,wonA,wonB)}
+            <div style={{...S.card,marginBottom:0,flex:"1.6 1 340px"}}>
+              {metrics.map((m,i)=>{
+                const tot=(m.a+m.b)||1;
+                return <div key={i} style={{marginBottom:i<metrics.length-1?16:0}}>
+                  <div style={{fontSize:10,color:C.muted,letterSpacing:"0.08em",textAlign:"center",marginBottom:6}}>{m.label}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:15,fontWeight:700,marginBottom:5}}>
+                    <span style={{color:m.w===1?C.success:C.text}}>{m.w===1?"▲ ":""}{m.fmt(m.a)}</span>
+                    <span style={{color:m.w===2?C.success:C.text}}>{m.fmt(m.b)}{m.w===2?" ▲":""}</span>
+                  </div>
+                  <div style={{display:"flex",gap:4,height:10}}>
+                    <div style={{flex:Math.max(m.a/tot,0.02),background:C.blue,borderRadius:3,opacity:m.w===2?0.6:1}} />
+                    <div style={{flex:Math.max(m.b/tot,0.02),background:VIOLET,borderRadius:3,opacity:m.w===1?0.6:1}} />
+                  </div>
+                  {m.hint&&<div style={{fontSize:9,color:C.muted,textAlign:"center",marginTop:3}}>{m.hint}</div>}
+                </div>;
+              })}
+            </div>
+            {opCard(sb2,VIOLET,wonB,wonA)}
+          </div>}
+
+          {!loading&&all.length>0&&<div style={S.card}>
+            <div style={{fontSize:11,color:C.muted,letterSpacing:"0.08em",marginBottom:8}}>ALL OPERATORS · {monthLabel(month).toUpperCase()}{h2hShift!=="all"?" · "+h2hShift.toUpperCase():""}</div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead><tr>
+                  {["Operator","Shifts","Avg meters / shift","Downtime (month)","Avg downtime / shift","Avg OEE"].map(h=>(
+                    <th key={h} style={{padding:"8px 10px",color:C.muted,fontWeight:600,fontSize:10,textAlign:h==="Operator"?"left":"right",borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {all.map((st,i)=>(
+                    <tr key={st.name} style={{borderBottom:`1px solid ${C.border}`}}>
+                      <td style={{padding:"9px 10px",fontWeight:700,color:st.name===A?C.blue:st.name===B?VIOLET:C.text,whiteSpace:"nowrap"}}>
+                        {st.name}{i===0&&st.hasAvail&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,marginLeft:6,background:C.success+"33",color:C.success}}>TOP OEE</span>}
+                      </td>
+                      <td style={{padding:"9px 10px",textAlign:"right"}}>{st.n}</td>
+                      <td style={{padding:"9px 10px",textAlign:"right",color:C.accent,fontWeight:700}}>{fmtM(st.avgM)}</td>
+                      <td style={{padding:"9px 10px",textAlign:"right",color:C.danger}}>{fmtMin(st.dtTotal)}</td>
+                      <td style={{padding:"9px 10px",textAlign:"right"}}>{fmtMin(st.dtAvg)}</td>
+                      <td style={{padding:"9px 10px",textAlign:"right",fontWeight:700,color:st.hasAvail?effColor(st.oee):C.muted}}>{st.hasAvail?st.oee+"%":"—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{fontSize:10,color:C.muted,marginTop:12,lineHeight:1.6}}>
+              • Each shift counts for its <b>main operator</b> (most reel sign-offs), the same name shown in the shift list.<br/>
+              • Avg OEE = the operator's total meters ÷ total available meters for their scheduled shifts, so long and short shifts are weighed fairly.<br/>
+              • Downtime is judged per shift (more shifts naturally means more total downtime); the month total is shown too.
+              {noOp>0&&<><br/>• {noOp} shift{noOp===1?"":"s"} this month had no reel sign-offs yet and {noOp===1?"is":"are"} not counted.</>}
+            </div>
+          </div>}
+        </div>;
+      }
+
       return <div>
         <PH title="Printing OEE" sub={"Shift summaries — automatically saved at end of each shift"+(canEditRows?"":" · View only")} />
+        <div style={{display:"inline-flex",border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",marginBottom:16}}>
+          {[["list","📋 Shift list"],["h2h","⚔ Operator head-to-head"]].map(([v,l])=>(
+            <div key={v} onClick={()=>setOeeView(v)} style={{padding:"7px 16px",fontSize:12,cursor:"pointer",background:oeeView===v?C.accent:"transparent",color:oeeView===v?"#000":C.muted,fontWeight:oeeView===v?700:400}}>{l}</div>
+          ))}
+        </div>
         <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
           <select style={{...S.input,width:120}} value={filterYear} onChange={e=>{ setFilterYear(e.target.value); setSelected(new Set()); }}>
             <option value="all">All Years</option>
