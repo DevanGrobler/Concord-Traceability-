@@ -294,7 +294,7 @@
 </tr>
 <tr class="even">
 <td>Operator(s)</td>
-<td>Names taken from the PIN signatures on the printing reels of the production sheets for that shift. A dash means no sheet has been closed yet</td>
+<td>The operator who signed off the most printing reels on the production sheets during that shift. If someone else also signed a reel (for example at shift changeover), a small +1 shows next to the name; hover over the name to see everyone and how many reels each signed. A dash means no sheet has been closed yet</td>
 </tr>
 <tr class="odd">
 <td>Total Meters, Avg Speed</td>
@@ -5252,18 +5252,27 @@
         return ev.sort((a,b)=>a.ms-b.ms);
       },[records]);
 
-      const opsById=React.useMemo(()=>{
-        const map=new Map();
+      // One operator per shift: whoever signed off the MOST reels in that shift
+      // (a tie goes to whoever signed first). Others who signed a reel, e.g. at
+      // shift changeover, are kept in opsDetail and shown when hovering the name.
+      const [opsById,opsDetail]=React.useMemo(()=>{
+        const map=new Map(), detail=new Map();
         summaries.forEach(s=>{
           const w=getShiftWindow(shiftTimes,s.shift_date,s.shift);
-          const names=[];
+          const tally=new Map();
           if(w.on){
             const a=w.start.getTime(), b=w.end.getTime();
-            for(const e of signOffs){ if(e.ms>=a&&e.ms<b&&!names.includes(e.name)) names.push(e.name); }
+            for(const e of signOffs){
+              if(e.ms<a||e.ms>=b) continue;
+              const t=tally.get(e.name)||{name:e.name,count:0,first:e.ms};
+              t.count++; tally.set(e.name,t);
+            }
           }
-          map.set(s.id,names);
+          const ranked=[...tally.values()].sort((x,y)=>y.count-x.count||x.first-y.first);
+          map.set(s.id,ranked.length?[ranked[0].name]:[]);
+          detail.set(s.id,ranked);
         });
-        return map;
+        return [map,detail];
       },[summaries,signOffs,shiftTimes]);
 
       const allOperators=[...new Set([].concat(...opsById.values()))].sort((a,b)=>a.localeCompare(b));
@@ -5441,7 +5450,11 @@
                           {s.shift==="Night Shift"?"🌙 Night":"☀ Day"}
                         </span>
                       </td>
-                      <td style={{padding:"8px 10px",color:(opsById.get(s.id)||[]).length?C.success:C.muted,fontWeight:600,maxWidth:200}}>{(opsById.get(s.id)||[]).join(", ")||"—"}</td>
+                      <td title={(opsDetail.get(s.id)||[]).length?"Reels signed off this shift: "+(opsDetail.get(s.id)||[]).map(t=>t.name+" "+t.count).join(", "):"No reel sign-offs found for this shift"}
+                        style={{padding:"8px 10px",color:(opsById.get(s.id)||[]).length?C.success:C.muted,fontWeight:600,maxWidth:200,cursor:"default"}}>
+                        {(opsById.get(s.id)||[]).join(", ")||"—"}
+                        {(opsDetail.get(s.id)||[]).length>1&&<span style={{color:C.muted,fontWeight:400,fontSize:10,marginLeft:6}}>+{(opsDetail.get(s.id)||[]).length-1}</span>}
+                      </td>
                       <td style={{padding:"8px 10px",color:C.accent,fontWeight:700,textAlign:"right"}}>{Math.round(s.total_meters||0).toLocaleString()} m</td>
                       <td style={{padding:"8px 10px",color:C.text,textAlign:"right"}}>{parseFloat(s.avg_speed||0).toFixed(1)} m/min</td>
                       <td style={{padding:"8px 10px",color:s.downtime_mins>60?C.danger:C.warn,textAlign:"right"}}>{s.downtime_mins||0} min</td>
