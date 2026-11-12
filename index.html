@@ -2965,7 +2965,7 @@
       return <div>
         <div style={{fontSize:10,fontWeight:700,color:C.muted,marginBottom:8}}>JOB DETAILS</div>
         <Grid cols={4}>
-          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],["substrate","Substrate","text"],["widthA","Width A (mm)","text"],["widthB","Width B (mm)","text"],["lengthA","Length A (m)","number"],["lengthB","Length B (m)","number"],["speed","Speed","number"],["operator","Operator","text"],["supervisor","Supervisor","text"]].map(([k,label,type])=>(
+          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],["productName","Product Name","text"],["substrate","Substrate","text"],["widthA","Width A (mm)","text"],["widthB","Width B (mm)","text"],["lengthA","Length A (m)","number"],["lengthB","Length B (m)","number"],["speed","Speed","number"],["operator","Operator","text"],["supervisor","Supervisor","text"]].map(([k,label,type])=>(
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
@@ -2992,7 +2992,7 @@
       const h=data.header||{};
       return <div>
         <Grid cols={5}>
-          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["press","Press","text"],["operator","Operator","text"],["doneBy","Readings Done By","text"]].map(([k,label,type])=>(
+          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["productName","Product Name","text"],["press","Press","text"],["operator","Operator","text"],["doneBy","Readings Done By","text"]].map(([k,label,type])=>(
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
@@ -3022,7 +3022,7 @@
       const h=data.header||{};
       return <div>
         <Grid cols={4}>
-          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],["press","Press","text"],["operator","Operator","text"],["inspector","Inspector","text"],["reelNo","Reel No.","text"]].map(([k,label,type])=>(
+          {[["date","Date","date"],["shift","Shift","text"],["jobNo","Job Card Number","text"],["customer","Customer","text"],["productName","Product Name","text"],["press","Press","text"],["operator","Operator","text"],["inspector","Inspector","text"],["reelNo","Reel No.","text"]].map(([k,label,type])=>(
             <F key={k} label={label}><TI type={type} value={h[k]||""} onChange={v=>setH(k,v)} /></F>
           ))}
         </Grid>
@@ -4750,7 +4750,7 @@
               </div>
               {exp===r.id&&<div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginTop:4}}>
                 {editing===r.id
-                  ?<RecEdit r={r} onSave={async(id,data)=>{ await onSave(id,data); setEditing(null); }} onCancel={()=>setEditing(null)} />
+                  ?<RecEdit r={r} onSave={async(data)=>{ await onSave(r.id,data); setEditing(null); }} onCancel={()=>setEditing(null)} />
                   :<div>
                       <RecDetail r={r} createdBy={r.created_by} />
                       <ApprovalHistory record={r} />
